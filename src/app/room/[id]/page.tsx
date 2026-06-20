@@ -526,6 +526,24 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       overflow: "hidden",
     }}>
 
+      {/* 退出房間按鈕 */}
+      <button
+        onClick={handleLeaveRoom}
+        className="comic-btn absolute top-3 left-3 z-[20] flex items-center justify-center"
+        style={{
+          padding: "6px 12px",
+          background: "#dc2626",
+          color: "#fff",
+          border: "2px solid #000",
+          borderRadius: "10px",
+          boxShadow: "2px 2px 0 #000",
+          fontWeight: 900,
+        }}
+      >
+        <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>🚪</span>
+        <span className="hidden md:inline" style={{ marginLeft: "6px", fontSize: "0.85rem" }}>離開房間</span>
+      </button>
+
       {/* 頂部玩家 */}
       {topPlayer && (
         <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center", zIndex: 10 }}>

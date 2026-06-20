@@ -167,8 +167,6 @@ export const leaveRoom = async (roomId: string, uid: string) => {
 
   const roomData = roomSnap.data() as RoomState;
   
-  if (roomData.status === 'playing') return; // 僅在遊戲進行中不允許離房
-
   const updatedPlayers = { ...roomData.players };
   const wasHost = updatedPlayers[uid]?.isHost;
   delete updatedPlayers[uid];
@@ -183,13 +181,46 @@ export const leaveRoom = async (roomId: string, uid: string) => {
   if (wasHost) {
     // 房主離開，轉交給下一位
     const newHostUid = updatedOrder[0];
-    updatedPlayers[newHostUid] = { ...updatedPlayers[newHostUid], isHost: true };
+    if (updatedPlayers[newHostUid]) {
+      updatedPlayers[newHostUid] = { ...updatedPlayers[newHostUid], isHost: true };
+    }
   }
 
-  await updateDoc(roomRef, {
+  const updates: Record<string, any> = {
     players: updatedPlayers,
     playerOrder: updatedOrder
-  });
+  };
+
+  // 處理遊戲進行中玩家退出的情況
+  if (roomData.status === 'playing') {
+    if (updatedOrder.length === 1) {
+      // 剩下一人，他直接獲勝，遊戲結束
+      const winnerUid = updatedOrder[0];
+      updates.status = 'finished';
+      updates.winnerUid = winnerUid;
+      updates.turnUid = null;
+      if (updatedPlayers[winnerUid]) {
+        updatedPlayers[winnerUid].wins = (updatedPlayers[winnerUid].wins || 0) + 1;
+      }
+    } else {
+      // 如果走掉的是當前回合玩家，移交回合給下一位
+      if (roomData.turnUid === uid) {
+        const idx = roomData.playerOrder.indexOf(uid);
+        const rawNextUid = roomData.playerOrder[(idx + 1) % roomData.playerOrder.length];
+        const nextTurnUid = updatedOrder.includes(rawNextUid) ? rawNextUid : updatedOrder[0];
+        updates.turnUid = nextTurnUid;
+      }
+
+      // 如果走掉的是最後出牌者，作廢場上的牌，讓下一位玩家自由出牌
+      if (roomData.lastPlayedUid === uid) {
+        updates.lastPlayedHand = null;
+        updates.lastPlayedUid = null;
+        updates.passCount = 0;
+      }
+    }
+  }
+
+  await updateDoc(roomRef, updates);
 };
 
 // 訂閱房間狀態

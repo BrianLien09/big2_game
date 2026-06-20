@@ -10,7 +10,7 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-4 w-[calc(100%-32px)] max-w-md pointer-events-none">
+    <div className="fixed bottom-36 md:bottom-auto md:top-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-4 w-[calc(100%-32px)] max-w-md pointer-events-none">
       {toasts.map((toast, index) => {
         let bgColor = 'bg-white';
         let accentColor = 'bg-[#fbbf24]'; // 預設黃色
