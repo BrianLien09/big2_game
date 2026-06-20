@@ -1,0 +1,204 @@
+import { db } from './firebase';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { Card, PlayedHand, createDeck, shuffleDeck, sortCards } from './big2Logic';
+
+export interface Player {
+  uid: string;
+  nickname: string;
+  isReady: boolean;
+  cards: Card[];
+  isHost: boolean;
+  isPassed: boolean;
+  wins: number;
+}
+
+export interface RoomState {
+  id: string;
+  name: string;
+  players: Record<string, Player>;
+  status: 'waiting' | 'playing' | 'finished';
+  turnUid: string | null; 
+  lastPlayedHand: PlayedHand | null;
+  lastPlayedUid: string | null;
+  passCount: number; 
+  playerOrder: string[]; 
+  createdAt: any;
+  winnerUid: string | null;
+}
+
+// 建立房間
+export const createRoom = async (roomId: string, hostUid: string, hostNickname: string, roomName: string = "大老二對局") => {
+  if (!db) throw new Error("Firebase DB not initialized");
+  
+  const roomRef = doc(db, 'rooms', roomId);
+  const initialRoom: RoomState = {
+    id: roomId,
+    name: roomName,
+    players: {
+      [hostUid]: {
+        uid: hostUid,
+        nickname: hostNickname,
+        isReady: true, // 房主預設準備
+        cards: [],
+        isHost: true,
+        isPassed: false,
+        wins: 0
+      }
+    },
+    status: 'waiting',
+    turnUid: null,
+    lastPlayedHand: null,
+    lastPlayedUid: null,
+    passCount: 0,
+    playerOrder: [hostUid],
+    createdAt: serverTimestamp(),
+    winnerUid: null
+  };
+  
+  await setDoc(roomRef, initialRoom);
+  return roomId;
+};
+
+// 加入房間
+export const joinRoom = async (roomId: string, uid: string, nickname: string) => {
+  if (!db) throw new Error("Firebase DB not initialized");
+  
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnap = await getDoc(roomRef);
+  
+  if (!roomSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+  
+  const roomData = roomSnap.data() as RoomState;
+  
+  if (roomData.status !== 'waiting') {
+    throw new Error("房間已經在遊戲中");
+  }
+  
+  if (roomData.playerOrder.length >= 4) {
+    throw new Error("房間已滿 (最多4人)");
+  }
+  
+  // 如果已經在房間內，直接返回
+  if (roomData.players[uid]) {
+    return true;
+  }
+  
+  const newPlayer: Player = {
+    uid,
+    nickname,
+    isReady: false,
+    cards: [],
+    isHost: false,
+    isPassed: false,
+    wins: 0
+  };
+  
+  await updateDoc(roomRef, {
+    [`players.${uid}`]: newPlayer,
+    playerOrder: [...roomData.playerOrder, uid]
+  });
+  
+  return true;
+};
+
+// 切換準備狀態
+export const toggleReady = async (roomId: string, uid: string, isReady: boolean) => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  await updateDoc(roomRef, {
+    [`players.${uid}.isReady`]: isReady
+  });
+};
+
+// 開始遊戲 (僅房主可呼叫)
+export const startGame = async (roomId: string) => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnap = await getDoc(roomRef);
+  if (!roomSnap.exists()) return;
+  
+  const roomData = roomSnap.data() as RoomState;
+  const order = roomData.playerOrder;
+  
+  // 生成卡牌並發牌
+  const deck = shuffleDeck(createDeck());
+  const playersUpdates: Record<string, any> = {};
+  
+  // 決定誰有梅花3，他先出牌
+  let firstPlayerUid = order[0];
+  
+  const cardsPerPlayer = 13;
+  for (let i = 0; i < order.length; i++) {
+    const uid = order[i];
+    // 發13張牌給目前在場的玩家，若不滿4人，剩下的牌就不管了(通常大老二固定4人，這裡可包容少人局)
+    const hand = deck.slice(i * cardsPerPlayer, (i + 1) * cardsPerPlayer);
+    const sortedHand = sortCards(hand);
+    
+    playersUpdates[`players.${uid}.cards`] = sortedHand;
+    playersUpdates[`players.${uid}.isPassed`] = false;
+    
+    // 尋找梅花3
+    if (hand.some(c => c.suit === 'clubs' && c.rank === '3')) {
+      firstPlayerUid = uid;
+    }
+  }
+  
+  await updateDoc(roomRef, {
+    ...playersUpdates,
+    status: 'playing',
+    turnUid: firstPlayerUid,
+    lastPlayedHand: null,
+    lastPlayedUid: null,
+    passCount: 0,
+    winnerUid: null
+  });
+};
+
+// 離開房間
+export const leaveRoom = async (roomId: string, uid: string) => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnap = await getDoc(roomRef);
+  if (!roomSnap.exists()) return;
+
+  const roomData = roomSnap.data() as RoomState;
+  
+  if (roomData.status !== 'waiting') return; // 遊戲中暫時不處理中途離開
+
+  const updatedPlayers = { ...roomData.players };
+  const wasHost = updatedPlayers[uid]?.isHost;
+  delete updatedPlayers[uid];
+  
+  const updatedOrder = roomData.playerOrder.filter(id => id !== uid);
+
+  if (updatedOrder.length === 0) {
+    await deleteDoc(roomRef);
+    return;
+  }
+
+  if (wasHost) {
+    // 房主離開，轉交給下一位
+    const newHostUid = updatedOrder[0];
+    updatedPlayers[newHostUid] = { ...updatedPlayers[newHostUid], isHost: true };
+  }
+
+  await updateDoc(roomRef, {
+    players: updatedPlayers,
+    playerOrder: updatedOrder
+  });
+};
+
+// 訂閱房間狀態
+export const subscribeToRoom = (roomId: string, callback: (room: RoomState | null) => void) => {
+  if (!db) return () => {};
+  const roomRef = doc(db, 'rooms', roomId);
+  return onSnapshot(roomRef, (doc) => {
+    if (doc.exists()) {
+      callback(doc.data() as RoomState);
+    } else {
+      callback(null);
+    }
+  });
+};
