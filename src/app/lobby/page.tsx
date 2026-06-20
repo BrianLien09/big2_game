@@ -66,13 +66,13 @@ export default function Lobby() {
     e.preventDefault();
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
     const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的對局`);
-    router.push(`/room/${newRoomId}?name=${encodedName}`);
+    router.push(`/room?id=${newRoomId}&name=${encodedName}`);
   };
 
   const handleJoinRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinRoomId.trim()) return;
-    router.push(`/room/${joinRoomId.trim()}`);
+    router.push(`/room?id=${joinRoomId.trim()}`);
   };
 
   if (loading || !nickname) {

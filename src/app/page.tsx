@@ -41,7 +41,7 @@ export default function Home() {
           const redirectRoomId = sessionStorage.getItem("redirect_room_id");
           if (redirectRoomId) {
             sessionStorage.removeItem("redirect_room_id");
-            router.replace(`/room/${redirectRoomId}`);
+            router.replace(`/room?id=${redirectRoomId}`);
           } else {
             router.replace("/lobby");
           }
@@ -89,7 +89,7 @@ export default function Home() {
     const redirectRoomId = sessionStorage.getItem("redirect_room_id");
     if (redirectRoomId) {
       sessionStorage.removeItem("redirect_room_id");
-      router.push(`/room/${redirectRoomId}`);
+      router.push(`/room?id=${redirectRoomId}`);
     } else {
       router.push("/lobby");
     }

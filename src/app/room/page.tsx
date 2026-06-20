@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
@@ -12,10 +12,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, evaluateHand, canPlay, validatePlay } from "@/lib/big2Logic";
 
-export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const roomId = resolvedParams.id;
-
+function RoomContent() {
   const router = useRouter();
   const { nickname, addToast } = useGameStore();
   const [room, setRoom] = useState<RoomState | null>(null);
@@ -24,6 +21,14 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
   const [copied, setCopied] = useState<string>("");
   const searchParams = useSearchParams();
+  const roomId = searchParams.get("id") || "";
+
+  // 如果沒有 roomId，重定向回大廳
+  useEffect(() => {
+    if (!roomId) {
+      router.replace("/lobby");
+    }
+  }, [roomId, router]);
 
   // 用來避免重複彈出已加入/已創建房間的通知
   const hasNotifiedRef = useRef(false);
@@ -692,5 +697,18 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RoomPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: "#f8f9fa" }}>
+        <CapybaraLoader />
+        <p style={{ fontWeight: 900, fontSize: "1.2rem", marginTop: "1rem", color: "#374151" }}>載入對局中...</p>
+      </div>
+    }>
+      <RoomContent />
+    </Suspense>
   );
 }
