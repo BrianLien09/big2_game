@@ -169,3 +169,113 @@ export const canPlay = (cards: Card[], prevHand: PlayedHand | null): boolean => 
   // 牌型相同，比較關鍵牌大小
   return compareSingleCard(newHand.keyCard, prevHand.keyCard) > 0;
 };
+
+export interface PlayValidationResult {
+  allowed: boolean;
+  reason?: string;
+  suggestedType?: string;
+}
+
+export const validatePlay = (cards: Card[], prevHand: PlayedHand | null): PlayValidationResult => {
+  if (cards.length === 0) {
+    return { allowed: false, reason: "請先選擇要出的牌！" };
+  }
+
+  const newHand = evaluateHand(cards);
+  if (!newHand) {
+    const typeNames: Record<string, string> = {
+      'single': '單張',
+      'pair': '對子',
+      'straight': '順子',
+      'fullhouse': '葫蘆',
+      'four_of_a_kind': '鐵支',
+      'straight_flush': '同花順'
+    };
+    return {
+      allowed: false,
+      reason: "不合法的牌型！請確認您的牌型組合（單張、對子、順子、葫蘆、鐵支、同花順）。",
+      suggestedType: prevHand ? `【${typeNames[prevHand.type]}】` : undefined
+    };
+  }
+
+  // 新回合 (沒有上一手牌)，任何合法牌型都可出
+  if (!prevHand) {
+    return { allowed: true };
+  }
+
+  const typeNames: Record<string, string> = {
+    'single': '單張',
+    'pair': '對子',
+    'straight': '順子',
+    'fullhouse': '葫蘆',
+    'four_of_a_kind': '鐵支',
+    'straight_flush': '同花順'
+  };
+
+  const suitNames: Record<string, string> = {
+    'spades': '♠黑桃',
+    'hearts': '♥紅心',
+    'diamonds': '♦方塊',
+    'clubs': '♣梅花'
+  };
+
+  // 張數不同
+  if (newHand.cards.length !== prevHand.cards.length) {
+    // 5張牌互壓
+    if (newHand.cards.length === 5 && prevHand.cards.length === 5) {
+      if (newHand.type === 'straight_flush' || newHand.type === 'four_of_a_kind') {
+        const newWeight = newHand.type === 'straight_flush' ? 2 : 1;
+        const prevWeight = prevHand.type === 'straight_flush' ? 2 : (prevHand.type === 'four_of_a_kind' ? 1 : 0);
+        if (newWeight > prevWeight) {
+          return { allowed: true };
+        }
+      }
+    }
+
+    return {
+      allowed: false,
+      reason: `出牌張數不符！場上牌型為【${typeNames[prevHand.type]}】(${prevHand.cards.length}張)，您選了 ${newHand.cards.length} 張牌。`,
+      suggestedType: `【${typeNames[prevHand.type]}】(${prevHand.cards.length}張)`
+    };
+  }
+
+  // 張數相同，牌型不同
+  if (newHand.type !== prevHand.type) {
+    // 5張牌互壓
+    const typeRank: Record<string, number> = {
+      'straight': 1, 'fullhouse': 2, 'four_of_a_kind': 3, 'straight_flush': 4
+    };
+    if (typeRank[newHand.type] && typeRank[prevHand.type]) {
+      if (typeRank[newHand.type] > typeRank[prevHand.type]) {
+        return { allowed: true };
+      }
+      const betterTypes = Object.keys(typeRank)
+        .filter(k => typeRank[k] > typeRank[prevHand.type])
+        .map(k => typeNames[k])
+        .join('、');
+      return {
+        allowed: false,
+        reason: `牌型太小！您出的【${typeNames[newHand.type]}】無法壓過場上的【${typeNames[prevHand.type]}】。`,
+        suggestedType: betterTypes ? `大於【${typeNames[prevHand.type]}】的牌型（如：${betterTypes}）` : `更大點數/花色的【${typeNames[prevHand.type]}】`
+      };
+    }
+
+    return {
+      allowed: false,
+      reason: `牌型不符！場上是【${typeNames[prevHand.type]}】，您卻選了【${typeNames[newHand.type]}】。`,
+      suggestedType: `【${typeNames[prevHand.type]}】`
+    };
+  }
+
+  // 牌型相同，比較關鍵牌大小
+  const isBigger = compareSingleCard(newHand.keyCard, prevHand.keyCard) > 0;
+  if (isBigger) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    reason: `點數或花色太小！無法壓過場上的牌（對方關鍵牌是 ${suitNames[prevHand.keyCard.suit]}${prevHand.keyCard.rank}，您的是 ${suitNames[newHand.keyCard.suit]}${newHand.keyCard.rank}）。`,
+    suggestedType: `更大點數或花色的【${typeNames[prevHand.type]}】`
+  };
+};

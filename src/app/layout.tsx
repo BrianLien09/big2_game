@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Space_Mono } from "next/font/google";
 import "./globals.css";
+import ToastContainer from "@/components/ui/ToastContainer";
 
 const bricolage = Bricolage_Grotesque({
   variable: "--font-bricolage",
@@ -38,6 +39,7 @@ export default function RootLayout({
     >
       <body>
         <div id="app">
+          <ToastContainer />
           {children}
         </div>
       </body>

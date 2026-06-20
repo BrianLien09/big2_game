@@ -81,9 +81,9 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
     throw new Error("房間已滿 (最多4人)");
   }
   
-  // 如果已經在房間內，直接返回
+  // 如果已經在房間內，直接返回 false 代表非新加入
   if (roomData.players[uid]) {
-    return true;
+    return false;
   }
   
   const newPlayer: Player = {
@@ -102,7 +102,7 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
     playerOrder: [...roomData.playerOrder, uid]
   });
   
-  return true;
+  return true; // 代表是新加入的玩家
 };
 
 // 切換準備狀態

@@ -9,7 +9,7 @@ import CapybaraLoader from "@/components/CapybaraLoader";
 
 export default function Home() {
   const router = useRouter();
-  const { setNickname } = useGameStore();
+  const { setNickname, addToast } = useGameStore();
   
   // Firebase 認證狀態與載入狀態
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -35,6 +35,7 @@ export default function Home() {
         const savedNickname = localStorage.getItem("big2_nickname");
         if (savedNickname) {
           setNickname(savedNickname);
+          addToast(`登入成功，歡迎回來 ${savedNickname}！`, "success");
           
           // 檢查是否有特定的導向房間 ID (Deep Link 流程)
           const redirectRoomId = sessionStorage.getItem("redirect_room_id");
@@ -56,7 +57,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [router, setNickname, nicknameInput]);
+  }, [router, setNickname, nicknameInput, addToast]);
 
   // Google 登入處理
   const handleGoogleLogin = async () => {
@@ -67,7 +68,9 @@ export default function Home() {
       // 成功登入後，onAuthStateChanged 會觸發，此處只需防呆
     } catch (error: any) {
       console.error("Google login failed:", error);
-      setErrorMsg(error.message || "登入失敗，請稍後再試。");
+      const msg = error.message || "登入失敗，請稍後再試。";
+      setErrorMsg(msg);
+      addToast(msg, "error");
       setLoginProgress(false);
     }
   };
@@ -80,6 +83,7 @@ export default function Home() {
     const finalName = nicknameInput.trim();
     localStorage.setItem("big2_nickname", finalName);
     setNickname(finalName);
+    addToast(`暱稱設定成功！歡迎 ${finalName} 進入遊戲。`, "success");
 
     // 檢查是否有暫存的房間 ID
     const redirectRoomId = sessionStorage.getItem("redirect_room_id");

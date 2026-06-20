@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
@@ -10,14 +10,14 @@ import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGam
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Card, evaluateHand, canPlay } from "@/lib/big2Logic";
+import { Card, evaluateHand, canPlay, validatePlay } from "@/lib/big2Logic";
 
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const roomId = resolvedParams.id;
 
   const router = useRouter();
-  const { nickname } = useGameStore();
+  const { nickname, addToast } = useGameStore();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
@@ -25,8 +25,13 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const [copied, setCopied] = useState<string>("");
   const searchParams = useSearchParams();
 
+  // 用來避免重複彈出已加入/已創建房間的通知
+  const hasNotifiedRef = useRef(false);
+  // 用來監聽是否有新玩家加入
+  const prevPlayerOrder = useRef<string[]>([]);
+
   useEffect(() => {
-    if (!auth) return;
+    if (!auth || !db) return;
 
     let unsubscribe = () => {};
 
@@ -49,25 +54,53 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       const finalNickname = savedNickname || nickname;
       setUid(user.uid);
 
-      try {
-        await joinRoom(roomId, user.uid, finalNickname, user.photoURL || "");
-      } catch (e: any) {
-        if (e.message === "房間不存在") {
-          const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
-          try {
-            await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "");
-          } catch (createErr: any) {
-            setError(createErr.message || "建立房間失敗");
+      if (!hasNotifiedRef.current) {
+        let isCreator = false;
+        let hasJoinedSuccessfully = false;
+        try {
+          const isNewJoin = await joinRoom(roomId, user.uid, finalNickname, user.photoURL || "");
+          if (isNewJoin) {
+            hasJoinedSuccessfully = true;
+          }
+        } catch (e: any) {
+          if (e.message === "房間不存在") {
+            const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
+            try {
+              await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "");
+              isCreator = true;
+            } catch (createErr: any) {
+              setError(createErr.message || "建立房間失敗");
+              return;
+            }
+          } else {
+            setError(e.message);
             return;
           }
-        } else {
-          setError(e.message);
-          return;
         }
+
+        if (isCreator) {
+          addToast("成功創建房間！房主已自動準備。", "success");
+        } else if (hasJoinedSuccessfully) {
+          addToast("已成功加入對局房間！", "success");
+        }
+        hasNotifiedRef.current = true;
       }
 
       unsubscribe = subscribeToRoom(roomId, (roomData) => {
         if (roomData) {
+          // 監聽是否有其他玩家新加入
+          if (prevPlayerOrder.current.length > 0) {
+            const newUids = roomData.playerOrder.filter(
+              (pUid) => !prevPlayerOrder.current.includes(pUid)
+            );
+            newUids.forEach((pUid) => {
+              if (pUid !== user.uid) {
+                const playerNickname = roomData.players[pUid]?.nickname || "玩家";
+                addToast(`玩家 【${playerNickname}】 已加入對局！`, "info");
+              }
+            });
+          }
+          prevPlayerOrder.current = roomData.playerOrder;
           setRoom(roomData);
         } else {
           setError("房間已解散");
@@ -79,7 +112,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       unsubscribeAuth();
       unsubscribe();
     };
-  }, [roomId, nickname, router, searchParams]);
+  }, [roomId, nickname, router, searchParams, addToast]);
 
   // ---- 操作函數 ----
   const handleToggleReady = () => {
@@ -91,7 +124,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     if (!uid || !room?.players[uid]?.isHost) return;
     const allReady = Object.values(room.players).every(p => p.isReady);
     if (!allReady && room.playerOrder.length > 1) {
-      alert("還有玩家未準備！");
+      addToast("還有玩家未準備，無法開始遊戲！", "warning");
       return;
     }
     startGame(roomId);
@@ -106,6 +139,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const copyToClipboard = async (text: string, label: string) => {
     await navigator.clipboard.writeText(text);
     setCopied(label);
+    addToast(label === "id" ? "房間 ID 已複製到剪貼簿！" : "房間邀請連結已複製到剪貼簿！", "success", 2000);
     setTimeout(() => setCopied(""), 1500);
   };
 
@@ -122,15 +156,18 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     const me = room.players[uid];
     if (room.turnUid !== uid) return;
 
-    const evaluated = evaluateHand(selectedCards);
-    if (!evaluated) { alert("不合法的牌型！"); return; }
-
-    if (room.lastPlayedUid && room.lastPlayedUid !== uid) {
-      if (!canPlay(selectedCards, room.lastPlayedHand)) {
-        alert("牌型太小，無法出牌！");
-        return;
-      }
+    // 檢查上一手牌是否存在且不是自己出的
+    const prevHandToCompare = room.lastPlayedUid && room.lastPlayedUid !== uid ? room.lastPlayedHand : null;
+    const validation = validatePlay(selectedCards, prevHandToCompare);
+    
+    if (!validation.allowed) {
+      addToast(validation.reason || "出牌不合法！", "error", 4000, {
+        suggestedType: validation.suggestedType
+      });
+      return;
     }
+
+    const evaluated = evaluateHand(selectedCards)!;
 
     const roomRef = doc(db, "rooms", roomId);
     const currentIndex = room.playerOrder.indexOf(uid);
@@ -161,7 +198,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     if (!uid || !room || !db) return;
     if (room.turnUid !== uid) return;
     if (!room.lastPlayedUid || room.lastPlayedUid === uid) {
-      alert("你是這一輪的發起人，不能 Pass！");
+      addToast("你是這一輪的發起人，必須出牌，不能 Pass！", "warning");
       return;
     }
     const roomRef = doc(db, "rooms", roomId);

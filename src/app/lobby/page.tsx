@@ -9,7 +9,7 @@ import CapybaraLoader from "@/components/CapybaraLoader";
 
 export default function Lobby() {
   const router = useRouter();
-  const { nickname, setNickname } = useGameStore();
+  const { nickname, setNickname, addToast } = useGameStore();
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState("");
@@ -54,9 +54,11 @@ export default function Lobby() {
       await logoutWithGoogle();
       localStorage.removeItem("big2_nickname");
       setNickname("");
+      addToast("您已成功登出！歡迎下次再來挑戰大老二。", "info");
       router.replace("/");
     } catch (error) {
       console.error("Logout failed:", error);
+      addToast("登出失敗，請稍後再試。", "error");
     }
   };
 
