@@ -21,6 +21,21 @@ function RoomContent() {
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
   const [copied, setCopied] = useState<string>("");
   const searchParams = useSearchParams();
+
+  // 監聽手牌容器寬度以實現自適應重疊效果
+  const handContainerRef = useRef<HTMLDivElement>(null);
+  const [handContainerWidth, setHandContainerWidth] = useState(600);
+
+  useEffect(() => {
+    if (!handContainerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setHandContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(handContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
   const roomId = searchParams.get("id") || "";
 
   // 如果沒有 roomId，重定向回大廳
@@ -261,24 +276,12 @@ function RoomContent() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "2rem 1rem",
+        padding: "1.5rem 1rem",
       }}>
-        <div style={{ display: "flex", flexDirection: "row", gap: "2rem", width: "100%", maxWidth: 900, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div className="flex flex-col lg:flex-row gap-6 w-full max-w-4xl px-2 py-4 justify-center items-stretch lg:items-start">
 
           {/* 左側控制面板 */}
-          <div style={{
-            background: "#fff",
-            border: "4px solid #000",
-            borderRadius: 28,
-            padding: "2rem",
-            width: 280,
-            flexShrink: 0,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "1rem",
-            boxShadow: "4px 4px 0 #000",
-          }}>
+          <div className="bg-white border-[4px] border-black rounded-[28px] p-6 md:p-8 w-full lg:w-[320px] lg:max-w-xs flex-shrink-0 flex flex-col items-center gap-4 shadow-[4px_4px_0_#000]">
             <div style={{
               width: 64, height: 64,
               background: "#e5e7eb",
@@ -359,9 +362,9 @@ function RoomContent() {
           </div>
 
           {/* 右側玩家列表 */}
-          <div style={{ flex: 1, minWidth: 280 }}>
+          <div className="flex-1 w-full">
             <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#6b7280", marginBottom: 12 }}>玩家列表</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {room.playerOrder.map(pUid => {
                 const p = room.players[pUid];
                 const isMe = pUid === uid;
@@ -393,8 +396,8 @@ function RoomContent() {
                         p.nickname.charAt(0).toUpperCase()
                       )}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 800, fontSize: "1rem", lineHeight: 1.2 }}>{p.nickname}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: "1rem", lineHeight: 1.2 }} className="truncate">{p.nickname}</div>
                       <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
                         {p.isHost && (
                           <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fbbf24", border: "2px solid #000", borderRadius: 999, padding: "1px 8px" }}>房主</span>
@@ -521,147 +524,181 @@ function RoomContent() {
   const leftPlayer = getRelPlayer(3);
 
   return (
-    <div key="game-play-view" style={{
-      width: "100vw",
-      height: "100dvh",
-      display: "flex",
-      flexDirection: "column",
-      backgroundColor: "#f8f9fa",
-      position: "relative",
-      overflow: "hidden",
-    }}>
+    <div key="game-play-view" className="w-screen h-screen flex flex-col justify-between bg-[#f8f9fa] overflow-hidden select-none">
 
-      {/* 退出房間按鈕 */}
-      <button
-        onClick={handleLeaveRoom}
-        className="comic-btn absolute top-3 left-3 z-[20] flex items-center justify-center"
-        style={{
-          padding: "6px 12px",
-          background: "#dc2626",
-          color: "#fff",
-          border: "2px solid #000",
-          borderRadius: "10px",
-          boxShadow: "2px 2px 0 #000",
-          fontWeight: 900,
-        }}
-      >
-        <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>🚪</span>
-        <span className="hidden md:inline" style={{ marginLeft: "6px", fontSize: "0.85rem" }}>離開房間</span>
-      </button>
+      {/* 頂部列：離開按鈕與頂部玩家 */}
+      <div className="h-16 flex-shrink-0 flex items-center justify-between px-4 bg-white border-b-4 border-black relative z-20 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
+        <button
+          onClick={handleLeaveRoom}
+          className="comic-btn"
+          style={{
+            padding: "6px 12px",
+            backgroundColor: "#dc2626",
+            color: "#fff",
+            borderWidth: "2px",
+            borderStyle: "solid",
+            borderColor: "#000",
+            borderRadius: "10px",
+            boxShadow: "2px 2px 0 #000",
+            fontWeight: 900,
+            fontSize: "0.85rem",
+          }}
+        >
+          🚪 離開
+        </button>
 
-      {/* 頂部玩家 */}
-      {topPlayer && (
-        <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center", zIndex: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 6 }}>
-            {topPlayer.avatarUrl && (
-              <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
-                <img src={topPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-              </div>
-            )}
-            <div className="comic-badge">{topPlayer.nickname}</div>
-          </div>
-          <div style={{ display: "flex" }}>
-            {topPlayer.cards.map((_, i) => (
-              <div key={i} style={{ width: 20, height: 30, background: "#3b82f6", border: "2px solid #000", borderRadius: 4, marginLeft: i > 0 ? -10 : 0 }} />
-            ))}
-          </div>
-          {topPlayer.isPassed && <span style={{ fontWeight: 900, color: "#dc2626", background: "#fff", border: "2px solid #000", padding: "2px 8px", transform: "rotate(3deg)", display: "inline-block", marginTop: 4 }}>PASS</span>}
-        </div>
-      )}
-
-      {/* 左側玩家 */}
-      {leftPlayer && (
-        <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", zIndex: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 6 }}>
-            {leftPlayer.avatarUrl && (
-              <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
-                <img src={leftPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-              </div>
-            )}
-            <div className="comic-badge" style={{ writingMode: "horizontal-tb" }}>{leftPlayer.nickname}</div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {leftPlayer.cards.map((_, i) => (
-              <div key={i} style={{ width: 30, height: 20, background: "#3b82f6", border: "2px solid #000", borderRadius: 4, marginTop: i > 0 ? -8 : 0 }} />
-            ))}
-          </div>
-          {leftPlayer.isPassed && <span style={{ fontWeight: 900, color: "#dc2626", background: "#fff", border: "2px solid #000", padding: "2px 8px", marginTop: 4 }}>PASS</span>}
-        </div>
-      )}
-
-      {/* 右側玩家 */}
-      {rightPlayer && (
-        <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", zIndex: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 6 }}>
-            {rightPlayer.avatarUrl && (
-              <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
-                <img src={rightPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-              </div>
-            )}
-            <div className="comic-badge">{rightPlayer.nickname}</div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {rightPlayer.cards.map((_, i) => (
-              <div key={i} style={{ width: 30, height: 20, background: "#3b82f6", border: "2px solid #000", borderRadius: 4, marginTop: i > 0 ? -8 : 0 }} />
-            ))}
-          </div>
-          {rightPlayer.isPassed && <span style={{ fontWeight: 900, color: "#dc2626", background: "#fff", border: "2px solid #000", padding: "2px 8px", marginTop: 4 }}>PASS</span>}
-        </div>
-      )}
-
-      {/* 中央出牌區 */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        {room.lastPlayedHand ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 700, color: "#6b7280", fontSize: "0.9rem" }}>
-              {room.players[room.lastPlayedUid!]?.nickname} 出牌
-            </span>
-            <div style={{ display: "flex" }}>
-              {room.lastPlayedHand.cards.map((card, i) => (
-                <div key={card.id} style={{ marginLeft: i > 0 ? -20 : 0, zIndex: i }}>
-                  <PlayingCard card={card} size="large" />
+        {topPlayer ? (
+          <div className="flex flex-col items-center justify-center">
+            <div className="flex items-center gap-1.5">
+              {topPlayer.avatarUrl && (
+                <div className="w-6 h-6 rounded-full border-[1.5px] border-black overflow-hidden bg-white shadow-[1px_1px_0px_#000]">
+                  <img src={topPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
                 </div>
-              ))}
+              )}
+              <div className="comic-badge text-[10px] py-0.5 max-w-[80px] truncate">{topPlayer.nickname}</div>
+              <span className="text-[10px] font-black text-blue-700 bg-blue-50 border-[1.5px] border-black px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000]">
+                🂠 {topPlayer.cards.length} 張
+              </span>
+              {topPlayer.isPassed && (
+                <span className="text-[10px] font-black text-red-600 bg-red-50 border-[1.5px] border-red-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg]">
+                  PASS
+                </span>
+              )}
             </div>
           </div>
         ) : (
-          <div style={{ fontWeight: 800, color: "#d1d5db", fontSize: "1.1rem", border: "3px dashed #d1d5db", borderRadius: 16, padding: "24px 40px" }}>
-            等待出牌
-          </div>
+          <div />
         )}
+
+        {/* 佔位符以保持布局居中平衡 */}
+        <div className="w-[68px]" />
+      </div>
+
+      {/* 中部列：對局主畫面（左側玩家、中央出牌區、右側玩家） */}
+      <div className="flex-1 flex flex-row items-center justify-between relative overflow-hidden px-2 py-4">
+        {/* 左側玩家 */}
+        <div className="w-16 sm:w-24 flex-shrink-0 flex flex-col items-center justify-center z-10">
+          {leftPlayer ? (
+            <div className="flex flex-col items-center gap-1.5">
+              {leftPlayer.avatarUrl && (
+                <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[1px_1px_0px_#000]">
+                  <img src={leftPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <div className="comic-badge text-[10px] py-0.5 max-w-[64px] sm:max-w-[80px] truncate text-center leading-tight">
+                {leftPlayer.nickname}
+              </div>
+              <div className="flex flex-col items-center bg-blue-50 border-2 border-black rounded-lg p-1.5 shadow-[2px_2px_0_#000]">
+                <span className="text-[10px] font-black text-blue-700">🂠 {leftPlayer.cards.length} 張</span>
+              </div>
+              {leftPlayer.isPassed && (
+                <span className="text-[10px] font-black text-red-600 bg-red-50 border-2 border-red-600 px-2 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-5deg] mt-1">
+                  PASS
+                </span>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        {/* 中央出牌區 */}
+        <div className="flex-1 flex flex-col items-center justify-center px-1">
+          {room.lastPlayedHand ? (
+            <div className="flex flex-col items-center gap-1.5 w-full">
+              <span className="font-bold text-gray-500 text-xs md:text-sm text-center">
+                【{room.players[room.lastPlayedUid!]?.nickname}】 出牌
+              </span>
+              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full">
+                {room.lastPlayedHand.cards.map((card, i) => (
+                  <div key={card.id} className="transform transition-transform hover:scale-105">
+                    <PlayingCard card={card} size={handContainerWidth < 450 ? "small" : "medium"} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="font-black text-gray-300 text-xs sm:text-sm border-[3px] border-dashed border-gray-300 rounded-2xl py-4 px-6 text-center uppercase tracking-wider select-none">
+              等待出牌
+            </div>
+          )}
+        </div>
+
+        {/* 右側玩家 */}
+        <div className="w-16 sm:w-24 flex-shrink-0 flex flex-col items-center justify-center z-10">
+          {rightPlayer ? (
+            <div className="flex flex-col items-center gap-1.5">
+              {rightPlayer.avatarUrl && (
+                <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[1px_1px_0px_#000]">
+                  <img src={rightPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <div className="comic-badge text-[10px] py-0.5 max-w-[64px] sm:max-w-[80px] truncate text-center leading-tight">
+                {rightPlayer.nickname}
+              </div>
+              <div className="flex flex-col items-center bg-blue-50 border-2 border-black rounded-lg p-1.5 shadow-[2px_2px_0_#000]">
+                <span className="text-[10px] font-black text-blue-700">🂠 {rightPlayer.cards.length} 張</span>
+              </div>
+              {rightPlayer.isPassed && (
+                <span className="text-[10px] font-black text-red-600 bg-red-50 border-2 border-red-600 px-2 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[5deg] mt-1">
+                  PASS
+                </span>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* 下方我的手牌區 */}
-      <div style={{
-        borderTop: `4px solid ${isMyTurn ? "#fbbf24" : "#000"}`,
-        background: isMyTurn ? "#fffbeb" : "#fff",
-        padding: "12px 16px",
-        flexShrink: 0,
-      }}>
+      <div 
+        className="flex-shrink-0 border-t-4 border-black z-20" 
+        style={{
+          borderTopWidth: "4px",
+          borderTopStyle: "solid",
+          borderTopColor: isMyTurn ? "#fbbf24" : "#000",
+          backgroundColor: isMyTurn ? "#fffbeb" : "#fff",
+          padding: "12px 16px",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)",
+        }}
+      >
         {/* 操作列 */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, maxWidth: 800, margin: "0 auto 12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-center max-w-3xl mx-auto mb-3">
+          <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
             {me?.avatarUrl && (
               <div className="w-8 h-8 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
                 <img src={me.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
               </div>
             )}
-            <span className="comic-badge" style={{ background: "#000", color: "#fff" }}>{me?.nickname}</span>
-            <span className="comic-badge" style={{ background: "#fff", color: "#b45309", border: "2px solid #000" }}>🏆 勝場: {me?.wins || 0}</span>
-            {isMyTurn && <span style={{ fontWeight: 900, color: "#dc2626", fontSize: "0.9rem" }}>👉 輪到你了！</span>}
+            <span className="comic-badge" style={{ backgroundColor: "#000", color: "#fff" }}>{me?.nickname}</span>
+            <span className="comic-badge" style={{ backgroundColor: "#fff", color: "#b45309", borderWidth: "2px", borderStyle: "solid", borderColor: "#000" }}>🏆 勝場: {me?.wins || 0}</span>
+            {isMyTurn && (
+              <span className="animate-pulse ml-1 text-xs font-black text-red-600 bg-red-50 border-2 border-black px-2 py-0.5 rounded-md shadow-[1px_1px_0_#000]">
+                👉 輪到你了！
+              </span>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="flex gap-2 w-full sm:w-auto justify-center">
             <button
-              className="comic-btn"
-              style={{ background: "#fff", padding: "8px 16px", fontSize: "0.9rem", opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.4 : 1 }}
+              className="comic-btn flex-1 sm:flex-none"
+              style={{
+                backgroundColor: "#fff",
+                padding: "8px 16px",
+                fontSize: "0.9rem",
+                opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
+                minWidth: "80px",
+              }}
               disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
               onClick={handlePass}
             >
               Pass
             </button>
             <button
-              className="comic-btn"
-              style={{ background: "#fbbf24", padding: "8px 24px", fontSize: "0.9rem", opacity: (!isMyTurn || selectedCards.length === 0) ? 0.4 : 1 }}
+              className="comic-btn flex-1 sm:flex-none"
+              style={{
+                backgroundColor: "#fbbf24",
+                padding: "8px 24px",
+                fontSize: "0.9rem",
+                opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
+                minWidth: "100px",
+              }}
               disabled={!isMyTurn || selectedCards.length === 0}
               onClick={handlePlayCard}
             >
@@ -670,18 +707,24 @@ function RoomContent() {
           </div>
         </div>
 
-        {/* 手牌：絕對定位重疊式排列 */}
-        <div style={{ position: "relative", height: 140, width: "100%", maxWidth: 700, margin: "0 auto" }}>
+        {/* 手牌：絕對定位重疊式排列，使用動態寬度自適應間距 */}
+        <div 
+          ref={handContainerRef}
+          style={{ position: "relative", height: 110, width: "100%", maxWidth: 640, margin: "0 auto" }}
+        >
           {me?.cards.map((card, i) => {
             const total = me.cards.length;
-            const offset = (i - (total - 1) / 2) * 38;
+            const cardWidth = handContainerWidth < 450 ? 40 : 56; // small = 40, medium = 56
+            const maxSpan = handContainerWidth - cardWidth - 16;
+            const cardSpacing = total > 1 ? Math.min(cardWidth * 0.65, maxSpan / (total - 1)) : 0;
+            const offset = total > 1 ? (i - (total - 1) / 2) * cardSpacing : 0;
             const isSelected = selectedCards.some(c => c.id === card.id);
             return (
               <div
                 key={card.id}
                 style={{
                   position: "absolute",
-                  bottom: isSelected ? 24 : 0,
+                  bottom: isSelected ? 16 : 0,
                   left: "50%",
                   transform: `translateX(calc(-50% + ${offset}px))`,
                   zIndex: i,
@@ -690,7 +733,11 @@ function RoomContent() {
                 }}
                 onClick={() => handleToggleCard(card)}
               >
-                <PlayingCard card={card} size="medium" selected={isSelected} />
+                <PlayingCard 
+                  card={card} 
+                  size={handContainerWidth < 450 ? "small" : "medium"} 
+                  selected={isSelected} 
+                />
               </div>
             );
           })}

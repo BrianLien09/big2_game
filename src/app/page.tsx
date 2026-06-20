@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, loginWithGoogle } from "@/lib/firebase";
+import { auth, db, loginWithGoogle } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useGameStore } from "@/store/useGameStore";
 import CapybaraLoader from "@/components/CapybaraLoader";
 
@@ -19,6 +20,9 @@ export default function Home() {
   
   // 暱稱狀態
   const [nicknameInput, setNicknameInput] = useState("");
+  
+  // 使用 useRef 紀錄「是否已執行過首次暱稱載入檢查」，以避免使用者在輸入暱稱時每打一個字就觸發 useEffect 重新查詢資料庫
+  const hasCheckedRef = useRef(false);
 
   // 監聽 Firebase 登入狀態
   useEffect(() => {
@@ -27,11 +31,18 @@ export default function Home() {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       
       if (user) {
-        // 若已登入且本地已有暱稱，直接處理跳轉
+        // 如果已經做過初始暱稱檢查，就不要重複執行，防範輸入字元時重複載入
+        if (hasCheckedRef.current) {
+          return;
+        }
+        
+        hasCheckedRef.current = true;
+
+        // 1. 若本地已有暱稱，直接處理跳轉
         const savedNickname = localStorage.getItem("big2_nickname");
         if (savedNickname) {
           setNickname(savedNickname);
@@ -45,11 +56,45 @@ export default function Home() {
           } else {
             router.replace("/lobby");
           }
+          setAuthLoading(false);
           return;
         }
+
+        // 2. 若本地無暱稱，嘗試從 Firestore 雲端同步
+        if (db) {
+          try {
+            setAuthLoading(true); // 顯示水豚載入動畫，避免畫面閃爍
+            const userDocRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userDocRef);
+            
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              if (userData && userData.nickname) {
+                const cloudName = userData.nickname;
+                // 同步寫入本地
+                localStorage.setItem("big2_nickname", cloudName);
+                setNickname(cloudName);
+                addToast(`登入成功，已同步您的暱稱 ${cloudName}！`, "success");
+                
+                const redirectRoomId = sessionStorage.getItem("redirect_room_id");
+                if (redirectRoomId) {
+                  sessionStorage.removeItem("redirect_room_id");
+                  router.replace(`/room?id=${redirectRoomId}`);
+                } else {
+                  router.replace("/lobby");
+                }
+                setAuthLoading(false);
+                return;
+              }
+            }
+          } catch (error) {
+            console.error("嘗試從 Firestore 獲取暱稱失敗:", error);
+            // 雲端撈取失敗時不中斷，交由下方流程讓使用者手動輸入
+          }
+        }
         
-        // 若已登入但本地無暱稱，預設預填 Google displayName
-        if (user.displayName && !nicknameInput) {
+        // 3. 若皆無暱稱，預設預填 Google displayName
+        if (user.displayName) {
           setNicknameInput(user.displayName.slice(0, 12));
         }
       }
@@ -57,7 +102,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [router, setNickname, nicknameInput, addToast]);
+  }, [router, setNickname, addToast]);
 
   // Google 登入處理
   const handleGoogleLogin = async () => {
@@ -76,13 +121,30 @@ export default function Home() {
   };
 
   // 確認暱稱並繼續進入遊戲
-  const handleNicknameSubmit = (e: React.FormEvent) => {
+  const handleNicknameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nicknameInput.trim() || !currentUser) return;
 
     const finalName = nicknameInput.trim();
+    
+    // 同步到本地 Zustand Store 與 LocalStorage
     localStorage.setItem("big2_nickname", finalName);
     setNickname(finalName);
+
+    // 同步到 Firestore
+    if (db) {
+      try {
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await setDoc(userDocRef, {
+          nickname: finalName,
+          updatedAt: new Date()
+        }, { merge: true });
+      } catch (error) {
+        console.error("同步暱稱至 Firestore 失敗:", error);
+        addToast("雲端同步暱稱失敗，但已儲存於本地。", "warning");
+      }
+    }
+
     addToast(`暱稱設定成功！歡迎 ${finalName} 進入遊戲。`, "success");
 
     // 檢查是否有暫存的房間 ID

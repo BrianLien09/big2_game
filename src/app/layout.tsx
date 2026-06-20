@@ -19,12 +19,22 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#ffffff",
+  themeColor: "#fbbf24", // 調整為遊戲主色調（黃色）
 };
 
 export const metadata: Metadata = {
   title: "線上大老二遊戲",
   description: "支援手機與電腦的線上大老二對戰平台",
+  manifest: "/manifest.json?v=2", // 加上版本號以打破 manifest 快取
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "大老二",
+  },
+  icons: {
+    icon: "/icons/icon-192x192.png?v=2", // 網頁分頁圖標 (Favicon)，加 v=2 打破快取
+    apple: "/icons/apple-touch-icon.png?v=2", // 蘋果設備專用的 App 圖標
+  },
 };
 
 export default function RootLayout({
@@ -42,6 +52,25 @@ export default function RootLayout({
           <ToastContainer />
           {children}
         </div>
+
+        {/* 註冊 PWA Service Worker，以支持離線快取與安裝提示 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js')
+                    .then(function(reg) {
+                      console.log('ServiceWorker 註冊成功，範圍為: ', reg.scope);
+                    })
+                    .catch(function(err) {
+                      console.error('ServiceWorker 註冊失敗: ', err);
+                    });
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );
