@@ -50,12 +50,12 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       setUid(user.uid);
 
       try {
-        await joinRoom(roomId, user.uid, finalNickname);
+        await joinRoom(roomId, user.uid, finalNickname, user.photoURL || "");
       } catch (e: any) {
         if (e.message === "房間不存在") {
           const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
           try {
-            await createRoom(roomId, user.uid, finalNickname, nameParam);
+            await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "");
           } catch (createErr: any) {
             setError(createErr.message || "建立房間失敗");
             return;
@@ -343,8 +343,13 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
                       fontWeight: 900, fontSize: "1.1rem",
                       flexShrink: 0,
                       boxShadow: "2px 2px 0 #000",
+                      overflow: "hidden"
                     }}>
-                      {p.nickname.charAt(0).toUpperCase()}
+                      {p.avatarUrl ? (
+                        <img src={p.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        p.nickname.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 800, fontSize: "1rem", lineHeight: 1.2 }}>{p.nickname}</div>
@@ -431,7 +436,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             贏家：{room.players[room.winnerUid!]?.nickname}
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-            {me?.isHost && (
+            {me?.isHost ? (
               <button className="comic-btn" style={{ background: "#fbbf24" }} onClick={async () => {
                 if (!db) return;
                 await updateDoc(doc(db, "rooms", roomId), {
@@ -442,8 +447,20 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
               }}>
                 再玩一局
               </button>
+            ) : (
+              <button 
+                className="comic-btn" 
+                style={{ 
+                  background: me?.isReady ? "#dcfce7" : "#fbbf24", 
+                  color: me?.isReady ? "#16a34a" : "#000",
+                  border: "3px solid #000"
+                }} 
+                onClick={() => toggleReady(roomId, uid, !me?.isReady)}
+              >
+                {me?.isReady ? "✓ 已準備" : "再玩一局"}
+              </button>
             )}
-            <button className="comic-btn" onClick={() => router.push("/lobby")}>回到大廳</button>
+            <button className="comic-btn" onClick={handleLeaveRoom}>回到大廳</button>
           </div>
         </div>
       </div>
@@ -475,7 +492,14 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       {/* 頂部玩家 */}
       {topPlayer && (
         <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center", zIndex: 10 }}>
-          <div className="comic-badge" style={{ marginBottom: 6 }}>{topPlayer.nickname}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 6 }}>
+            {topPlayer.avatarUrl && (
+              <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
+                <img src={topPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="comic-badge">{topPlayer.nickname}</div>
+          </div>
           <div style={{ display: "flex" }}>
             {topPlayer.cards.map((_, i) => (
               <div key={i} style={{ width: 20, height: 30, background: "#3b82f6", border: "2px solid #000", borderRadius: 4, marginLeft: i > 0 ? -10 : 0 }} />
@@ -488,7 +512,14 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       {/* 左側玩家 */}
       {leftPlayer && (
         <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", zIndex: 10 }}>
-          <div className="comic-badge" style={{ marginBottom: 6, writingMode: "horizontal-tb" }}>{leftPlayer.nickname}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 6 }}>
+            {leftPlayer.avatarUrl && (
+              <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
+                <img src={leftPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="comic-badge" style={{ writingMode: "horizontal-tb" }}>{leftPlayer.nickname}</div>
+          </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {leftPlayer.cards.map((_, i) => (
               <div key={i} style={{ width: 30, height: 20, background: "#3b82f6", border: "2px solid #000", borderRadius: 4, marginTop: i > 0 ? -8 : 0 }} />
@@ -501,7 +532,14 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       {/* 右側玩家 */}
       {rightPlayer && (
         <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", zIndex: 10 }}>
-          <div className="comic-badge" style={{ marginBottom: 6 }}>{rightPlayer.nickname}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: 6 }}>
+            {rightPlayer.avatarUrl && (
+              <div className="w-7 h-7 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
+                <img src={rightPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+              </div>
+            )}
+            <div className="comic-badge">{rightPlayer.nickname}</div>
+          </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {rightPlayer.cards.map((_, i) => (
               <div key={i} style={{ width: 30, height: 20, background: "#3b82f6", border: "2px solid #000", borderRadius: 4, marginTop: i > 0 ? -8 : 0 }} />
@@ -543,6 +581,11 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         {/* 操作列 */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, maxWidth: 800, margin: "0 auto 12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {me?.avatarUrl && (
+              <div className="w-8 h-8 rounded-full border-2 border-black overflow-hidden bg-white shadow-[2px_2px_0px_#000]">
+                <img src={me.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+              </div>
+            )}
             <span className="comic-badge" style={{ background: "#000", color: "#fff" }}>{me?.nickname}</span>
             <span className="comic-badge" style={{ background: "#fff", color: "#b45309", border: "2px solid #000" }}>🏆 勝場: {me?.wins || 0}</span>
             {isMyTurn && <span style={{ fontWeight: 900, color: "#dc2626", fontSize: "0.9rem" }}>👉 輪到你了！</span>}

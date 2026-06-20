@@ -10,6 +10,7 @@ export interface Player {
   isHost: boolean;
   isPassed: boolean;
   wins: number;
+  avatarUrl?: string;
 }
 
 export interface RoomState {
@@ -26,8 +27,7 @@ export interface RoomState {
   winnerUid: string | null;
 }
 
-// 建立房間
-export const createRoom = async (roomId: string, hostUid: string, hostNickname: string, roomName: string = "大老二對局") => {
+export const createRoom = async (roomId: string, hostUid: string, hostNickname: string, roomName: string = "大老二對局", hostAvatarUrl: string = "") => {
   if (!db) throw new Error("Firebase DB not initialized");
   
   const roomRef = doc(db, 'rooms', roomId);
@@ -42,7 +42,8 @@ export const createRoom = async (roomId: string, hostUid: string, hostNickname: 
         cards: [],
         isHost: true,
         isPassed: false,
-        wins: 0
+        wins: 0,
+        avatarUrl: hostAvatarUrl
       }
     },
     status: 'waiting',
@@ -60,7 +61,7 @@ export const createRoom = async (roomId: string, hostUid: string, hostNickname: 
 };
 
 // 加入房間
-export const joinRoom = async (roomId: string, uid: string, nickname: string) => {
+export const joinRoom = async (roomId: string, uid: string, nickname: string, avatarUrl: string = "") => {
   if (!db) throw new Error("Firebase DB not initialized");
   
   const roomRef = doc(db, 'rooms', roomId);
@@ -92,7 +93,8 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string) =>
     cards: [],
     isHost: false,
     isPassed: false,
-    wins: 0
+    wins: 0,
+    avatarUrl
   };
   
   await updateDoc(roomRef, {
@@ -165,7 +167,7 @@ export const leaveRoom = async (roomId: string, uid: string) => {
 
   const roomData = roomSnap.data() as RoomState;
   
-  if (roomData.status !== 'waiting') return; // 遊戲中暫時不處理中途離開
+  if (roomData.status === 'playing') return; // 僅在遊戲進行中不允許離房
 
   const updatedPlayers = { ...roomData.players };
   const wasHost = updatedPlayers[uid]?.isHost;
