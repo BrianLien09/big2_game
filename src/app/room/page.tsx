@@ -10,7 +10,7 @@ import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGam
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Card, evaluateHand, canPlay, validatePlay } from "@/lib/big2Logic";
+import { Card, evaluateHand, canPlay, validatePlay, getCardName } from "@/lib/big2Logic";
 
 function RoomContent() {
   const router = useRouter();
@@ -178,7 +178,7 @@ function RoomContent() {
 
     // 檢查上一手牌是否存在且不是自己出的
     const prevHandToCompare = room.lastPlayedUid && room.lastPlayedUid !== uid ? room.lastPlayedHand : null;
-    const validation = validatePlay(selectedCards, prevHandToCompare);
+    const validation = validatePlay(selectedCards, prevHandToCompare, room.firstPlayRequiredCardId);
     
     if (!validation.allowed) {
       addToast(validation.reason || "出牌不合法！", "error", 4000, {
@@ -202,6 +202,9 @@ function RoomContent() {
       turnUid: isWin ? null : nextUid,
       passCount: 0,
     };
+    if (room.firstPlayRequiredCardId) {
+      updates.firstPlayRequiredCardId = null;
+    }
     room.playerOrder.forEach(pUid => { updates[`players.${pUid}.isPassed`] = false; });
     if (isWin) { 
       updates.status = "finished"; 
@@ -659,6 +662,16 @@ function RoomContent() {
           paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)",
         }}
       >
+        {/* 首次出牌提示 */}
+        {isMyTurn && room.firstPlayRequiredCardId && (
+          <div 
+            className="mb-3 text-center text-xs sm:text-sm font-black text-[#dc2626] bg-[#fef9c3] border-[3px] border-black p-2.5 rounded-2xl shadow-[3px_3px_0_#000] max-w-md mx-auto"
+            style={{ transform: "rotate(-0.5deg)" }}
+          >
+            💡 首次出牌必須包含【{getCardName(room.firstPlayRequiredCardId)}】！（不限牌型）
+          </div>
+        )}
+
         {/* 操作列 */}
         <div className="flex flex-col sm:flex-row gap-3 justify-between items-center max-w-3xl mx-auto mb-3">
           <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">

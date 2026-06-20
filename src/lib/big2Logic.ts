@@ -176,9 +176,39 @@ export interface PlayValidationResult {
   suggestedType?: string;
 }
 
-export const validatePlay = (cards: Card[], prevHand: PlayedHand | null): PlayValidationResult => {
+export const getCardName = (cardId: string): string => {
+  const suitNames: Record<string, string> = {
+    'spades': '♠黑桃',
+    'hearts': '♥紅心',
+    'diamonds': '♦方塊',
+    'clubs': '♣梅花'
+  };
+  const parts = cardId.split('-');
+  if (parts.length === 2) {
+    const suit = parts[0];
+    const rank = parts[1];
+    return `${suitNames[suit] || suit}${rank}`;
+  }
+  return cardId;
+};
+
+export const validatePlay = (
+  cards: Card[], 
+  prevHand: PlayedHand | null, 
+  firstPlayRequiredCardId?: string | null
+): PlayValidationResult => {
   if (cards.length === 0) {
     return { allowed: false, reason: "請先選擇要出的牌！" };
+  }
+
+  if (firstPlayRequiredCardId) {
+    const hasRequired = cards.some(c => c.id === firstPlayRequiredCardId);
+    if (!hasRequired) {
+      return {
+        allowed: false,
+        reason: `首次出牌必須包含【${getCardName(firstPlayRequiredCardId)}】！`
+      };
+    }
   }
 
   const newHand = evaluateHand(cards);

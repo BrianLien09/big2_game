@@ -1,6 +1,6 @@
 import { db } from './firebase';
 import { doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { Card, PlayedHand, createDeck, shuffleDeck, sortCards } from './big2Logic';
+import { Card, PlayedHand, createDeck, shuffleDeck, sortCards, compareSingleCard } from './big2Logic';
 
 export interface Player {
   uid: string;
@@ -25,6 +25,7 @@ export interface RoomState {
   playerOrder: string[]; 
   createdAt: any;
   winnerUid: string | null;
+  firstPlayRequiredCardId?: string | null; 
 }
 
 export const createRoom = async (roomId: string, hostUid: string, hostNickname: string, roomName: string = "大老二對局", hostAvatarUrl: string = "") => {
@@ -128,22 +129,50 @@ export const startGame = async (roomId: string) => {
   const deck = shuffleDeck(createDeck());
   const playersUpdates: Record<string, any> = {};
   
-  // 決定誰有梅花3，他先出牌
-  let firstPlayerUid = order[0];
-  
   const cardsPerPlayer = 13;
+  const allDealtCards: Card[] = [];
+  const playerHands: Record<string, Card[]> = {};
+
   for (let i = 0; i < order.length; i++) {
     const uid = order[i];
     // 發13張牌給目前在場的玩家，若不滿4人，剩下的牌就不管了(通常大老二固定4人，這裡可包容少人局)
     const hand = deck.slice(i * cardsPerPlayer, (i + 1) * cardsPerPlayer);
     const sortedHand = sortCards(hand);
+    playerHands[uid] = sortedHand;
+    allDealtCards.push(...hand);
     
     playersUpdates[`players.${uid}.cards`] = sortedHand;
     playersUpdates[`players.${uid}.isPassed`] = false;
-    
-    // 尋找梅花3
-    if (hand.some(c => c.suit === 'clubs' && c.rank === '3')) {
+  }
+  
+  // 決定誰先出牌，且首出牌必須包含哪張牌
+  let firstPlayerUid = order[0];
+  let firstPlayRequiredCardId = 'clubs-3'; // 預設為梅花3
+  
+  // 檢查所有玩家是否有人拿到梅花3
+  let hasClubs3 = false;
+  for (const uid of order) {
+    if (playerHands[uid].some(c => c.suit === 'clubs' && c.rank === '3')) {
       firstPlayerUid = uid;
+      firstPlayRequiredCardId = 'clubs-3';
+      hasClubs3 = true;
+      break;
+    }
+  }
+  
+  // 如果所有人都沒有梅花3（通常是人數少於4人且梅花3剛好在剩餘牌堆）
+  if (!hasClubs3 && allDealtCards.length > 0) {
+    // 找出所有發出去的手牌中，最小的那張牌
+    const sortedAllDealt = [...allDealtCards].sort(compareSingleCard);
+    const smallestCard = sortedAllDealt[0];
+    firstPlayRequiredCardId = smallestCard.id;
+    
+    // 找出這張最小的牌在誰那裡
+    for (const uid of order) {
+      if (playerHands[uid].some(c => c.id === smallestCard.id)) {
+        firstPlayerUid = uid;
+        break;
+      }
     }
   }
   
@@ -154,7 +183,8 @@ export const startGame = async (roomId: string) => {
     lastPlayedHand: null,
     lastPlayedUid: null,
     passCount: 0,
-    winnerUid: null
+    winnerUid: null,
+    firstPlayRequiredCardId: firstPlayRequiredCardId
   });
 };
 

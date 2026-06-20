@@ -2,11 +2,11 @@
 // 每次更新應用程式或快取策略時，變更版本號可以強制瀏覽器清理舊有快取，防止過期頁面殘留
 const CACHE_NAME = "big2-pwa-cache-v3";
 const ASSETS_TO_CACHE = [
-  "/",
-  "/manifest.json?v=2",
-  "/icons/icon-192x192.png?v=2",
-  "/icons/icon-512x512.png?v=2",
-  "/icons/apple-touch-icon.png?v=2"
+  "./",
+  "manifest.json?v=2",
+  "icons/icon-192x192.png?v=2",
+  "icons/icon-512x512.png?v=2",
+  "icons/apple-touch-icon.png?v=2"
 ];
 
 // 安裝事件：快取所有基礎靜態資源
