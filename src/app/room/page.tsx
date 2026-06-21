@@ -157,10 +157,36 @@ function RoomContent() {
   };
 
   const copyToClipboard = async (text: string, label: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(label);
-    addToast(label === "id" ? "房間 ID 已複製到剪貼簿！" : "房間邀請連結已複製到剪貼簿！", "success", 2000);
-    setTimeout(() => setCopied(""), 1500);
+    try {
+      if (navigator.clipboard && typeof window !== "undefined" && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // 針對手機端區網 HTTP 預覽（非安全上下文）的相容複製寫法
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        // 避免在螢幕上閃爍或造成滾動
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        textArea.style.top = "0";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand("copy");
+        document.body.removeChild(textArea);
+        
+        if (!successful) {
+          throw new Error("execCommand copy returned false");
+        }
+      }
+      setCopied(label);
+      addToast(label === "id" ? "房間 ID 已複製到剪貼簿！" : "房間邀請連結已複製到剪貼簿！", "success", 2000);
+      setTimeout(() => setCopied(""), 1500);
+    } catch (err) {
+      console.error("複製失敗：", err);
+      addToast("複製失敗，請手動複製", "error", 3000);
+    }
   };
 
   const handleToggleCard = (card: Card) => {
