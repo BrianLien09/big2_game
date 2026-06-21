@@ -602,7 +602,12 @@ function RoomContent() {
                     </button>
                   )}
 
-                  <button style={{ width: 230, maxWidth: "58%", height: 42, background: "transparent", color: "#d83b3b", border: "2px solid #d83b3b", borderRadius: 999, fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }} onClick={handleLeaveRoom}>退出房間</button>
+                  <button
+                    className="w-[230px] max-w-[58%] h-[42px] bg-transparent text-[#d83b3b] border-2 border-[#d83b3b] rounded-full text-[14px] font-bold flex items-center justify-center cursor-pointer p-0 transition-all duration-200 hover:bg-[#d83b3b] hover:text-white hover:-translate-y-[2px] hover:shadow-[0_4px_12px_rgba(216,59,59,0.2)] active:translate-y-[1px] active:shadow-[0_2px_4px_rgba(216,59,59,0.1)]"
+                    onClick={handleLeaveRoom}
+                  >
+                    退出房間
+                  </button>
                 </div>
               </section>
             </div>
@@ -737,10 +742,16 @@ function RoomContent() {
             box-shadow: 2px 2px 0 #000;
             white-space: nowrap;
             cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
           }
           .leave-button:hover {
-            transform: translate(-1px, -1px);
-            box-shadow: 3px 3px 0 #000;
+            transform: translate(-2px, -2px);
+            box-shadow: 4px 4px 0 #000;
+            background-color: #ef4444;
+          }
+          .leave-button:active {
+            transform: translate(1px, 1px);
+            box-shadow: 1px 1px 0 #000;
           }
           .header-player {
             display: flex;
@@ -1007,6 +1018,16 @@ function RoomContent() {
             box-shadow: 2px 2px 0 #000;
             white-space: nowrap;
             cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+          }
+          .leave-button:hover {
+            transform: translate(-1.5px, -1.5px);
+            box-shadow: 3.5px 3.5px 0 #000;
+            background-color: #ef4444;
+          }
+          .leave-button:active {
+            transform: translate(0.5px, 0.5px);
+            box-shadow: 1px 1px 0 #000;
           }
           .header-player {
             display: flex;
@@ -1278,6 +1299,16 @@ function RoomContent() {
             box-shadow: 0 3px 0 #111;
             white-space: nowrap;
             cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+          }
+          .leave-button:hover {
+            transform: translate(-1px, -1px);
+            box-shadow: 0 4px 0 #111;
+            background-color: #ff3636;
+          }
+          .leave-button:active {
+            transform: translate(0px, 1px);
+            box-shadow: 0 2px 0 #111;
           }
           .header-player {
             min-width: 0;
