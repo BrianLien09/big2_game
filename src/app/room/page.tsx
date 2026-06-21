@@ -12,6 +12,42 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, evaluateHand, validatePlay, getCardName } from "@/lib/big2Logic";
 
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const listener = () => setMatches(media.matches);
+
+    if (media.matches !== matches) {
+      Promise.resolve().then(() => {
+        setMatches(media.matches);
+      });
+    }
+
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, [query, matches]);
+
+  return matches;
+}
+
+const getMobileCardName = (cardId: string): string => {
+  const suitSymbols: Record<string, string> = {
+    'spades': '♠',
+    'hearts': '♥',
+    'diamonds': '♦',
+    'clubs': '♣'
+  };
+  const parts = cardId.split('-');
+  if (parts.length === 2) {
+    const suit = parts[0];
+    const rank = parts[1];
+    return `${suitSymbols[suit] || suit}${rank}`;
+  }
+  return cardId;
+};
+
 function RoomContent() {
   const router = useRouter();
   const { nickname, addToast } = useGameStore();
@@ -25,6 +61,37 @@ function RoomContent() {
   // 監聽手牌容器寬度以實現自適應重疊效果
   const handContainerRef = useRef<HTMLDivElement>(null);
   const [handContainerWidth, setHandContainerWidth] = useState(600);
+
+  const isMobile = useMediaQuery("(max-width: 600px)");
+  const isTablet = useMediaQuery("(min-width: 601px) and (max-width: 900px)");
+
+  // 手機 Pointer 拖曳與防誤觸選牌 refs
+  const pointerStartX = useRef(0);
+  const didDrag = useRef(false);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointerStartX.current = event.clientX;
+    didDrag.current = false;
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (Math.abs(event.clientX - pointerStartX.current) > 6) {
+      didDrag.current = true;
+    }
+  };
+
+  const handlePointerUp = (card: Card) => {
+    if (!didDrag.current) {
+      handleToggleCard(card);
+    }
+    pointerStartX.current = 0;
+    didDrag.current = false;
+  };
+
+  const handlePointerCancel = () => {
+    pointerStartX.current = 0;
+    didDrag.current = false;
+  };
 
   useEffect(() => {
     if (!handContainerRef.current) return;
@@ -80,7 +147,7 @@ function RoomContent() {
         try {
           // 在加入或建立房間前先觸發清理
           await cleanupExpiredRoomsIfNeeded();
-          
+
           const isNewJoin = await joinRoom(roomId, user.uid, finalNickname, user.photoURL || "");
           if (isNewJoin) {
             hasJoinedSuccessfully = true;
@@ -177,10 +244,10 @@ function RoomContent() {
         document.body.appendChild(textArea);
         textArea.focus();
         textArea.select();
-        
+
         const successful = document.execCommand("copy");
         document.body.removeChild(textArea);
-        
+
         if (!successful) {
           throw new Error("execCommand copy returned false");
         }
@@ -302,6 +369,7 @@ function RoomContent() {
 
   const me = room.players[uid];
   const isMyTurn = room.turnUid === uid;
+  const tableCardSize = isMobile ? "mobile" : isTablet ? "tablet" : "desktop";
 
   // ---- 等待大廳 ----
   if (room.status === "waiting") {
@@ -638,7 +706,7 @@ function RoomContent() {
           .game-page {
             height: 100dvh;
             display: grid;
-            grid-template-rows: 78px minmax(0, 1fr) 240px;
+            grid-template-rows: 78px minmax(0, 1fr) 250px;
             overflow: hidden;
             background-color: #f8f9fa;
           }
@@ -812,27 +880,22 @@ function RoomContent() {
             font-weight: 800;
           }
           .bottom-panel {
-            height: 240px;
+            height: 250px;
             display: grid;
-            grid-template-rows: 86px minmax(0, 1fr);
+            grid-template-rows: 82px 168px;
             border-top-width: 4px;
             border-top-style: solid;
             box-sizing: border-box;
             z-index: 20;
           }
           .action-row {
-            height: 86px;
+            height: 82px;
             padding: 10px 30px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             max-width: 100%;
             box-sizing: border-box;
-          }
-          .self-player {
-            display: flex;
-            align-items: center;
-            gap: 12px;
           }
           .self-avatar {
             width: 60px;
@@ -842,23 +905,6 @@ function RoomContent() {
             object-fit: cover;
             background-color: #fff;
             box-shadow: 2px 2px 0 #000;
-          }
-          .self-name {
-            max-width: 220px;
-            height: 48px;
-            padding: 0 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            background-color: #000;
-            color: #fff;
-            border-radius: 999px;
-            font-size: 17px;
-            font-weight: 800;
-            box-sizing: border-box;
           }
           .action-buttons {
             display: flex;
@@ -887,22 +933,41 @@ function RoomContent() {
           .desktop-tablet-hand {
             display: block;
             position: relative;
-            height: 120px;
+            height: 148px;
             width: 100%;
-            max-width: 900px;
+            max-width: 980px;
             margin: 0 auto;
           }
           .mobile-hand-scroll {
             display: none;
           }
-          .game-page .playing-card {
-            width: 76px;
-            height: 110px;
-            transform: none !important;
-            transition: transform 0.15s ease, bottom 0.15s ease;
+          .hand-container-wrapper {
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+            min-width: 0;
           }
-          .game-page .playing-card:hover {
-            transform: translateY(-8px) !important;
+          .desktop-tablet-hand .playing-card {
+            transition: transform 0.15s ease;
+          }
+          .desktop-tablet-hand .playing-card:hover {
+            transform: translateY(-8px);
+          }
+          .mobile-only {
+            display: none !important;
+          }
+          .desktop-only {
+            display: flex !important;
+          }
+          .mobile-self-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+          }
+          .turn-indicator-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
           }
         }
 
@@ -957,6 +1022,7 @@ function RoomContent() {
             border: 2.5px solid #000;
             object-fit: cover;
             background-color: #fff;
+            box-shadow: 2px 2px 0 #000;
           }
           .header-player-name {
             max-width: 160px;
@@ -1095,11 +1161,6 @@ function RoomContent() {
             max-width: 100%;
             box-sizing: border-box;
           }
-          .self-player {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-          }
           .self-avatar {
             width: 48px;
             height: 48px;
@@ -1108,23 +1169,6 @@ function RoomContent() {
             object-fit: cover;
             background-color: #fff;
             box-shadow: 2px 2px 0 #000;
-          }
-          .self-name {
-            max-width: 160px;
-            height: 40px;
-            padding: 0 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            background-color: #000;
-            color: #fff;
-            border-radius: 999px;
-            font-size: 15px;
-            font-weight: 800;
-            box-sizing: border-box;
           }
           .action-buttons {
             display: flex;
@@ -1161,14 +1205,34 @@ function RoomContent() {
           .mobile-hand-scroll {
             display: none;
           }
-          .game-page .playing-card {
-            width: 64px;
-            height: 92px;
-            transform: none !important;
-            transition: transform 0.15s ease, bottom 0.15s ease;
+          .hand-container-wrapper {
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+            min-width: 0;
           }
-          .game-page .playing-card:hover {
-            transform: translateY(-6px) !important;
+          .desktop-tablet-hand .playing-card {
+            transition: transform 0.15s ease;
+          }
+          .desktop-tablet-hand .playing-card:hover {
+            transform: translateY(-6px);
+          }
+          .action-row {
+            display: flex;
+          }
+          .action-main-row,
+          .turn-hint-row {
+            display: none;
+          }
+          .mobile-self-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .turn-indicator-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
           }
         }
 
@@ -1182,17 +1246,17 @@ function RoomContent() {
           .game-page {
             height: 100dvh;
             display: grid;
-            grid-template-rows: 58px minmax(0, 1fr) 172px;
+            grid-template-rows: 58px minmax(0, 1fr) calc(210px + env(safe-area-inset-bottom));
             overflow: hidden;
             background-color: #f8f9fa;
           }
           .game-header {
             height: 58px;
-            padding: 7px 9px;
+            padding: 7px 8px;
             display: grid;
-            grid-template-columns: 72px minmax(0, 1fr) 44px;
+            grid-template-columns: 68px minmax(0, 1fr) 42px;
             align-items: center;
-            gap: 7px;
+            gap: 6px;
             border-bottom: 3px solid #111;
             background-color: #fff;
             box-sizing: border-box;
@@ -1221,6 +1285,7 @@ function RoomContent() {
             align-items: center;
             justify-content: center;
             gap: 6px;
+            overflow: hidden;
           }
           .header-avatar {
             width: 38px;
@@ -1231,12 +1296,8 @@ function RoomContent() {
             object-fit: cover;
           }
           .header-player-name {
-            max-width: 125px;
-            height: 36px;
-            padding: 0 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            max-width: 112px;
+            min-width: 0;
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
@@ -1246,10 +1307,19 @@ function RoomContent() {
             font-weight: 800;
             background-color: #fff;
             box-sizing: border-box;
+            height: 36px;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
           }
           .header-card-count {
             width: 40px;
+            min-width: 40px;
             height: 32px;
+            padding: 0;
+            justify-self: end;
+            box-sizing: border-box;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1351,27 +1421,36 @@ function RoomContent() {
             font-weight: 800;
           }
           .bottom-panel {
-            height: 172px;
+            height: calc(210px + env(safe-area-inset-bottom));
             display: grid;
-            grid-template-rows: 62px 110px;
+            grid-template-rows: 60px 34px 116px;
             border-top-width: 3px;
             border-top-style: solid;
             box-sizing: border-box;
             z-index: 20;
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+          .desktop-tablet-hand {
+            display: none;
           }
           .action-row {
-            height: 62px;
-            padding: 6px 12px;
-            display: flex;
+            display: none;
+          }
+          .action-main-row {
+            min-width: 0;
+            padding: 7px 10px 4px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
-            justify-content: space-between;
-            max-width: 100%;
+            gap: 8px;
             box-sizing: border-box;
           }
-          .self-player {
+          .self-player-summary {
+            min-width: 0;
+            max-width: 190px;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
           }
           .self-avatar {
             width: 40px;
@@ -1382,39 +1461,52 @@ function RoomContent() {
             object-fit: cover;
           }
           .self-name {
-            max-width: 115px;
-            height: 36px;
+            min-width: 0;
+            max-width: 118px;
+            height: 34px;
             padding: 0 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
-            background-color: #000;
-            color: #fff;
-            border-radius: 999px;
             font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2.5px solid #111;
+            border-radius: 999px;
+            background-color: #fff;
             font-weight: 800;
             box-sizing: border-box;
           }
           .action-buttons {
-            display: flex;
+            width: 138px;
+            min-width: 138px;
+            display: grid;
+            grid-template-columns: repeat(2, 66px);
+            grid-auto-flow: column;
+            align-items: center;
             gap: 6px;
+            flex-shrink: 0;
           }
           .pass-button,
           .play-button {
-            width: 70px;
+            width: 66px;
             height: 44px;
+            min-width: 66px;
+            max-width: 66px;
+            margin: 0;
+            padding: 0;
             font-size: 15px;
-            border: 2.5px solid #111;
-            border-radius: 12px;
-            box-shadow: 0 3px 0 #111;
-            font-weight: 800;
+            border: 2.5px solid #000;
+            border-radius: 10px;
+            box-shadow: 0 3px 0 #000;
+            font-weight: 900;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            white-space: nowrap;
+            box-sizing: border-box;
           }
           .pass-button {
             background-color: #fff;
@@ -1422,50 +1514,102 @@ function RoomContent() {
           .play-button {
             background-color: #fbbf24;
           }
-          .desktop-tablet-hand {
-            display: none;
+          .turn-hint-row {
+            width: 100%;
+            min-width: 0;
+            padding: 0 10px 5px 57px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            flex-wrap: nowrap;
+            gap: 5px;
+            overflow: hidden;
+            box-sizing: border-box;
+          }
+          .turn-badge,
+          .required-badge {
+            min-width: 0;
+            padding: 3px 7px;
+            font-size: 10.5px;
+            line-height: 1;
+            white-space: nowrap;
+            writing-mode: horizontal-tb;
+            word-break: keep-all;
+            display: inline-block;
+            border: 2px solid #000;
+            border-radius: 6px;
+            box-shadow: 1px 1px 0 #000;
+            box-sizing: border-box;
+          }
+          .turn-badge {
+            color: #dc2626;
+            background-color: #fef2f2;
+            font-weight: 900;
+          }
+          .required-badge {
+            color: #b45309;
+            background-color: #fffbeb;
+            font-weight: 800;
+          }
+          .bottom-panel,
+          .action-main-row,
+          .turn-hint-row,
+          .hand-container-wrapper,
+          .mobile-hand-scroll {
+            min-width: 0;
+            max-width: 100%;
           }
           .mobile-hand-scroll {
             display: block;
             width: 100%;
+            min-width: 0;
+            max-width: 100vw;
+            height: 116px;
             overflow-x: auto;
             overflow-y: hidden;
-            padding: 10px 0 calc(env(safe-area-inset-bottom) + 10px);
+            padding: 14px 0 6px;
             box-sizing: border-box;
+            touch-action: pan-x;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
           }
           .mobile-hand-scroll::-webkit-scrollbar {
             display: none;
           }
           .mobile-hand-cards {
-            display: flex;
             width: max-content;
-            padding: 0 16px;
+            min-width: max-content;
+            height: 96px;
+            display: flex;
             align-items: flex-end;
-            height: 80px;
+            justify-content: flex-start;
+            padding: 0 30px 8px;
+            box-sizing: border-box;
           }
           .playing-card-wrapper {
             width: 50px;
             height: 76px;
             flex: 0 0 50px;
-            margin-left: -16px;
-            transition: transform 0.15s ease;
             position: relative;
+            margin-left: -15px;
+            transition: transform 0.15s ease;
           }
           .playing-card-wrapper:first-child {
             margin-left: 0;
           }
           .playing-card-wrapper.selected {
             transform: translateY(-10px);
-            z-index: 10;
+            z-index: 30;
           }
-          .game-page .playing-card {
-            width: 50px;
-            height: 76px;
-            transform: none !important;
+          .hand-container-wrapper {
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
           }
         }
       `}} />
+
 
       {/* 頂部列：離開按鈕與頂部玩家 */}
       <div className="game-header">
@@ -1537,7 +1681,7 @@ function RoomContent() {
               <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full">
                 {room.lastPlayedHand.cards.map((card) => (
                   <div key={card.id} className="transform transition-transform hover:scale-105">
-                    <PlayingCard card={card} className="playing-card" />
+                    <PlayingCard card={card} size={tableCardSize} className="playing-card" />
                   </div>
                 ))}
               </div>
@@ -1583,24 +1727,23 @@ function RoomContent() {
         }}
       >
         {/* 操作列 */}
-        <div className="action-row">
-          <div className="flex items-center gap-4">
-            <div className="self-player">
-              {me?.avatarUrl && (
-                <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
-              )}
-              <span className="self-name comic-badge">{me?.nickname}</span>
-            </div>
-            <div className="flex items-center gap-2">
+        {/* 桌機與平板版操作列 */}
+        <div className="action-row desktop-only">
+          <div className="mobile-self-info">
+            {me?.avatarUrl && (
+              <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
+            )}
+            <span className="self-name comic-badge">{me?.nickname}</span>
+            <div className="turn-indicator-row">
               {isMyTurn && (
-                <span className="animate-pulse text-[11px] font-black text-red-600 bg-red-50 border-2 border-black px-1.5 py-0 rounded-md shadow-[1px_1px_0_#000]">
+                <span className="animate-pulse turn-badge">
                   👉 你的回合
                 </span>
               )}
               {isMyTurn && room.firstPlayRequiredCardId && (
-                <div className="text-[10px] font-black text-[#dc2626]">
+                <span className="required-badge">
                   💡 必出 {getCardName(room.firstPlayRequiredCardId)}
-                </div>
+                </span>
               )}
             </div>
           </div>
@@ -1629,34 +1772,94 @@ function RoomContent() {
           </div>
         </div>
 
+        {/* 手機版操作列 */}
+        <div className="action-main-row mobile-only">
+          <div className="self-player-summary">
+            {me?.avatarUrl && (
+              <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
+            )}
+            <span className="self-name comic-badge">{me?.nickname}</span>
+          </div>
+
+          <div className="action-buttons">
+            <button
+              className="comic-btn pass-button"
+              style={{
+                opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
+              }}
+              disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
+              onClick={handlePass}
+            >
+              Pass
+            </button>
+            <button
+              className="comic-btn play-button"
+              style={{
+                opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
+              }}
+              disabled={!isMyTurn || selectedCards.length === 0}
+              onClick={handlePlayCard}
+            >
+              出牌
+            </button>
+          </div>
+        </div>
+
+        <div className="turn-hint-row mobile-only">
+          {isMyTurn && (
+            <span className="animate-pulse turn-badge">👉 你的回合</span>
+          )}
+          {isMyTurn && room.firstPlayRequiredCardId && (
+            <span className="required-badge">💡 必出 {getMobileCardName(room.firstPlayRequiredCardId)}</span>
+          )}
+        </div>
+
+
         {/* 手牌區 */}
-        <div ref={handContainerRef} style={{ width: "100%", overflow: "hidden" }}>
+        <div ref={handContainerRef} className="hand-container-wrapper">
+
           {/* 桌機與平板版：絕對定位重疊 */}
           <div className="desktop-tablet-hand">
             {me?.cards.map((card, i) => {
-                const total = me.cards.length;
-                const cardWidth = handContainerWidth > 900 ? 76 : 64;
-                const maxSpan = Math.min(handContainerWidth > 900 ? 900 : 720, handContainerWidth) - cardWidth - 24;
-                const cardSpacing = total > 1 ? Math.min(cardWidth * 0.65, maxSpan / (total - 1)) : 0;
-                const offset = total > 1 ? (i - (total - 1) / 2) * cardSpacing : 0;
-                const isSelected = selectedCards.some(c => c.id === card.id);
-                return (
-                  <div
-                    key={card.id}
-                    style={{
-                      position: "absolute",
-                      bottom: isSelected ? (handContainerWidth > 900 ? 18 : 14) : 0,
-                      left: "50%",
-                      transform: `translateX(calc(-50% + ${offset}px))`,
-                      zIndex: i,
-                      transition: "bottom 0.15s ease",
-                      cursor: "pointer",
-                    }}
-                    onClick={() => handleToggleCard(card)}
-                  >
-                    <PlayingCard card={card} selected={isSelected} className="playing-card" />
-                  </div>
-                );
+              const total = me.cards.length;
+              const cardWidth = isTablet ? 64 : 84;
+              const maxHandWidth = isTablet ? 720 : 980;
+              const selectedLift = isTablet ? 14 : 18;
+
+              const availableWidth = Math.min(
+                handContainerWidth,
+                maxHandWidth
+              );
+
+              const maxSpan = Math.max(
+                0,
+                availableWidth - cardWidth - 24
+              );
+
+              const cardSpacing =
+                total > 1
+                  ? Math.min(cardWidth * 0.68, maxSpan / (total - 1))
+                  : 0;
+
+              const offset = total > 1 ? (i - (total - 1) / 2) * cardSpacing : 0;
+              const isSelected = selectedCards.some(c => c.id === card.id);
+              return (
+                <div
+                  key={card.id}
+                  style={{
+                    position: "absolute",
+                    bottom: isSelected ? selectedLift : 0,
+                    left: "50%",
+                    transform: `translateX(calc(-50% + ${offset}px))`,
+                    zIndex: i,
+                    transition: "bottom 0.15s ease",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => handleToggleCard(card)}
+                >
+                  <PlayingCard card={card} size={isTablet ? "tablet" : "desktop"} selected={isSelected} className="playing-card" />
+                </div>
+              );
             })}
           </div>
 
@@ -1669,9 +1872,12 @@ function RoomContent() {
                   <div
                     key={card.id}
                     className={`playing-card-wrapper ${isSelected ? 'selected' : ''}`}
-                    onClick={() => handleToggleCard(card)}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={() => handlePointerUp(card)}
+                    onPointerCancel={handlePointerCancel}
                   >
-                    <PlayingCard card={card} selected={isSelected} className="playing-card" />
+                    <PlayingCard card={card} size="mobile" selected={isSelected} className="playing-card" />
                   </div>
                 );
               })}

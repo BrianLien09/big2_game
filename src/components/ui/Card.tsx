@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 
 interface CardProps {
   card: CardType;
-  size?: 'small' | 'medium' | 'large';
+  size?: 'mobile' | 'tablet' | 'desktop' | 'small' | 'medium' | 'large';
   selected?: boolean;
   onClick?: () => void;
   className?: string;
@@ -25,23 +25,40 @@ const suitSymbols: Record<CardType['suit'], string> = {
 };
 
 const suitColors: Record<CardType['suit'], string> = {
-  spades: 'text-black',
-  hearts: 'text-red-500',
-  diamonds: 'text-red-500',
-  clubs: 'text-black',
-};
-
-const suitBgColors: Record<CardType['suit'], string> = {
-  spades: 'bg-white',
-  hearts: 'bg-red-50',
-  diamonds: 'bg-red-50',
-  clubs: 'bg-white',
+  spades: 'text-[#111]',
+  hearts: 'text-[#ef3340]',
+  diamonds: 'text-[#ef3340]',
+  clubs: 'text-[#111]',
 };
 
 const sizeClasses = {
-  small: 'w-10 h-14 text-base',
-  medium: 'w-14 h-20 text-lg md:text-xl',
-  large: 'w-16 h-24 text-xl md:text-2xl',
+  desktop: 'w-[84px] h-[122px] border-[4px] border-[#111] rounded-[15px] shadow-[4px_5px_0_#111]',
+  tablet: 'w-[64px] h-[92px] border-[4px] border-[#111] rounded-[12px] shadow-[3px_4px_0_#111]',
+  mobile: 'w-[50px] h-[76px] border-[4px] border-[#111] rounded-[12px] shadow-[3px_4px_0_#111]',
+};
+
+const topCornerPos = {
+  desktop: 'top-[8px] left-[8px] gap-[1px]',
+  tablet: 'top-[6px] left-[6px] gap-[0px]',
+  mobile: 'top-[4px] left-[4px] gap-[0px]',
+};
+
+const rankSizes = {
+  desktop: 'text-[22px]',
+  tablet: 'text-[18px]',
+  mobile: 'text-[15px]',
+};
+
+const smallSuitSize = {
+  desktop: 'text-[17px]',
+  tablet: 'text-[12px]',
+  mobile: 'text-[10px]',
+};
+
+const largeSuitSize = {
+  desktop: 'text-[27px] bottom-[6px] right-[8px]',
+  tablet: 'text-[28px] bottom-[4px] right-[6px]',
+  mobile: 'text-[22px] bottom-[3px] right-[5px]',
 };
 
 export const PlayingCard: React.FC<CardProps> = ({ 
@@ -53,27 +70,36 @@ export const PlayingCard: React.FC<CardProps> = ({
   style,
   isPlayable = true
 }) => {
+  // 將舊尺寸名稱映射到新尺寸
+  const resolvedSize = (() => {
+    if (size === 'small') return 'mobile';
+    if (size === 'large') return 'desktop';
+    if (size === 'medium') return 'tablet';
+    return size;
+  })();
+
   return (
     <div 
       onClick={onClick}
       style={style}
       className={cn(
-        'relative flex-shrink-0 border-[3px] border-black rounded-xl overflow-hidden transition-all duration-200 cursor-pointer select-none',
-        suitBgColors[card.suit],
-        sizeClasses[size],
-        selected ? '-translate-y-4 shadow-[4px_6px_0px_#000] border-b-4 border-black border-opacity-100 z-20' : 'hover:-translate-y-2 shadow-[2px_2px_0px_#000] hover:z-10 hover:shadow-[4px_6px_0px_#000]',
+        'playing-card relative flex-shrink-0 transition-all duration-200 cursor-pointer select-none bg-white box-border overflow-hidden',
+        sizeClasses[resolvedSize],
+        selected ? 'selected' : '',
         !isPlayable && 'opacity-50 grayscale',
         className
       )}
     >
-      {/* 點數在左上 */}
-      <div className={cn("absolute top-2 left-2 font-black leading-none", suitColors[card.suit])}>
-        {card.rank}
+      {/* 左上角資訊：Rank + 小花色，直向排列 */}
+      <div className={cn("card-corner card-corner-top absolute flex flex-col items-center justify-start leading-[0.95]", topCornerPos[resolvedSize], suitColors[card.suit])}>
+        <span className={cn("card-rank font-[900] tracking-tighter", rankSizes[resolvedSize])}>{card.rank}</span>
+        <span className={cn("card-suit-small font-black", smallSuitSize[resolvedSize])}>{suitSymbols[card.suit]}</span>
       </div>
-      {/* 花色在右下 */}
-      <div className={cn("absolute bottom-2 right-2 leading-none", suitColors[card.suit])}>
+
+      {/* 右下角：大型花色 */}
+      <span className={cn("card-suit-large absolute leading-none select-none pointer-events-none", largeSuitSize[resolvedSize], suitColors[card.suit])}>
         {suitSymbols[card.suit]}
-      </div>
+      </span>
     </div>
   );
 };
