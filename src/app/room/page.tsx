@@ -1600,7 +1600,6 @@ function RoomContent() {
           }
           .playing-card-wrapper.selected {
             transform: translateY(-10px);
-            z-index: 30;
           }
           .hand-container-wrapper {
             width: 100%;
@@ -1866,12 +1865,13 @@ function RoomContent() {
           {/* 手機版：橫向滑動 */}
           <div className="mobile-hand-scroll">
             <div className="mobile-hand-cards">
-              {me?.cards.map((card) => {
+              {me?.cards.map((card, i) => {
                 const isSelected = selectedCards.some(c => c.id === card.id);
                 return (
                   <div
                     key={card.id}
                     className={`playing-card-wrapper ${isSelected ? 'selected' : ''}`}
+                    style={{ zIndex: i }}
                     onPointerDown={handlePointerDown}
                     onPointerMove={handlePointerMove}
                     onPointerUp={() => handlePointerUp(card)}
