@@ -211,6 +211,31 @@ body {
     }
 }
 
+/* ── 手機端按鈕尺寸優化：≤640px 時縮小 padding 與字體 ── */
+@media(max-width:640px) {
+    .comic-btn {
+        padding: 8px 16px;
+        font-size: 14px;
+    }
+
+    /* 遊戲底部操作欄：讓資訊列與按鈕列更緊湊 */
+    .bottom-panel {
+        padding: 8px 10px !important;
+        padding-bottom: calc(env(safe-area-inset-bottom) + 8px) !important;
+    }
+
+    /* 手牌容器在手機上高度縮小 */
+    .hand-scroll {
+        padding: 8px 6px 8px !important;
+    }
+
+    /* 等待大廳小按鈕：並排的「複製」系列 */
+    .room-copy-btn {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+}
+
 @media(min-width:1024px) {
     .hide-desktop {
         display: none !important
