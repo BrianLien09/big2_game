@@ -6,9 +6,9 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom } from "@/lib/roomService";
+import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, evaluateHand, canPlay, validatePlay, getCardName } from "@/lib/big2Logic";
 
@@ -78,6 +78,9 @@ function RoomContent() {
         let isCreator = false;
         let hasJoinedSuccessfully = false;
         try {
+          // 在加入或建立房間前先觸發清理
+          await cleanupExpiredRoomsIfNeeded();
+          
           const isNewJoin = await joinRoom(roomId, user.uid, finalNickname, user.photoURL || "");
           if (isNewJoin) {
             hasJoinedSuccessfully = true;
@@ -227,6 +230,8 @@ function RoomContent() {
       lastPlayedUid: uid,
       turnUid: isWin ? null : nextUid,
       passCount: 0,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp(),
     };
     if (room.firstPlayRequiredCardId) {
       updates.firstPlayRequiredCardId = null;
@@ -259,6 +264,8 @@ function RoomContent() {
       [`players.${uid}.isPassed`]: true,
       turnUid: nextUid,
       passCount: newPassCount,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp(),
     };
     if (newPassCount >= room.playerOrder.length - 1) {
       updates.turnUid = room.lastPlayedUid;
@@ -572,6 +579,8 @@ function RoomContent() {
                   status: "waiting", winnerUid: null,
                   lastPlayedHand: null, lastPlayedUid: null,
                   turnUid: null, passCount: 0,
+                  updatedAt: serverTimestamp(),
+                  expiresAt: getRoomExpirationTimestamp()
                 });
               }}>
                 再玩一局

@@ -6,6 +6,7 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth, logoutWithGoogle } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
+import { cleanupExpiredRoomsIfNeeded } from "@/lib/roomService";
 
 export default function Lobby() {
   const router = useRouter();
@@ -38,8 +39,10 @@ export default function Lobby() {
       if (savedName) {
         setNickname(savedName);
         setLoading(false);
+        cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
       } else if (nickname) {
         setLoading(false);
+        cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
       } else {
         // 已登入但本地無暱稱，引導回首頁輸入暱稱
         router.replace("/");
@@ -62,16 +65,18 @@ export default function Lobby() {
     }
   };
 
-  const handleCreateRoomSubmit = (e: React.FormEvent) => {
+  const handleCreateRoomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
     const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的對局`);
     router.push(`/room?id=${newRoomId}&name=${encodedName}`);
   };
 
-  const handleJoinRoom = (e: React.FormEvent) => {
+  const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinRoomId.trim()) return;
+    await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     router.push(`/room?id=${joinRoomId.trim()}`);
   };
 

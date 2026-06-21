@@ -1,0 +1,107 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /rooms/{roomId} {
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function oldHasPlayers() {
+        return 'players' in resource.data;
+      }
+
+      function newHasPlayers() {
+        return 'players' in request.resource.data;
+      }
+
+      function isExistingPlayer() {
+        return isSignedIn()
+          && oldHasPlayers()
+          && resource.data.players.keys().hasAny([request.auth.uid]);
+      }
+
+      function isJoiningSelf() {
+        return isSignedIn()
+          && newHasPlayers()
+          && request.resource.data.players.keys().hasAny([request.auth.uid])
+          && (
+            !oldHasPlayers()
+            || !resource.data.players.keys().hasAny([request.auth.uid])
+          );
+      }
+
+      function isLastPlayer() {
+        return isExistingPlayer()
+          && resource.data.players.keys().size() == 1;
+      }
+
+      function isExpired() {
+        return 'expiresAt' in resource.data
+          && resource.data.expiresAt is timestamp
+          && resource.data.expiresAt <= request.time;
+      }
+
+      /* 已登入使用者可讀取房間，以便用房號加入 */
+      allow read: if isSignedIn();
+
+      /*
+       * 建立房間：
+       * - 必須登入
+       * - 建立者必須出現在 players
+       * - 建立者必須出現在 playerOrder
+       * - 必須有必要時間欄位
+       */
+      allow create: if isSignedIn()
+        && 'players' in request.resource.data
+        && 'playerOrder' in request.resource.data
+        && 'createdAt' in request.resource.data
+        && 'updatedAt' in request.resource.data
+        && 'expiresAt' in request.resource.data
+        && request.resource.data.players.keys()
+             .hasAny([request.auth.uid])
+        && request.resource.data.playerOrder
+             .hasAny([request.auth.uid])
+        && request.resource.data.players[request.auth.uid].isHost == true;
+
+      /*
+       * 更新分成兩種：
+       *
+       * A. 原本已經在房間內的玩家
+       *    可執行遊戲、準備、退出及房主轉移。
+       *
+       * B. 新玩家加入
+       *    只能改 players、playerOrder、updatedAt、expiresAt，
+       *    防止加入時順便篡改牌局或勝場。
+       */
+      allow update: if isSignedIn() && (
+        isExistingPlayer()
+        ||
+        (
+          isJoiningSelf()
+          && request.resource.data
+               .diff(resource.data)
+               .affectedKeys()
+               .hasOnly([
+                 'players',
+                 'playerOrder',
+                 'updatedAt',
+                 'expiresAt'
+               ])
+        )
+      );
+
+      /*
+       * 刪除：
+       * A. 房間最後一位玩家可以刪除房間
+       * B. 任何登入使用者可以刪除已過期房間
+       */
+      allow delete: if isSignedIn() && (
+        isLastPlayer()
+        || isExpired()
+      );
+    }
+  }
+}
