@@ -1,6 +1,6 @@
 import { db } from './firebase';
 import { 
-  doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp,
+  doc, setDoc, getDoc, updateDoc, onSnapshot, serverTimestamp,
   Timestamp, runTransaction, writeBatch, query, where, limit, getDocs, collection 
 } from 'firebase/firestore';
 import { Card, PlayedHand, createDeck, shuffleDeck, sortCards, compareSingleCard } from './big2Logic';
@@ -26,8 +26,8 @@ export interface RoomState {
   lastPlayedUid: string | null;
   passCount: number; 
   playerOrder: string[]; 
-  createdAt: any;
-  updatedAt: any;
+  createdAt: unknown;
+  updatedAt: unknown;
   expiresAt: Timestamp;
   winnerUid: string | null;
   firstPlayRequiredCardId?: string | null; 
@@ -158,7 +158,7 @@ export const startGame = async (roomId: string) => {
   
   // 生成卡牌並發牌
   const deck = shuffleDeck(createDeck());
-  const playersUpdates: Record<string, any> = {};
+  const playersUpdates: Record<string, unknown> = {};
   
   const cardsPerPlayer = 13;
   const allDealtCards: Card[] = [];
@@ -258,7 +258,7 @@ export const leaveRoom = async (roomId: string, uid: string) => {
       }
     });
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       players: updatedPlayers,
       playerOrder: updatedOrder,
       updatedAt: serverTimestamp(),

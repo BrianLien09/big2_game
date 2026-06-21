@@ -10,7 +10,7 @@ import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGam
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Card, evaluateHand, canPlay, validatePlay, getCardName } from "@/lib/big2Logic";
+import { Card, evaluateHand, validatePlay, getCardName } from "@/lib/big2Logic";
 
 function RoomContent() {
   const router = useRouter();
@@ -29,7 +29,7 @@ function RoomContent() {
   useEffect(() => {
     if (!handContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
-      for (let entry of entries) {
+      for (const entry of entries) {
         setHandContainerWidth(entry.contentRect.width);
       }
     });
@@ -85,18 +85,20 @@ function RoomContent() {
           if (isNewJoin) {
             hasJoinedSuccessfully = true;
           }
-        } catch (e: any) {
-          if (e.message === "房間不存在") {
+        } catch (e) {
+          const err = e as Error;
+          if (err.message === "房間不存在") {
             const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
             try {
               await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "");
               isCreator = true;
-            } catch (createErr: any) {
-              setError(createErr.message || "建立房間失敗");
+            } catch (createErr) {
+              const cErr = createErr as Error;
+              setError(cErr.message || "建立房間失敗");
               return;
             }
           } else {
-            setError(e.message);
+            setError(err.message);
             return;
           }
         }
@@ -224,7 +226,7 @@ function RoomContent() {
     const remainingCards = me.cards.filter(c => !selectedCards.find(sc => sc.id === c.id));
     const isWin = remainingCards.length === 0;
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       [`players.${uid}.cards`]: remainingCards,
       lastPlayedHand: evaluated,
       lastPlayedUid: uid,
@@ -260,7 +262,7 @@ function RoomContent() {
     const nextUid = room.playerOrder[(currentIndex + 1) % room.playerOrder.length];
     const newPassCount = room.passCount + 1;
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       [`players.${uid}.isPassed`]: true,
       turnUid: nextUid,
       passCount: newPassCount,
@@ -304,7 +306,7 @@ function RoomContent() {
   // ---- 等待大廳 ----
   if (room.status === "waiting") {
     // 共用的玩家列表 JSX，手機版與桌機版都會用到
-    const PlayerList = ({ compact }: { compact?: boolean }) => (
+    const renderPlayerList = (compact?: boolean) => (
       <>
         {room.playerOrder.map(pUid => {
           const p = room.players[pUid];
@@ -456,7 +458,7 @@ function RoomContent() {
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px 8px" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#6b7280", marginBottom: 10 }}>玩家列表</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <PlayerList compact />
+              {renderPlayerList(true)}
             </div>
             {!me?.isHost && me?.isReady && (
               <div style={{ marginTop: 20, textAlign: "center", fontWeight: 700, color: "#6b7280", fontSize: "0.85rem", opacity: 0.8 }}>
@@ -546,7 +548,7 @@ function RoomContent() {
                 </h2>
               </div>
               <div className="player-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "20px 24px" }}>
-                <PlayerList />
+                {renderPlayerList()}
               </div>
               {!me?.isHost && me?.isReady && (
                 <div style={{ marginTop: 32, textAlign: "center", fontWeight: 700, color: "#6b7280", opacity: 0.8 }}>
@@ -627,13 +629,550 @@ function RoomContent() {
     leftPlayer = room.players[room.playerOrder[(myIndex + 3) % 4]];
   }
 
-  // 手機版（寬度 < 480px）改兩排顯示手牌，桌機保持原本重疊式
-  const isMobileHand = handContainerWidth < 480;
-
   return (
-    <div key="game-play-view" className="game-page w-screen h-screen flex flex-col justify-between bg-[#f8f9fa] overflow-hidden select-none">
+    <div key="game-play-view" className="game-page select-none">
       <style dangerouslySetInnerHTML={{
         __html: `
+        /* ================= 桌面版 (Desktop: >= 901px) ================= */
+        @media (min-width: 901px) {
+          .game-page {
+            height: 100dvh;
+            display: grid;
+            grid-template-rows: 78px minmax(0, 1fr) 240px;
+            overflow: hidden;
+            background-color: #f8f9fa;
+          }
+          .game-header {
+            height: 78px;
+            padding: 10px 30px;
+            display: grid;
+            grid-template-columns: 140px minmax(0, 1fr) 140px;
+            align-items: center;
+            border-bottom: 4px solid #000;
+            background-color: #fff;
+            box-sizing: border-box;
+            position: relative;
+            z-index: 20;
+          }
+          .leave-button {
+            width: 120px;
+            height: 52px;
+            font-size: 17px;
+            font-weight: 900;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #dc2626;
+            color: #fff;
+            border: 3px solid #000;
+            border-radius: 8px;
+            box-shadow: 2px 2px 0 #000;
+            white-space: nowrap;
+            cursor: pointer;
+          }
+          .leave-button:hover {
+            transform: translate(-1px, -1px);
+            box-shadow: 3px 3px 0 #000;
+          }
+          .header-player {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 0 auto;
+          }
+          .header-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 3px solid #000;
+            object-fit: cover;
+            background-color: #fff;
+            box-shadow: 1px 1px 0px #000;
+          }
+          .header-player-name {
+            max-width: 220px;
+            height: 46px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            border: 3px solid #000;
+            border-radius: 999px;
+            font-size: 18px;
+            font-weight: 800;
+            background-color: #fff;
+            box-sizing: border-box;
+          }
+          .header-card-count {
+            width: 58px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 3px solid #000;
+            border-radius: 10px;
+            background-color: #fff;
+            font-size: 15px;
+            font-weight: 800;
+            box-shadow: 1px 1px 0px #000;
+          }
+          .game-table {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+            padding: 16px 24px;
+            background-color: #f8f9fa;
+          }
+          .table-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+          }
+          .waiting-text {
+            font-size: 20px;
+            color: #c4c7cd;
+            white-space: nowrap;
+            text-align: center;
+            border: 3px dashed #c4c7cd;
+            border-radius: 20px;
+            padding: 16px 28px;
+            font-weight: 900;
+          }
+          .opponent {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            z-index: 10;
+          }
+          .opponent-avatar {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            border: 3px solid #000;
+            overflow: hidden;
+            background-color: #fff;
+            box-shadow: 2px 2px 0 #000;
+          }
+          .opponent-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+          .opponent-left {
+            position: absolute;
+            left: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+          }
+          .opponent-right {
+            position: absolute;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+          }
+          .opponent-name {
+            width: 115px;
+            height: 42px;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            border: 3px solid #000;
+            border-radius: 999px;
+            font-size: 15px;
+            font-weight: 800;
+            background-color: #fff;
+            box-sizing: border-box;
+            text-align: center;
+          }
+          .opponent-count {
+            min-width: 50px;
+            height: 34px;
+            font-size: 14px;
+            border: 3px solid #000;
+            border-radius: 8px;
+            box-shadow: 2px 2px 0 #000;
+            background-color: #ebf8ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+          }
+          .bottom-panel {
+            height: 240px;
+            display: grid;
+            grid-template-rows: 86px minmax(0, 1fr);
+            border-top-width: 4px;
+            border-top-style: solid;
+            box-sizing: border-box;
+            z-index: 20;
+          }
+          .action-row {
+            height: 86px;
+            padding: 10px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 100%;
+            box-sizing: border-box;
+          }
+          .self-player {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .self-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid #000;
+            object-fit: cover;
+            background-color: #fff;
+            box-shadow: 2px 2px 0 #000;
+          }
+          .self-name {
+            max-width: 220px;
+            height: 48px;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            background-color: #000;
+            color: #fff;
+            border-radius: 999px;
+            font-size: 17px;
+            font-weight: 800;
+            box-sizing: border-box;
+          }
+          .action-buttons {
+            display: flex;
+            gap: 14px;
+          }
+          .pass-button,
+          .play-button {
+            width: 110px;
+            height: 58px;
+            font-size: 19px;
+            border: 3px solid #000;
+            border-radius: 12px;
+            box-shadow: 0 4px 0 #000;
+            font-weight: 900;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+          .pass-button {
+            background-color: #fff;
+          }
+          .play-button {
+            background-color: #fbbf24;
+          }
+          .desktop-tablet-hand {
+            display: block;
+            position: relative;
+            height: 120px;
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+          }
+          .mobile-hand-scroll {
+            display: none;
+          }
+          .game-page .playing-card {
+            width: 76px;
+            height: 110px;
+            transform: none !important;
+            transition: transform 0.15s ease, bottom 0.15s ease;
+          }
+          .game-page .playing-card:hover {
+            transform: translateY(-8px) !important;
+          }
+        }
+
+        /* ================= 平板版 (Tablet: 601px - 900px) ================= */
+        @media (min-width: 601px) and (max-width: 900px) {
+          .game-page {
+            height: 100dvh;
+            display: grid;
+            grid-template-rows: 68px minmax(0, 1fr) 200px;
+            overflow: hidden;
+            background-color: #f8f9fa;
+          }
+          .game-header {
+            height: 68px;
+            padding: 8px 20px;
+            display: grid;
+            grid-template-columns: 100px minmax(0, 1fr) 100px;
+            align-items: center;
+            border-bottom: 3.5px solid #000;
+            background-color: #fff;
+            box-sizing: border-box;
+            position: relative;
+            z-index: 20;
+          }
+          .leave-button {
+            width: 90px;
+            height: 44px;
+            font-size: 15px;
+            font-weight: 900;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #dc2626;
+            color: #fff;
+            border: 2.5px solid #000;
+            border-radius: 8px;
+            box-shadow: 2px 2px 0 #000;
+            white-space: nowrap;
+            cursor: pointer;
+          }
+          .header-player {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 0 auto;
+          }
+          .header-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            border: 2.5px solid #000;
+            object-fit: cover;
+            background-color: #fff;
+          }
+          .header-player-name {
+            max-width: 160px;
+            height: 40px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            border: 2.5px solid #000;
+            border-radius: 999px;
+            font-size: 16px;
+            font-weight: 800;
+            background-color: #fff;
+            box-sizing: border-box;
+          }
+          .header-card-count {
+            width: 48px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2.5px solid #000;
+            border-radius: 8px;
+            background-color: #fff;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .game-table {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+            padding: 12px 16px;
+            background-color: #f8f9fa;
+          }
+          .table-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+          }
+          .waiting-text {
+            font-size: 18px;
+            color: #c4c7cd;
+            white-space: nowrap;
+            text-align: center;
+            border: 2.5px dashed #c4c7cd;
+            border-radius: 16px;
+            padding: 12px 22px;
+            font-weight: 900;
+          }
+          .opponent {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            z-index: 10;
+          }
+          .opponent-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2.5px solid #000;
+            overflow: hidden;
+            background-color: #fff;
+          }
+          .opponent-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+          .opponent-left {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+          }
+          .opponent-right {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+          }
+          .opponent-name {
+            width: 100px;
+            height: 38px;
+            padding: 0 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            border: 2.5px solid #000;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 800;
+            background-color: #fff;
+            box-sizing: border-box;
+            text-align: center;
+          }
+          .opponent-count {
+            min-width: 44px;
+            height: 30px;
+            font-size: 13px;
+            border: 2.5px solid #000;
+            border-radius: 8px;
+            box-shadow: 2px 2px 0 #000;
+            background-color: #ebf8ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+          }
+          .bottom-panel {
+            height: 200px;
+            display: grid;
+            grid-template-rows: 72px minmax(0, 1fr);
+            border-top-width: 3.5px;
+            border-top-style: solid;
+            box-sizing: border-box;
+            z-index: 20;
+          }
+          .action-row {
+            height: 72px;
+            padding: 8px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 100%;
+            box-sizing: border-box;
+          }
+          .self-player {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .self-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2.5px solid #000;
+            object-fit: cover;
+            background-color: #fff;
+            box-shadow: 2px 2px 0 #000;
+          }
+          .self-name {
+            max-width: 160px;
+            height: 40px;
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            background-color: #000;
+            color: #fff;
+            border-radius: 999px;
+            font-size: 15px;
+            font-weight: 800;
+            box-sizing: border-box;
+          }
+          .action-buttons {
+            display: flex;
+            gap: 10px;
+          }
+          .pass-button,
+          .play-button {
+            width: 90px;
+            height: 48px;
+            font-size: 16px;
+            border: 2.5px solid #000;
+            border-radius: 10px;
+            box-shadow: 0 3px 0 #000;
+            font-weight: 900;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+          .pass-button {
+            background-color: #fff;
+          }
+          .play-button {
+            background-color: #fbbf24;
+          }
+          .desktop-tablet-hand {
+            display: block;
+            position: relative;
+            height: 100px;
+            width: 100%;
+            max-width: 720px;
+            margin: 0 auto;
+          }
+          .mobile-hand-scroll {
+            display: none;
+          }
+          .game-page .playing-card {
+            width: 64px;
+            height: 92px;
+            transform: none !important;
+            transition: transform 0.15s ease, bottom 0.15s ease;
+          }
+          .game-page .playing-card:hover {
+            transform: translateY(-6px) !important;
+          }
+        }
+
+        /* ================= 手機版 (Mobile: <= 600px) ================= */
         @media (max-width: 600px) {
           .floating-button,
           nextjs-portal,
@@ -641,316 +1180,308 @@ function RoomContent() {
             display: none !important;
           }
           .game-page {
-            height: 100dvh !important;
-            display: grid !important;
-            grid-template-rows: 56px minmax(0, 1fr) calc(180px + env(safe-area-inset-bottom)) !important;
-            overflow: hidden !important;
-            overflow-x: hidden !important;
-            background-color: #f8f9fb !important;
+            height: 100dvh;
+            display: grid;
+            grid-template-rows: 58px minmax(0, 1fr) 172px;
+            overflow: hidden;
+            background-color: #f8f9fa;
           }
           .game-header {
-            height: 56px !important;
-            padding: 6px 12px !important;
-            display: grid !important;
-            grid-template-columns: 72px minmax(0, 1fr) 44px !important;
-            align-items: center !important;
-            gap: 6px !important;
-            border-bottom: 3px solid #111 !important;
-            background-color: #fff !important;
-            box-sizing: border-box !important;
+            height: 58px;
+            padding: 7px 9px;
+            display: grid;
+            grid-template-columns: 72px minmax(0, 1fr) 44px;
+            align-items: center;
+            gap: 7px;
+            border-bottom: 3px solid #111;
+            background-color: #fff;
+            box-sizing: border-box;
+            position: relative;
+            z-index: 20;
           }
           .leave-button {
-            width: 68px !important;
-            height: 38px !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 4px !important;
-            white-space: nowrap !important;
-            writing-mode: horizontal-tb !important;
-            font-size: 14px !important;
-            font-weight: 800 !important;
-            background-color: #ef2929 !important;
-            color: #fff !important;
-            border: 2.5px solid #111 !important;
-            border-radius: 10px !important;
-            box-shadow: 0 3px 0 #111 !important;
+            width: 68px;
+            height: 38px;
+            font-size: 14px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #ef2929;
+            color: #fff;
+            border: 2.5px solid #111;
+            border-radius: 10px;
+            box-shadow: 0 3px 0 #111;
+            white-space: nowrap;
+            cursor: pointer;
           }
           .header-player {
-            min-width: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 6px !important;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
           }
           .header-avatar {
-            width: 38px !important;
-            height: 38px !important;
-            flex: 0 0 38px !important;
-            border-radius: 50% !important;
+            width: 38px;
+            height: 38px;
+            flex: 0 0 38px;
+            border-radius: 50%;
+            border: 2.5px solid #111;
+            object-fit: cover;
           }
           .header-player-name {
-            max-width: 125px !important;
-            height: 36px !important;
-            padding: 0 10px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            overflow: hidden !important;
-            white-space: nowrap !important;
-            text-overflow: ellipsis !important;
-            border: 2.5px solid #111 !important;
-            border-radius: 999px !important;
-            font-size: 14px !important;
-            font-weight: 800 !important;
-            background-color: #fff !important;
-            box-sizing: border-box !important;
+            max-width: 125px;
+            height: 36px;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            border: 2.5px solid #111;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 800;
+            background-color: #fff;
+            box-sizing: border-box;
           }
           .header-card-count {
-            width: 40px !important;
-            height: 32px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            border: 2.5px solid #111 !important;
-            border-radius: 10px !important;
-            background-color: #fff !important;
-            font-size: 13px !important;
-            font-weight: 800 !important;
+            width: 40px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2.5px solid #111;
+            border-radius: 10px;
+            background-color: #fff;
+            font-size: 12px;
+            font-weight: 800;
           }
           .game-table {
-            position: relative !important;
-            min-height: 0 !important;
-            overflow: hidden !important;
-            display: block !important;
-            background-color: #fafbfc !important;
+            display: block;
+            position: relative;
+            overflow: hidden;
+            padding: 8px 12px;
+            background-color: #f8f9fa;
           }
           .table-center {
-            position: absolute !important;
-            left: 50% !important;
-            top: 48% !important;
-            transform: translate(-50%, -50%) !important;
+            position: absolute;
+            left: 50%;
+            top: 48%;
+            transform: translate(-50%, -50%);
             width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
           }
           .waiting-text {
-            font-size: 16px !important;
-            color: #c4c7cd !important;
-            white-space: nowrap !important;
+            font-size: 16px;
+            color: #c4c7cd;
+            white-space: nowrap;
             text-align: center;
+            border: 2.5px dashed #c4c7cd;
+            border-radius: 16px;
+            padding: 10px 20px;
+            font-weight: 800;
           }
           .opponent {
-            width: clamp(80px, 20vw, 100px) !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            gap: 4px !important;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            z-index: 10;
           }
           .opponent-avatar {
-            width: 44px !important;
-            height: 44px !important;
-            border-width: 2.5px !important;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 2.5px solid #111;
+            overflow: hidden;
+            background-color: #fff;
+          }
+          .opponent-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
           }
           .opponent-left {
-            position: absolute !important;
-            left: 12px !important;
-            top: 48% !important;
-            transform: translateY(-50%) !important;
+            position: absolute;
+            left: 10px;
+            top: 48%;
+            transform: translateY(-50%);
           }
           .opponent-right {
-            position: absolute !important;
-            right: 12px !important;
-            top: 48% !important;
-            transform: translateY(-50%) !important;
+            position: absolute;
+            right: 10px;
+            top: 48%;
+            transform: translateY(-50%);
           }
           .opponent-name {
-            width: auto !important;
-            max-width: clamp(80px, 18vw, 120px) !important;
-            height: 38px !important;
-            padding: 0 8px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            overflow: hidden !important;
-            white-space: nowrap !important;
-            text-overflow: ellipsis !important;
-            border: 2.5px solid #111 !important;
-            border-radius: 999px !important;
-            font-size: 14px !important;
-            font-weight: 800 !important;
-            background-color: #fff !important;
-            text-align: center !important;
-            box-sizing: border-box !important;
+            width: auto;
+            max-width: 110px;
+            height: 36px;
+            padding: 0 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            border: 2.5px solid #111;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 800;
+            background-color: #fff;
+            box-sizing: border-box;
+            text-align: center;
           }
           .opponent-count {
-            min-width: 40px !important;
-            height: 28px !important;
-            font-size: 12px !important;
-            border-width: 2.5px !important;
-            box-shadow: 1.5px 1.5px 0 #000 !important;
-          }
-          .opponent-count span {
-            font-size: 11px !important;
+            min-width: 40px;
+            height: 28px;
+            font-size: 12px;
+            border: 2.5px solid #111;
+            box-shadow: 1.5px 1.5px 0 #000;
+            background-color: #ebf8ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
           }
           .bottom-panel {
-            height: calc(180px + env(safe-area-inset-bottom)) !important;
-            display: grid !important;
-            grid-template-rows: 62px 118px !important;
-            border-top: 3px solid #111 !important;
-            background-color: #fff !important;
-            padding-top: 0 !important;
-            padding-right: 0 !important;
-            padding-left: 0 !important;
-            padding-bottom: env(safe-area-inset-bottom) !important;
-            box-sizing: border-box !important;
+            height: 172px;
+            display: grid;
+            grid-template-rows: 62px 110px;
+            border-top-width: 3px;
+            border-top-style: solid;
+            box-sizing: border-box;
+            z-index: 20;
           }
           .action-row {
-            height: 62px !important;
-            padding: 6px 12px !important;
-            display: grid !important;
-            grid-template-columns: minmax(0, 1fr) auto !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            box-sizing: border-box !important;
-            gap: 8px !important;
+            height: 62px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 100%;
+            box-sizing: border-box;
           }
           .self-player {
-            min-width: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 6px !important;
+            display: flex;
+            align-items: center;
+            gap: 6px;
           }
           .self-avatar {
-            width: 40px !important;
-            height: 40px !important;
-            flex: 0 0 40px !important;
-            border: 2px solid #000;
+            width: 40px;
+            height: 40px;
+            flex: 0 0 40px;
             border-radius: 50%;
-            overflow: hidden;
+            border: 2px solid #000;
+            object-fit: cover;
           }
           .self-name {
-            max-width: 120px !important;
-            height: 36px !important;
-            padding: 0 10px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            overflow: hidden !important;
-            white-space: nowrap !important;
-            text-overflow: ellipsis !important;
-            background-color: #111 !important;
-            color: #fff !important;
-            border-radius: 999px !important;
-            font-size: 13px !important;
-            font-weight: 800 !important;
-            box-sizing: border-box !important;
-          }
-          .action-row .flex.items-center.gap-2.mt-1 {
-            margin-top: 0 !important;
-            gap: 2px !important;
-          }
-          .action-row .flex.items-center.gap-2.mt-1 span,
-          .action-row .flex.items-center.gap-2.mt-1 div {
-            font-size: 11px !important;
-            font-weight: 800 !important;
-            padding: 1px 4px !important;
-            height: auto !important;
-            border-width: 1.5px !important;
-            margin: 0 !important;
+            max-width: 115px;
+            height: 36px;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            background-color: #000;
+            color: #fff;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 800;
+            box-sizing: border-box;
           }
           .action-buttons {
             display: flex;
-            gap: 6px !important;
+            gap: 6px;
           }
           .pass-button,
           .play-button {
-            width: 70px !important;
-            height: 44px !important;
-            border-radius: 12px !important;
-            font-size: 15px !important;
-            font-weight: 700 !important;
-            min-width: 0 !important;
-            padding: 0 !important;
-            border: 2.5px solid #111 !important;
-            box-shadow: 0 3px 0 #111 !important;
-          }
-          .play-button {
-            background-color: #ffe49a !important;
+            width: 70px;
+            height: 44px;
+            font-size: 15px;
+            border: 2.5px solid #111;
+            border-radius: 12px;
+            box-shadow: 0 3px 0 #111;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
           }
           .pass-button {
-            background-color: #fff !important;
+            background-color: #fff;
           }
-          .hand-scroll {
-            width: 100% !important;
-            overflow-x: auto !important;
-            overflow-y: hidden !important;
-            padding: 14px 12px 14px !important;
-            box-sizing: border-box !important;
-            scrollbar-width: none !important;
+          .play-button {
+            background-color: #fbbf24;
           }
-          .hand-scroll::-webkit-scrollbar {
-            display: none !important;
+          .desktop-tablet-hand {
+            display: none;
           }
-          .hand-cards {
-            min-width: max-content !important;
-            height: 86px !important;
-            display: flex !important;
+          .mobile-hand-scroll {
+            display: block;
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 10px 0 calc(env(safe-area-inset-bottom) + 10px);
+            box-sizing: border-box;
+            scrollbar-width: none;
+          }
+          .mobile-hand-scroll::-webkit-scrollbar {
+            display: none;
+          }
+          .mobile-hand-cards {
+            display: flex;
+            width: max-content;
+            padding: 0 16px;
             align-items: flex-end;
-            padding-left: 10px !important;
-            padding-right: 10px !important;
+            height: 80px;
           }
           .playing-card-wrapper {
-            width: 50px !important;
-            height: 72px !important;
-            flex: 0 0 50px !important;
-            margin-left: -16px !important;
-            border-radius: 12px !important;
-            transition: transform 0.15s ease, margin 0.15s ease !important;
+            width: 50px;
+            height: 76px;
+            flex: 0 0 50px;
+            margin-left: -16px;
+            transition: transform 0.15s ease;
+            position: relative;
           }
           .playing-card-wrapper:first-child {
-            margin-left: 0 !important;
+            margin-left: 0;
           }
           .playing-card-wrapper.selected {
-            transform: translateY(-12px) !important;
-            z-index: 10 !important;
+            transform: translateY(-10px);
+            z-index: 10;
           }
-          .playing-card-wrapper > div {
-            width: 100% !important;
-            height: 100% !important;
+          .game-page .playing-card {
+            width: 50px;
+            height: 76px;
+            transform: none !important;
           }
         }
       `}} />
 
       {/* 頂部列：離開按鈕與頂部玩家 */}
-      <div className="game-header h-12 sm:h-16 flex-shrink-0 flex items-center justify-between px-3 bg-white border-b-4 border-black relative z-20 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
+      <div className="game-header">
         <button
           onClick={handleLeaveRoom}
           className="leave-button comic-btn"
-          style={{
-            width: "82px",
-            height: "42px",
-            fontSize: "15px",
-            backgroundColor: "#dc2626",
-            color: "#fff",
-            borderWidth: "2px",
-            borderStyle: "solid",
-            borderColor: "#000",
-            borderRadius: "8px",
-            boxShadow: "2px 2px 0 #000",
-            fontWeight: 900,
-          }}
         >
           🚪 離開
         </button>
 
         {topPlayer ? (
-          <div className="header-player flex items-center justify-center">
+          <div className="header-player">
             {topPlayer.avatarUrl && (
-              <img src={topPlayer.avatarUrl} alt="avatar" className="header-avatar w-6 h-6 rounded-full border-[1.5px] border-black object-cover bg-white shadow-[1px_1px_0px_#000]" />
+              <img src={topPlayer.avatarUrl} alt="avatar" className="header-avatar" />
             )}
-            <div className="header-player-name comic-badge py-0 px-2 truncate sm:text-[11px] bg-white border-black border-2">{topPlayer.nickname}</div>
+            <div className="header-player-name comic-badge truncate">{topPlayer.nickname}</div>
             {topPlayer.isPassed && (
               <span className="text-[10px] font-black text-red-600 bg-red-50 border-[1.5px] border-red-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg] ml-1">
                 PASS
@@ -962,30 +1493,30 @@ function RoomContent() {
         )}
 
         {topPlayer ? (
-          <div className="header-card-count flex items-center justify-center text-[11px] font-black text-blue-700 bg-blue-50 border-[1.5px] border-black px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000]">
+          <div className="header-card-count">
             🂠 {topPlayer.cards.length}
           </div>
         ) : (
-          <div className="w-[44px] sm:w-[68px]" />
+          <div className="header-card-count" style={{ opacity: 0 }} />
         )}
       </div>
 
       {/* 中部列：對局主畫面（左側玩家、中央出牌區、右側玩家） */}
-      <div className="game-table flex-1 flex flex-row items-center justify-between relative overflow-hidden px-1 sm:px-2 py-2 sm:py-4 bg-[#f8f9fa]">
+      <div className="game-table">
         {/* 左側玩家 */}
-        <div className="opponent opponent-left w-12 sm:w-20 flex-shrink-0 flex flex-col items-center justify-center z-10">
+        <div className="opponent opponent-left">
           {leftPlayer ? (
             <>
               {leftPlayer.avatarUrl && (
-                <div className="opponent-avatar w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-black overflow-hidden bg-white shadow-[1px_1px_0px_#000]">
-                  <img src={leftPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                <div className="opponent-avatar">
+                  <img src={leftPlayer.avatarUrl} alt="avatar" />
                 </div>
               )}
-              <div className="opponent-name comic-badge py-0 px-1 truncate leading-tight mt-1 bg-white border-black border-2">
+              <div className="opponent-name comic-badge">
                 {leftPlayer.nickname}
               </div>
-              <div className="opponent-count flex flex-col items-center bg-blue-50 border-2 border-black rounded-lg p-1 shadow-[2px_2px_0_#000] mt-1">
-                <span className="text-[10px] font-black text-blue-700">🂠 {leftPlayer.cards.length}</span>
+              <div className="opponent-count">
+                <span>🂠 {leftPlayer.cards.length}</span>
               </div>
               {leftPlayer.isPassed && (
                 <span className="text-[10px] font-black text-red-600 bg-red-50 border-2 border-red-600 px-1 py-0 rounded-md shadow-[1px_1px_0_#000] rotate-[-5deg] mt-1">
@@ -997,7 +1528,7 @@ function RoomContent() {
         </div>
 
         {/* 中央出牌區 */}
-        <div className="table-center flex-1 flex flex-col items-center justify-center px-1">
+        <div className="table-center">
           {room.lastPlayedHand ? (
             <div className="flex flex-col items-center gap-1 w-full">
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
@@ -1006,32 +1537,32 @@ function RoomContent() {
               <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full">
                 {room.lastPlayedHand.cards.map((card) => (
                   <div key={card.id} className="transform transition-transform hover:scale-105">
-                    <PlayingCard card={card} size={handContainerWidth < 450 ? "small" : "medium"} />
+                    <PlayingCard card={card} className="playing-card" />
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="waiting-text font-black text-gray-300 text-[12px] sm:text-sm border-[3px] border-dashed border-gray-300 rounded-2xl py-3 px-4 text-center uppercase tracking-wider select-none">
+            <div className="waiting-text">
               等待出牌
             </div>
           )}
         </div>
 
         {/* 右側玩家 */}
-        <div className="opponent opponent-right w-12 sm:w-20 flex-shrink-0 flex flex-col items-center justify-center z-10">
+        <div className="opponent opponent-right">
           {rightPlayer ? (
             <>
               {rightPlayer.avatarUrl && (
-                <div className="opponent-avatar w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-black overflow-hidden bg-white shadow-[1px_1px_0px_#000]">
-                  <img src={rightPlayer.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                <div className="opponent-avatar">
+                  <img src={rightPlayer.avatarUrl} alt="avatar" />
                 </div>
               )}
-              <div className="opponent-name comic-badge py-0 px-1 truncate leading-tight mt-1 bg-white border-black border-2">
+              <div className="opponent-name comic-badge">
                 {rightPlayer.nickname}
               </div>
-              <div className="opponent-count flex flex-col items-center bg-blue-50 border-2 border-black rounded-lg p-1 shadow-[2px_2px_0_#000] mt-1">
-                <span className="text-[10px] font-black text-blue-700">🂠 {rightPlayer.cards.length}</span>
+              <div className="opponent-count">
+                <span>🂠 {rightPlayer.cards.length}</span>
               </div>
               {rightPlayer.isPassed && (
                 <span className="text-[10px] font-black text-red-600 bg-red-50 border-2 border-red-600 px-1 py-0 rounded-md shadow-[1px_1px_0_#000] rotate-[5deg] mt-1">
@@ -1045,26 +1576,22 @@ function RoomContent() {
 
       {/* 下方我的手牌區 */}
       <div
-        className="bottom-panel flex-shrink-0 z-20"
+        className="bottom-panel"
         style={{
-          borderTopWidth: "4px",
-          borderTopStyle: "solid",
           borderTopColor: isMyTurn ? "#fbbf24" : "#000",
           backgroundColor: isMyTurn ? "#fffbeb" : "#fff",
-          padding: "8px 10px",
-          paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
         }}
       >
         {/* 操作列 */}
-        <div className="action-row max-w-3xl mx-auto flex items-center justify-between w-full">
-          <div className="flex flex-col items-start gap-1">
+        <div className="action-row">
+          <div className="flex items-center gap-4">
             <div className="self-player">
               {me?.avatarUrl && (
-                <img src={me.avatarUrl} alt="avatar" className="self-avatar w-8 h-8 rounded-full border-2 border-black object-cover bg-white shadow-[1px_1px_0px_#000]" />
+                <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
               )}
-              <span className="self-name comic-badge text-[12px] py-0 px-2" style={{ backgroundColor: "#000", color: "#fff" }}>{me?.nickname}</span>
+              <span className="self-name comic-badge">{me?.nickname}</span>
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2">
               {isMyTurn && (
                 <span className="animate-pulse text-[11px] font-black text-red-600 bg-red-50 border-2 border-black px-1.5 py-0 rounded-md shadow-[1px_1px_0_#000]">
                   👉 你的回合
@@ -1082,7 +1609,6 @@ function RoomContent() {
             <button
               className="comic-btn pass-button"
               style={{
-                backgroundColor: "#fff",
                 opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
               }}
               disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
@@ -1093,7 +1619,6 @@ function RoomContent() {
             <button
               className="comic-btn play-button"
               style={{
-                backgroundColor: "#fbbf24",
                 opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
               }}
               disabled={!isMyTurn || selectedCards.length === 0}
@@ -1105,13 +1630,13 @@ function RoomContent() {
         </div>
 
         {/* 手牌區 */}
-        <div ref={handContainerRef} className="hand-scroll sm:px-4 sm:pb-4">
-          {/* 桌機版 */}
-          <div className="hidden sm:block" style={{ position: "relative", height: 110, width: "100%", maxWidth: 640, margin: "0 auto" }}>
+        <div ref={handContainerRef} style={{ width: "100%", overflow: "hidden" }}>
+          {/* 桌機與平板版：絕對定位重疊 */}
+          <div className="desktop-tablet-hand">
             {me?.cards.map((card, i) => {
                 const total = me.cards.length;
-                const cardWidth = 56;
-                const maxSpan = handContainerWidth - cardWidth - 16;
+                const cardWidth = handContainerWidth > 900 ? 76 : 64;
+                const maxSpan = Math.min(handContainerWidth > 900 ? 900 : 720, handContainerWidth) - cardWidth - 24;
                 const cardSpacing = total > 1 ? Math.min(cardWidth * 0.65, maxSpan / (total - 1)) : 0;
                 const offset = total > 1 ? (i - (total - 1) / 2) * cardSpacing : 0;
                 const isSelected = selectedCards.some(c => c.id === card.id);
@@ -1120,35 +1645,37 @@ function RoomContent() {
                     key={card.id}
                     style={{
                       position: "absolute",
-                      bottom: isSelected ? 16 : 0,
+                      bottom: isSelected ? (handContainerWidth > 900 ? 18 : 14) : 0,
                       left: "50%",
                       transform: `translateX(calc(-50% + ${offset}px))`,
                       zIndex: i,
-                      transition: "bottom 0.15s ease, z-index 0s",
+                      transition: "bottom 0.15s ease",
                       cursor: "pointer",
                     }}
                     onClick={() => handleToggleCard(card)}
                   >
-                    <PlayingCard card={card} size="medium" selected={isSelected} />
+                    <PlayingCard card={card} selected={isSelected} className="playing-card" />
                   </div>
                 );
             })}
           </div>
 
           {/* 手機版：橫向滑動 */}
-          <div className="sm:hidden hand-cards">
-            {me?.cards.map((card) => {
-              const isSelected = selectedCards.some(c => c.id === card.id);
-              return (
-                <div
-                  key={card.id}
-                  className={`playing-card-wrapper ${isSelected ? 'selected' : ''}`}
-                  onClick={() => handleToggleCard(card)}
-                >
-                  <PlayingCard card={card} size="medium" selected={isSelected} />
-                </div>
-              );
-            })}
+          <div className="mobile-hand-scroll">
+            <div className="mobile-hand-cards">
+              {me?.cards.map((card) => {
+                const isSelected = selectedCards.some(c => c.id === card.id);
+                return (
+                  <div
+                    key={card.id}
+                    className={`playing-card-wrapper ${isSelected ? 'selected' : ''}`}
+                    onClick={() => handleToggleCard(card)}
+                  >
+                    <PlayingCard card={card} selected={isSelected} className="playing-card" />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -1168,5 +1695,3 @@ export default function RoomPage() {
     </Suspense>
   );
 }
-
-

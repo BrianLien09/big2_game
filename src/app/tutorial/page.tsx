@@ -22,8 +22,6 @@ export default function TutorialPage() {
   const [message, setMessage] = useState("");
   const [msgType, setMsgType] = useState<"ok" | "err" | "">("");
 
-  useEffect(() => { dealCards(); }, []);
-
   const dealCards = () => {
     setHand(sortCards(shuffleDeck(createDeck()).slice(0, 13)));
     setLastPlayed(null);
@@ -31,6 +29,12 @@ export default function TutorialPage() {
     setMessage("");
     setMsgType("");
   };
+
+  useEffect(() => {
+    setTimeout(() => {
+      dealCards();
+    }, 0);
+  }, []);
 
   const toggleCard = (card: Card) => {
     setSelectedCards(prev =>

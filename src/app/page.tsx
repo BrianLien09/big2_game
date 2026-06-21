@@ -27,7 +27,7 @@ export default function Home() {
   // 監聽 Firebase 登入狀態
   useEffect(() => {
     if (!auth) {
-      setAuthLoading(false);
+      setTimeout(() => setAuthLoading(false), 0);
       return;
     }
 
@@ -111,9 +111,10 @@ export default function Home() {
     try {
       await loginWithGoogle();
       // 成功登入後，onAuthStateChanged 會觸發，此處只需防呆
-    } catch (error: any) {
+    } catch (error) {
       console.error("Google login failed:", error);
-      const msg = error.message || "登入失敗，請稍後再試。";
+      const err = error as Error;
+      const msg = err.message || "登入失敗，請稍後再試。";
       setErrorMsg(msg);
       addToast(msg, "error");
       setLoginProgress(false);
