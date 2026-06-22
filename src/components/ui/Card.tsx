@@ -31,34 +31,35 @@ const suitColors: Record<CardType['suit'], string> = {
   clubs: 'text-[#111]',
 };
 
+// 為了大幅提升手機端遊玩時的清晰度與操作易用性，我們將卡片尺寸從 56x84px 再次放大至 62x92px，並同步調整相關字型與佈局
 const sizeClasses = {
   desktop: 'w-[84px] h-[122px] border-[4px] border-[#111] rounded-[15px] shadow-[4px_5px_0_#111]',
   tablet: 'w-[64px] h-[92px] border-[4px] border-[#111] rounded-[12px] shadow-[3px_4px_0_#111]',
-  mobile: 'w-[50px] h-[76px] border-[4px] border-[#111] rounded-[12px] shadow-[3px_4px_0_#111]',
+  mobile: 'w-[62px] h-[92px] border-[4px] border-[#111] rounded-[12px] shadow-[3px_4px_0_#111]',
 };
 
 const topCornerPos = {
   desktop: 'top-[8px] left-[8px] gap-[1px]',
   tablet: 'top-[6px] left-[6px] gap-[0px]',
-  mobile: 'top-[4px] left-[4px] gap-[0px]',
+  mobile: 'top-[6px] left-[6px] gap-[0px]',
 };
 
 const rankSizes = {
   desktop: 'text-[22px]',
   tablet: 'text-[18px]',
-  mobile: 'text-[15px]',
+  mobile: 'text-[18px]',
 };
 
 const smallSuitSize = {
   desktop: 'text-[17px]',
   tablet: 'text-[12px]',
-  mobile: 'text-[10px]',
+  mobile: 'text-[12px]',
 };
 
 const largeSuitSize = {
   desktop: 'text-[27px] bottom-[6px] right-[8px]',
   tablet: 'text-[28px] bottom-[4px] right-[6px]',
-  mobile: 'text-[22px] bottom-[3px] right-[5px]',
+  mobile: 'text-[26px] bottom-[4px] right-[6px]',
 };
 
 export const PlayingCard: React.FC<CardProps> = ({ 

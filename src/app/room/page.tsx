@@ -1267,7 +1267,8 @@ function RoomContent() {
           .game-page {
             height: 100dvh;
             display: grid;
-            grid-template-rows: 58px minmax(0, 1fr) calc(210px + env(safe-area-inset-bottom));
+            /* 配合變高與往上抬的操作區，將第三個 row 高度調大至 265px */
+            grid-template-rows: 58px minmax(0, 1fr) calc(265px + env(safe-area-inset-bottom));
             overflow: hidden;
             background-color: #f8f9fa;
           }
@@ -1452,9 +1453,10 @@ function RoomContent() {
             font-weight: 800;
           }
           .bottom-panel {
-            height: calc(210px + env(safe-area-inset-bottom));
+            /* 配合操作區整體再往上抬與放大卡片，將總高度與各 row 高度加大 */
+            height: calc(265px + env(safe-area-inset-bottom));
             display: grid;
-            grid-template-rows: 60px 34px 116px;
+            grid-template-rows: 72px 38px 155px;
             border-top-width: 3px;
             border-top-style: solid;
             box-sizing: border-box;
@@ -1595,7 +1597,8 @@ function RoomContent() {
             width: 100%;
             min-width: 0;
             max-width: 100vw;
-            height: 116px;
+            /* 配合操作區再往上抬，將高度放大至 155px */
+            height: 155px;
             overflow-x: auto;
             overflow-y: hidden;
             padding: 14px 0 6px;
@@ -1611,26 +1614,32 @@ function RoomContent() {
           .mobile-hand-cards {
             width: max-content;
             min-width: max-content;
-            height: 96px;
+            /* 配合操作區與手牌再往上抬，將高度放大至 141px */
+            height: 141px;
             display: flex;
             align-items: flex-end;
             justify-content: flex-start;
-            padding: 0 30px 8px;
+            /* 增大底部 padding 至 18px，更顯著抬高卡片底線 */
+            padding: 0 30px 18px;
             box-sizing: border-box;
           }
           .playing-card-wrapper {
-            width: 50px;
-            height: 76px;
-            flex: 0 0 50px;
+            /* 大幅提升手機端清晰度，將卡片寬高放大至 62px/92px，並調整 margin-left 重疊度 */
+            width: 62px;
+            height: 92px;
+            flex: 0 0 62px;
             position: relative;
-            margin-left: -15px;
+            margin-left: -22px;
+            /* 預設往上抬 8px，使卡片底部留白增加、視覺浮起更顯眼 */
+            transform: translateY(-8px);
             transition: transform 0.15s ease;
           }
           .playing-card-wrapper:first-child {
             margin-left: 0;
           }
           .playing-card-wrapper.selected {
-            transform: translateY(-10px);
+            /* 調整選取時彈起的高度，往上移動 28px，視覺效果非常明顯 */
+            transform: translateY(-28px);
           }
           .hand-container-wrapper {
             width: 100%;

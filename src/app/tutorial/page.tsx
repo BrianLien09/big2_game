@@ -329,7 +329,7 @@ export default function TutorialPage() {
               minmax(120px, 1fr) /* 3. 對手出牌區 */
               auto /* 4. 狀態列 */
               auto /* 5. 操作按鈕列 */
-              126px; /* 6. 手牌滑動區 */
+              137px; /* 6. 手牌滑動區 */
             overflow: hidden;
             border: 4px solid #111;
             border-radius: 24px;
@@ -399,7 +399,8 @@ export default function TutorialPage() {
           }
 
           .tutorial-opponent-card {
-            margin-left: -14px;
+            /* 調整放大卡片後的重疊間距 */
+            margin-left: -16px;
           }
 
           .tutorial-opponent-card:first-child {
@@ -408,8 +409,9 @@ export default function TutorialPage() {
 
           .tutorial-empty-card {
             display: flex;
-            width: 54px;
-            height: 78px;
+            /* 調整虛線空卡片框大小以匹配放大後的 56x84 卡片 */
+            width: 60px;
+            height: 86px;
             font-size: 16px;
             border: 3px dashed #d1d5db;
             border-radius: 12px;
@@ -489,7 +491,8 @@ export default function TutorialPage() {
             display: block;
             width: 100%;
             min-width: 0;
-            height: 126px;
+            /* 配合網格調整高度至 137px */
+            height: 137px;
             overflow-x: auto;
             overflow-y: hidden;
             padding: 18px 0 calc(env(safe-area-inset-bottom) + 8px);
@@ -511,19 +514,24 @@ export default function TutorialPage() {
           .tutorial-hand-cards {
             width: max-content;
             min-width: max-content;
-            height: 96px;
+            /* 配合卡片往上抬調整高度為 121px */
+            height: 121px;
             display: flex;
             align-items: flex-end;
-            padding: 0 30px;
+            /* 增加底部 padding 至 14px，抬高卡片底線 */
+            padding: 0 30px 14px;
             box-sizing: border-box;
           }
 
           .tutorial-hand-card {
-            width: 50px;
-            height: 76px;
-            flex: 0 0 50px;
+            /* 將卡片寬高從 50px/76px 放大至 56px/84px，並調整 margin-left 重疊度 */
+            width: 56px;
+            height: 84px;
+            flex: 0 0 56px;
             position: relative;
-            margin-left: -15px;
+            margin-left: -17px;
+            /* 預設往上抬 6px，使卡片底部留白增加、視覺上浮更明顯 */
+            transform: translateY(-6px);
             transition: transform 0.15s ease;
           }
 
@@ -532,7 +540,8 @@ export default function TutorialPage() {
           }
 
           .tutorial-hand-card.selected {
-            transform: translateY(-12px);
+            /* 調整選取時彈起的高度，往上移動 22px，與預設高度形成強烈對比 */
+            transform: translateY(-22px);
             z-index: 20;
           }
         }
