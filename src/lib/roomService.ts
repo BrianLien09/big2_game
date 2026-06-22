@@ -435,6 +435,17 @@ export const BOT_AVATARS: Record<string, string> = {
   "紳士水豚": "/images/avatars/capybara_gentleman.png",
 };
 
+// 取得靜態資源的正確路徑（相容 GitHub Pages basePath）
+export const getAssetPath = (path: string): string => {
+  if (!path) return "";
+  if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
+    return path;
+  }
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${basePath}${cleanPath}`;
+};
+
 // 新增人機 (Transaction)
 export const addBot = async (
   roomId: string,
@@ -489,7 +500,8 @@ export const addBot = async (
     }
 
     const cleanName = chosenName.replace("🤖 ", "");
-    const avatarUrl = BOT_AVATARS[cleanName] || "/images/avatars/capybara_cute.png";
+    const baseAvatarPath = BOT_AVATARS[cleanName] || "/images/avatars/capybara_cute.png";
+    const avatarUrl = getAssetPath(baseAvatarPath);
 
     const newBot: Player = {
       uid: botUid,

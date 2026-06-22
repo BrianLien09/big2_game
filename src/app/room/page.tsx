@@ -6,7 +6,7 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn } from "@/lib/roomService";
+import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -238,9 +238,14 @@ function RoomContent() {
   ]);
 
   // ---- 操作函數 ----
-  const handleToggleReady = () => {
+  const handleToggleReady = async () => {
     if (!uid || !room?.players[uid]) return;
-    toggleReady(roomId, uid, !room.players[uid].isReady);
+    try {
+      await toggleReady(roomId, uid, !room.players[uid].isReady);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addToast(errMsg || "切換準備狀態失敗", "error");
+    }
   };
 
   const handleAddBot = async () => {
@@ -271,14 +276,19 @@ function RoomContent() {
     }
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!uid || !room?.players[uid]?.isHost) return;
     const allReady = Object.values(room.players).every(p => p.isReady);
     if (!allReady && room.playerOrder.length > 1) {
       addToast("還有玩家未準備，無法開始遊戲！", "warning");
       return;
     }
-    startGame(roomId);
+    try {
+      await startGame(roomId);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addToast(errMsg || "開始遊戲失敗，請檢查權限或重試", "error");
+    }
   };
 
   const handleLeaveRoom = async () => {
@@ -411,7 +421,7 @@ function RoomContent() {
                 overflow: "hidden"
               }}>
                 {p.avatarUrl ? (
-                  <img src={p.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                  <img src={getAssetPath(p.avatarUrl)} alt="avatar" className="w-full h-full object-cover" />
                 ) : (
                   p.nickname.charAt(0).toUpperCase()
                 )}
@@ -1742,7 +1752,7 @@ function RoomContent() {
           <div className="header-player">
             {topPlayer.avatarUrl ? (
               <img 
-                src={topPlayer.avatarUrl} 
+                src={getAssetPath(topPlayer.avatarUrl)} 
                 alt="avatar" 
                 className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`} 
               />
@@ -1795,7 +1805,7 @@ function RoomContent() {
             <>
               {leftPlayer.avatarUrl ? (
                 <div className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}>
-                  <img src={leftPlayer.avatarUrl} alt="avatar" />
+                  <img src={getAssetPath(leftPlayer.avatarUrl)} alt="avatar" />
                 </div>
               ) : (
                 <div 
@@ -1859,7 +1869,7 @@ function RoomContent() {
             <>
               {rightPlayer.avatarUrl ? (
                 <div className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}>
-                  <img src={rightPlayer.avatarUrl} alt="avatar" />
+                  <img src={getAssetPath(rightPlayer.avatarUrl)} alt="avatar" />
                 </div>
               ) : (
                 <div 
@@ -1909,7 +1919,7 @@ function RoomContent() {
         <div className="action-row desktop-only">
           <div className="mobile-self-info">
             {me?.avatarUrl ? (
-              <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
+              <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" />
             ) : (
               <div 
                 className="self-avatar"
@@ -1961,7 +1971,7 @@ function RoomContent() {
         <div className="action-main-row mobile-only">
           <div className="self-player-summary">
             {me?.avatarUrl ? (
-              <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
+              <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" />
             ) : (
               <div 
                 className="self-avatar"
