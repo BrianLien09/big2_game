@@ -443,7 +443,26 @@ export const getAssetPath = (path: string): string => {
   if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
     return path;
   }
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+  
+  let basePath = "";
+  
+  // 優先使用環境變數
+  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_BASE_PATH) {
+    basePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  } 
+  // 如果環境變數不存在，嘗試從 window location 推斷
+  else if (typeof window !== 'undefined') {
+    // 若 URL 中包含 /big2_game/，則表示在 GitHub Pages 上
+    const pathname = window.location.pathname;
+    if (pathname.includes('/big2_game/')) {
+      basePath = '/big2_game';
+    }
+    // 檢查 __NEXT_DATA__ 中的 basePath
+    else if ((window as any).__NEXT_DATA__?.basePath) {
+      basePath = (window as any).__NEXT_DATA__.basePath;
+    }
+  }
+  
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   return `${basePath}${cleanPath}`;
 };
@@ -502,8 +521,9 @@ export const addBot = async (
     }
 
     const cleanName = chosenName.replace("🤖 ", "");
-    const baseAvatarPath = BOT_AVATARS[cleanName] || "/images/avatars/capybara_cute.png";
-    const avatarUrl = getAssetPath(baseAvatarPath);
+    const avatarUrl = BOT_AVATARS[cleanName] || "/images/avatars/capybara_cute.png";
+    // ✅ 不在 Transaction 中呼叫 getAssetPath，直接保存基礎路徑
+    // 在前端顯示時再呼叫 getAssetPath 來加上 basePath
 
     const newBot: Player = {
       uid: botUid,
