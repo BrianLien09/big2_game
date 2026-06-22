@@ -1740,12 +1740,19 @@ function RoomContent() {
 
         {topPlayer ? (
           <div className="header-player">
-            {topPlayer.avatarUrl && (
+            {topPlayer.avatarUrl ? (
               <img 
                 src={topPlayer.avatarUrl} 
                 alt="avatar" 
                 className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`} 
               />
+            ) : (
+              <div 
+                className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`}
+                style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
+              >
+                {topPlayer.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+              </div>
             )}
             <div 
               className="header-player-name comic-badge truncate"
@@ -1901,8 +1908,15 @@ function RoomContent() {
         {/* 桌機與平板版操作列 */}
         <div className="action-row desktop-only">
           <div className="mobile-self-info">
-            {me?.avatarUrl && (
+            {me?.avatarUrl ? (
               <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
+            ) : (
+              <div 
+                className="self-avatar"
+                style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
+              >
+                {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+              </div>
             )}
             <span className="self-name comic-badge">{me?.nickname}</span>
             <div className="turn-indicator-row">
@@ -1946,8 +1960,15 @@ function RoomContent() {
         {/* 手機版操作列 */}
         <div className="action-main-row mobile-only">
           <div className="self-player-summary">
-            {me?.avatarUrl && (
+            {me?.avatarUrl ? (
               <img src={me.avatarUrl} alt="avatar" className="self-avatar" />
+            ) : (
+              <div 
+                className="self-avatar"
+                style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
+              >
+                {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+              </div>
             )}
             <span className="self-name comic-badge">{me?.nickname}</span>
           </div>

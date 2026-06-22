@@ -425,6 +425,16 @@ export async function cleanupLegacyRoomsOnce(): Promise<number> {
 // Bot (人機) 相關服務與共用出牌/Pass 邏輯
 // ==========================================
 
+export const BOT_AVATARS: Record<string, string> = {
+  "呆萌水豚": "/images/avatars/capybara_cute.png",
+  "天才水豚": "/images/avatars/capybara_genius.png",
+  "大老二水豚": "/images/avatars/capybara_big2.png",
+  "墨鏡水豚": "/images/avatars/capybara_cool.png",
+  "溫泉水豚": "/images/avatars/capybara_onsen.png",
+  "橘子水豚": "/images/avatars/capybara_orange.png",
+  "紳士水豚": "/images/avatars/capybara_gentleman.png",
+};
+
 // 新增人機 (Transaction)
 export const addBot = async (
   roomId: string,
@@ -478,10 +488,13 @@ export const addBot = async (
       botUid = `bot_${Date.now()}_${Math.floor(Math.random() * 1000000).toString(36)}`;
     }
 
+    const cleanName = chosenName.replace("🤖 ", "");
+    const avatarUrl = BOT_AVATARS[cleanName] || "/images/avatars/capybara_cute.png";
+
     const newBot: Player = {
       uid: botUid,
       nickname: chosenName,
-      avatarUrl: "",
+      avatarUrl: avatarUrl,
       isBot: true,
       isHost: false,
       isReady: true, // Bot 預設已準備
