@@ -132,6 +132,49 @@ export const evaluateHand = (cards: Card[]): PlayedHand | null => {
   return null;
 };
 
+// 判斷是否為怪物牌型（鐵支或同花順）
+export const isMonsterHand = (hand: PlayedHand): boolean => {
+  return hand.type === 'four_of_a_kind' || hand.type === 'straight_flush';
+};
+
+// 取得怪物牌型權重：straight_flush = 2, four_of_a_kind = 1, 其他 = 0
+export const getMonsterWeight = (hand: PlayedHand): number => {
+  if (hand.type === 'straight_flush') return 2;
+  if (hand.type === 'four_of_a_kind') return 1;
+  return 0;
+};
+
+// 統計 5 張牌中的 rank 次數，找出出現 4 次的 rank 的權重
+export const getFourOfAKindRank = (hand: PlayedHand): number => {
+  const counts: Record<string, number> = {};
+  for (const card of hand.cards) {
+    counts[card.rank] = (counts[card.rank] || 0) + 1;
+  }
+  for (const rank in counts) {
+    if (counts[rank] === 4) {
+      return rankWeight[rank as Rank] || 0;
+    }
+  }
+  return 0;
+};
+
+// 比較兩個怪物牌型的大小
+export const compareMonsterHands = (newHand: PlayedHand, prevHand: PlayedHand): boolean => {
+  const newWeight = getMonsterWeight(newHand);
+  const prevWeight = getMonsterWeight(prevHand);
+  
+  if (newWeight !== prevWeight) {
+    return newWeight > prevWeight;
+  }
+  
+  if (newHand.type === 'four_of_a_kind') {
+    return getFourOfAKindRank(newHand) > getFourOfAKindRank(prevHand);
+  }
+  
+  // 同花順比較大小（沿用現有順子比較規則，比較關鍵牌）
+  return compareSingleCard(newHand.keyCard, prevHand.keyCard) > 0;
+};
+
 // 比較兩手牌大小 (嘗試出 cards 出在 prevHand 之上)
 export const canPlay = (cards: Card[], prevHand: PlayedHand | null): boolean => {
   const newHand = evaluateHand(cards);
@@ -140,19 +183,29 @@ export const canPlay = (cards: Card[], prevHand: PlayedHand | null): boolean => 
   // 新回合，出什麼合法牌型都可以
   if (!prevHand) return true;
   
-  // 張數不同：只有鐵支和同花順可以壓過去 (特殊規則)
+  // 張數不同：只有怪物牌型可以跨張數壓過去
   if (newHand.cards.length !== prevHand.cards.length) {
-    if (newHand.type === 'straight_flush' || newHand.type === 'four_of_a_kind') {
-      // 這裡簡化：如果有更複雜的壓牌規則可在此實作
-      // 例如同花順可壓鐵支、鐵支可壓任何5張等
-      const newWeight = newHand.type === 'straight_flush' ? 2 : 1;
-      const prevWeight = prevHand.type === 'straight_flush' ? 2 : (prevHand.type === 'four_of_a_kind' ? 1 : 0);
-      return newWeight > prevWeight;
+    if (isMonsterHand(newHand) && !isMonsterHand(prevHand)) {
+      return true;
     }
     return false;
   }
   
-  // 張數相同，牌型必須相同 (例外：鐵支壓鐵支、同花順壓同花順，上面已包含，這裡處理一般情況)
+  // 張數相同：
+  // 1. 如果雙方都是怪物牌型
+  if (isMonsterHand(newHand) && isMonsterHand(prevHand)) {
+    return compareMonsterHands(newHand, prevHand);
+  }
+  // 2. 如果新牌是怪物且舊牌不是怪物（張數相同，例如都是 5 張牌）
+  if (isMonsterHand(newHand) && !isMonsterHand(prevHand)) {
+    return true;
+  }
+  // 3. 如果新牌不是怪物且舊牌是怪物（張數相同，例如都是 5 張牌）
+  if (!isMonsterHand(newHand) && isMonsterHand(prevHand)) {
+    return false;
+  }
+  
+  // 4. 兩者皆非怪物：張數相同且牌型不同 (例如都是5張，但葫蘆 vs 順子)
   if (newHand.type !== prevHand.type) {
     // 5張牌互壓
     const typeRank: Record<string, number> = {
@@ -166,7 +219,7 @@ export const canPlay = (cards: Card[], prevHand: PlayedHand | null): boolean => 
     }
   }
   
-  // 牌型相同，比較關鍵牌大小
+  // 5. 牌型相同且皆非怪物，比較關鍵牌大小
   return compareSingleCard(newHand.keyCard, prevHand.keyCard) > 0;
 };
 
@@ -251,27 +304,70 @@ export const validatePlay = (
 
   // 張數不同
   if (newHand.cards.length !== prevHand.cards.length) {
-    // 5張牌互壓
-    if (newHand.cards.length === 5 && prevHand.cards.length === 5) {
-      if (newHand.type === 'straight_flush' || newHand.type === 'four_of_a_kind') {
-        const newWeight = newHand.type === 'straight_flush' ? 2 : 1;
-        const prevWeight = prevHand.type === 'straight_flush' ? 2 : (prevHand.type === 'four_of_a_kind' ? 1 : 0);
-        if (newWeight > prevWeight) {
-          return { allowed: true };
-        }
-      }
+    if (isMonsterHand(newHand) && !isMonsterHand(prevHand)) {
+      return { allowed: true };
     }
 
     return {
       allowed: false,
-      reason: `出牌張數不符！場上牌型為【${typeNames[prevHand.type]}】(${prevHand.cards.length}張)，您選了 ${newHand.cards.length} 張牌。`,
-      suggestedType: `【${typeNames[prevHand.type]}】(${prevHand.cards.length}張)`
+      reason: `出牌張數不符！場上牌型為【${typeNames[prevHand.type] || prevHand.type}】（${prevHand.cards.length} 張），您選了 ${newHand.cards.length} 張牌。`,
+      suggestedType: `【${typeNames[prevHand.type] || prevHand.type}】（${prevHand.cards.length} 張）`
     };
   }
 
-  // 張數相同，牌型不同
+  // 張數相同
+  // 1. 如果雙方都是怪物牌型
+  if (isMonsterHand(newHand) && isMonsterHand(prevHand)) {
+    if (compareMonsterHands(newHand, prevHand)) {
+      return { allowed: true };
+    }
+    
+    // 怪物壓制失敗時，提供清楚的錯誤原因與建議牌型
+    if (newHand.type === 'four_of_a_kind' && prevHand.type === 'straight_flush') {
+      return {
+        allowed: false,
+        reason: "鐵支無法壓過同花順。",
+        suggestedType: "請出更大的同花順"
+      };
+    }
+    if (newHand.type === 'four_of_a_kind' && prevHand.type === 'four_of_a_kind') {
+      return {
+        allowed: false,
+        reason: "此鐵支小於場上的鐵支。",
+        suggestedType: "請出更大的鐵支或同花順"
+      };
+    }
+    if (newHand.type === 'straight_flush' && prevHand.type === 'straight_flush') {
+      return {
+        allowed: false,
+        reason: "此同花順小於場上的同花順。",
+        suggestedType: "請出更大的同花順"
+      };
+    }
+    
+    return {
+      allowed: false,
+      reason: "怪物牌型大小不足，無法壓過場上的怪物牌型。",
+      suggestedType: prevHand.type === 'straight_flush' ? "請出更大的同花順" : "請出更大的鐵支或同花順"
+    };
+  }
+
+  // 2. 新牌是怪物，舊牌不是怪物（張數相同，都是 5 張牌的情況）
+  if (isMonsterHand(newHand) && !isMonsterHand(prevHand)) {
+    return { allowed: true };
+  }
+
+  // 3. 新牌不是怪物，舊牌是怪物（一般牌想壓怪物）
+  if (!isMonsterHand(newHand) && isMonsterHand(prevHand)) {
+    return {
+      allowed: false,
+      reason: `一般牌型無法壓過${typeNames[prevHand.type] || prevHand.type}。`,
+      suggestedType: prevHand.type === 'straight_flush' ? "請出更大的同花順" : "請出更大的鐵支或同花順"
+    };
+  }
+
+  // 4. 兩者皆非怪物：張數相同且牌型不同 (例如都是5張，但葫蘆 vs 順子)
   if (newHand.type !== prevHand.type) {
-    // 5張牌互壓
     const typeRank: Record<string, number> = {
       'straight': 1, 'fullhouse': 2, 'four_of_a_kind': 3, 'straight_flush': 4
     };
@@ -297,7 +393,7 @@ export const validatePlay = (
     };
   }
 
-  // 牌型相同，比較關鍵牌大小
+  // 5. 牌型相同且皆非怪物，比較關鍵牌大小
   const isBigger = compareSingleCard(newHand.keyCard, prevHand.keyCard) > 0;
   if (isBigger) {
     return { allowed: true };
@@ -309,3 +405,4 @@ export const validatePlay = (
     suggestedType: `更大點數或花色的【${typeNames[prevHand.type]}】`
   };
 };
+
