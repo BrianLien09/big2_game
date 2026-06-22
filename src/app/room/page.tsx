@@ -6,11 +6,11 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded } from "@/lib/roomService";
+import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Card, evaluateHand, validatePlay, getCardName } from "@/lib/big2Logic";
+import { Card, getCardName } from "@/lib/big2Logic";
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false);
@@ -56,6 +56,7 @@ function RoomContent() {
   const [error, setError] = useState<string>("");
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
   const [copied, setCopied] = useState<string>("");
+  const [loadingBot, setLoadingBot] = useState(false);
   const searchParams = useSearchParams();
 
   // 監聽手牌容器寬度以實現自適應重疊效果
@@ -206,10 +207,68 @@ function RoomContent() {
     };
   }, [roomId, nickname, router, searchParams, addToast]);
 
+  const isHost = uid && room?.players[uid] ? room.players[uid].isHost : false;
+  const isMeBot = uid && room?.players[uid] ? room.players[uid].isBot : false;
+  const roomStatus = room?.status;
+  const roomTurnUid = room?.turnUid;
+  const isCurrentPlayerBot = room?.turnUid && room?.players[room.turnUid] ? room.players[room.turnUid].isBot : false;
+
+  // 執行人機回合 (只在房主客戶端執行)
+  useEffect(() => {
+    if (roomStatus !== "playing") return;
+    if (!isHost || isMeBot) return;
+    if (!isCurrentPlayerBot || !roomTurnUid) return;
+
+    const expectedBotUid = roomTurnUid;
+
+    const timer = window.setTimeout(() => {
+      void executeBotTurn(roomId, expectedBotUid).catch(
+        error => console.error("Bot 回合失敗", error)
+      );
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    roomId,
+    roomStatus,
+    roomTurnUid,
+    isHost,
+    isMeBot,
+    isCurrentPlayerBot
+  ]);
+
   // ---- 操作函數 ----
   const handleToggleReady = () => {
     if (!uid || !room?.players[uid]) return;
     toggleReady(roomId, uid, !room.players[uid].isReady);
+  };
+
+  const handleAddBot = async () => {
+    if (!uid || !roomId || !room || loadingBot) return;
+    setLoadingBot(true);
+    try {
+      await addBot(roomId, uid);
+      addToast("已成功添加人機！", "success");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addToast(errMsg || "添加人機失敗", "error");
+    } finally {
+      setLoadingBot(false);
+    }
+  };
+
+  const handleKickBot = async (botUid: string) => {
+    if (!uid || !roomId || !room || loadingBot) return;
+    setLoadingBot(true);
+    try {
+      await removeBot(roomId, uid, botUid);
+      addToast("已成功移除人機！", "success");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addToast(errMsg || "移除人機失敗", "error");
+    } finally {
+      setLoadingBot(false);
+    }
   };
 
   const handleStart = () => {
@@ -271,79 +330,28 @@ function RoomContent() {
 
   const handlePlayCard = async () => {
     if (!uid || !room || !db) return;
-    const me = room.players[uid];
     if (room.turnUid !== uid) return;
 
-    // 檢查上一手牌是否存在且不是自己出的
-    const prevHandToCompare = room.lastPlayedUid && room.lastPlayedUid !== uid ? room.lastPlayedHand : null;
-    const validation = validatePlay(selectedCards, prevHandToCompare, room.firstPlayRequiredCardId);
-
-    if (!validation.allowed) {
-      addToast(validation.reason || "出牌不合法！", "error", 4000, {
-        suggestedType: validation.suggestedType
-      });
-      return;
+    try {
+      await commitPlayerPlay(roomId, uid, selectedCards);
+      setSelectedCards([]);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addToast(errMsg || "出牌失敗！", "error", 4000);
     }
-
-    const evaluated = evaluateHand(selectedCards)!;
-
-    const roomRef = doc(db, "rooms", roomId);
-    const currentIndex = room.playerOrder.indexOf(uid);
-    const nextUid = room.playerOrder[(currentIndex + 1) % room.playerOrder.length];
-    const remainingCards = me.cards.filter(c => !selectedCards.find(sc => sc.id === c.id));
-    const isWin = remainingCards.length === 0;
-
-    const updates: Record<string, unknown> = {
-      [`players.${uid}.cards`]: remainingCards,
-      lastPlayedHand: evaluated,
-      lastPlayedUid: uid,
-      turnUid: isWin ? null : nextUid,
-      passCount: 0,
-      updatedAt: serverTimestamp(),
-      expiresAt: getRoomExpirationTimestamp(),
-    };
-    if (room.firstPlayRequiredCardId) {
-      updates.firstPlayRequiredCardId = null;
-    }
-    room.playerOrder.forEach(pUid => { updates[`players.${pUid}.isPassed`] = false; });
-    if (isWin) {
-      updates.status = "finished";
-      updates.winnerUid = uid;
-      const currentWins = me.wins || 0;
-      updates[`players.${uid}.wins`] = currentWins + 1;
-    }
-
-    await updateDoc(roomRef, updates);
-    setSelectedCards([]);
   };
 
   const handlePass = async () => {
     if (!uid || !room || !db) return;
     if (room.turnUid !== uid) return;
-    if (!room.lastPlayedUid || room.lastPlayedUid === uid) {
-      addToast("你是這一輪的發起人，必須出牌，不能 Pass！", "warning");
-      return;
-    }
-    const roomRef = doc(db, "rooms", roomId);
-    const currentIndex = room.playerOrder.indexOf(uid);
-    const nextUid = room.playerOrder[(currentIndex + 1) % room.playerOrder.length];
-    const newPassCount = room.passCount + 1;
 
-    const updates: Record<string, unknown> = {
-      [`players.${uid}.isPassed`]: true,
-      turnUid: nextUid,
-      passCount: newPassCount,
-      updatedAt: serverTimestamp(),
-      expiresAt: getRoomExpirationTimestamp(),
-    };
-    if (newPassCount >= room.playerOrder.length - 1) {
-      updates.turnUid = room.lastPlayedUid;
-      updates.lastPlayedHand = null;
-      updates.passCount = 0;
-      room.playerOrder.forEach(pUid => { updates[`players.${pUid}.isPassed`] = false; });
+    try {
+      await commitPlayerPass(roomId, uid);
+      setSelectedCards([]);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addToast(errMsg || "Pass 失敗！", "error", 4000);
     }
-    await updateDoc(roomRef, updates);
-    setSelectedCards([]);
   };
 
   // ---- 錯誤 / 載入 ----
@@ -419,6 +427,9 @@ function RoomContent() {
                   {isMe && (
                     <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fff", color: "#2563eb", border: "2px solid #000", borderRadius: 999, padding: "1px 8px" }}>我</span>
                   )}
+                  {p.isBot && (
+                    <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#10b981", color: "#fff", border: "2px solid #000", borderRadius: 999, padding: "1px 8px" }}>BOT</span>
+                  )}
                   <span style={{
                     fontSize: "0.65rem", fontWeight: 800,
                     background: p.isReady ? "#dcfce7" : "#f3f4f6",
@@ -433,6 +444,31 @@ function RoomContent() {
                   🏆 勝場: {p.wins || 0}
                 </div>
               </div>
+              {me?.isHost && p.isBot && (
+                <button
+                  className="comic-btn"
+                  disabled={loadingBot}
+                  style={{
+                    marginLeft: "auto",
+                    padding: compact ? "4px 8px" : "6px 12px",
+                    fontSize: compact ? "0.75rem" : "0.8rem",
+                    background: "#ef4444",
+                    color: "#fff",
+                    border: "2px solid #000",
+                    borderRadius: 999,
+                    boxShadow: "1px 1px 0 #000",
+                    cursor: "pointer",
+                    transform: "none",
+                    marginRight: compact ? 4 : 8
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleKickBot(pUid);
+                  }}
+                >
+                  移除
+                </button>
+              )}
             </div>
           );
         })}
@@ -454,9 +490,31 @@ function RoomContent() {
               display: "grid", placeItems: "center",
               color: "#8f96a3", fontSize: compact ? "1.4rem" : "1.8rem", fontWeight: 900,
             }}>+</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
               <div style={{ fontWeight: 700, color: "#858b97", fontSize: compact ? "0.9rem" : "1rem" }}>等待玩家加入</div>
-              <div style={{ fontSize: compact ? "0.7rem" : "0.75rem", color: "#a4a9b2", fontWeight: 700 }}>尚未加入</div>
+              {me?.isHost ? (
+                <button
+                  className="comic-btn"
+                  disabled={loadingBot}
+                  style={{
+                    padding: compact ? "2px 8px" : "4px 10px",
+                    fontSize: compact ? "0.72rem" : "0.78rem",
+                    background: "#3b82f6",
+                    color: "#fff",
+                    border: "2px solid #000",
+                    borderRadius: 999,
+                    boxShadow: "1.5px 1.5px 0 #000",
+                    cursor: "pointer",
+                    transform: "none",
+                    marginTop: 2
+                  }}
+                  onClick={handleAddBot}
+                >
+                  🤖 添加人機
+                </button>
+              ) : (
+                <div style={{ fontSize: compact ? "0.7rem" : "0.75rem", color: "#a4a9b2", fontWeight: 700 }}>尚未加入</div>
+              )}
             </div>
           </div>
         ))}
@@ -706,6 +764,26 @@ function RoomContent() {
     <div key="game-play-view" className="game-page select-none">
       <style dangerouslySetInnerHTML={{
         __html: `
+        @keyframes turn-glow {
+          0%, 100% {
+            box-shadow: 0 0 4px #fbbf24, 2px 2px 0 #000;
+            outline: 2px solid transparent;
+          }
+          50% {
+            box-shadow: 0 0 12px #fbbf24, 2px 2px 0 #000;
+            outline: 3px solid #fbbf24;
+            outline-offset: 1px;
+          }
+        }
+        .opponent-active-avatar {
+          animation: turn-glow 1.5s infinite;
+          transform: scale(1.04) !important;
+          transition: all 0.2s ease;
+        }
+        .header-avatar-active {
+          animation: turn-glow 1.5s infinite;
+          border-color: #fbbf24 !important;
+        }
         /* ================= 桌面版 (Desktop: >= 901px) ================= */
         @media (min-width: 901px) {
           .game-page {
@@ -891,6 +969,7 @@ function RoomContent() {
             font-weight: 800;
           }
           .bottom-panel {
+            position: relative;
             height: 250px;
             display: grid;
             grid-template-rows: 82px 168px;
@@ -1412,14 +1491,14 @@ function RoomContent() {
           .opponent-left {
             position: absolute;
             left: 10px;
-            top: 48%;
-            transform: translateY(-50%);
+            top: 12px;
+            transform: none;
           }
           .opponent-right {
             position: absolute;
             right: 10px;
-            top: 48%;
-            transform: translateY(-50%);
+            top: 12px;
+            transform: none;
           }
           .opponent-name {
             width: auto;
@@ -1662,9 +1741,26 @@ function RoomContent() {
         {topPlayer ? (
           <div className="header-player">
             {topPlayer.avatarUrl && (
-              <img src={topPlayer.avatarUrl} alt="avatar" className="header-avatar" />
+              <img 
+                src={topPlayer.avatarUrl} 
+                alt="avatar" 
+                className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`} 
+              />
             )}
-            <div className="header-player-name comic-badge truncate">{topPlayer.nickname}</div>
+            <div 
+              className="header-player-name comic-badge truncate"
+              style={{
+                backgroundColor: room.turnUid === topPlayer.uid ? "#fef9c3" : "#fff",
+                borderColor: room.turnUid === topPlayer.uid ? "#fbbf24" : "#000",
+              }}
+            >
+              {topPlayer.nickname}
+            </div>
+            {room.turnUid === topPlayer.uid && topPlayer.isBot && (
+              <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] ml-1 animate-pulse">
+                思考中…
+              </span>
+            )}
             {topPlayer.isPassed && (
               <span className="text-[10px] font-black text-red-600 bg-red-50 border-[1.5px] border-red-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg] ml-1">
                 PASS
@@ -1690,14 +1786,32 @@ function RoomContent() {
         <div className="opponent opponent-left">
           {leftPlayer ? (
             <>
-              {leftPlayer.avatarUrl && (
-                <div className="opponent-avatar">
+              {leftPlayer.avatarUrl ? (
+                <div className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}>
                   <img src={leftPlayer.avatarUrl} alt="avatar" />
                 </div>
+              ) : (
+                <div 
+                  className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem" }}
+                >
+                  {leftPlayer.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                </div>
               )}
-              <div className="opponent-name comic-badge">
+              <div 
+                className="opponent-name comic-badge"
+                style={{
+                  backgroundColor: room.turnUid === leftPlayer.uid ? "#fef9c3" : "#fff",
+                  borderColor: room.turnUid === leftPlayer.uid ? "#fbbf24" : "#000",
+                }}
+              >
                 {leftPlayer.nickname}
               </div>
+              {room.turnUid === leftPlayer.uid && leftPlayer.isBot && (
+                <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] animate-pulse">
+                  思考中…
+                </span>
+              )}
               <div className="opponent-count">
                 <span>🂠 {leftPlayer.cards.length}</span>
               </div>
@@ -1736,14 +1850,32 @@ function RoomContent() {
         <div className="opponent opponent-right">
           {rightPlayer ? (
             <>
-              {rightPlayer.avatarUrl && (
-                <div className="opponent-avatar">
+              {rightPlayer.avatarUrl ? (
+                <div className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}>
                   <img src={rightPlayer.avatarUrl} alt="avatar" />
                 </div>
+              ) : (
+                <div 
+                  className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem" }}
+                >
+                  {rightPlayer.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                </div>
               )}
-              <div className="opponent-name comic-badge">
+              <div 
+                className="opponent-name comic-badge"
+                style={{
+                  backgroundColor: room.turnUid === rightPlayer.uid ? "#fef9c3" : "#fff",
+                  borderColor: room.turnUid === rightPlayer.uid ? "#fbbf24" : "#000",
+                }}
+              >
                 {rightPlayer.nickname}
               </div>
+              {room.turnUid === rightPlayer.uid && rightPlayer.isBot && (
+                <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg] animate-pulse">
+                  思考中…
+                </span>
+              )}
               <div className="opponent-count">
                 <span>🂠 {rightPlayer.cards.length}</span>
               </div>

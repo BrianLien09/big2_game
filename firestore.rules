@@ -23,19 +23,295 @@ service cloud.firestore {
           && resource.data.players.keys().hasAny([request.auth.uid]);
       }
 
+      function isHost() {
+        return isSignedIn()
+          && oldHasPlayers()
+          && request.auth.uid in resource.data.players
+          && resource.data.players[request.auth.uid].isHost == true;
+      }
+
+      function isBotPlayer(uid, playersMap) {
+        return uid in playersMap 
+          && 'isBot' in playersMap[uid] 
+          && playersMap[uid].isBot == true;
+      }
+
+      // 驗證玩家數量介於 1~4 人，且 playerOrder 與 players.keys() 的集合完全一致，且 order 無重複 UID
+      function hasValidPlayerStructure(playersMap, playerOrderList) {
+        let size = playerOrderList.size();
+        return size >= 1
+          && size <= 4
+          && size == playerOrderList.toSet().size()
+          && playerOrderList.toSet() == playersMap.keys().toSet();
+      }
+
+      // 確保房間中有且僅有一個房主，且該房主必須是真人玩家 (isBot == false)
+      function validateSingleRealHost(playersMap, playerOrderList) {
+        let size = playerOrderList.size();
+        return (
+          (size == 1 && playersMap[playerOrderList[0]].isHost == true && playersMap[playerOrderList[0]].isBot == false)
+          ||
+          (size == 2 && (
+            (playersMap[playerOrderList[0]].isHost == true && playersMap[playerOrderList[0]].isBot == false && playersMap[playerOrderList[1]].isHost == false)
+            ||
+            (playersMap[playerOrderList[1]].isHost == true && playersMap[playerOrderList[1]].isBot == false && playersMap[playerOrderList[0]].isHost == false)
+          ))
+          ||
+          (size == 3 && (
+            (playersMap[playerOrderList[0]].isHost == true && playersMap[playerOrderList[0]].isBot == false && playersMap[playerOrderList[1]].isHost == false && playersMap[playerOrderList[2]].isHost == false)
+            ||
+            (playersMap[playerOrderList[1]].isHost == true && playersMap[playerOrderList[1]].isBot == false && playersMap[playerOrderList[0]].isHost == false && playersMap[playerOrderList[2]].isHost == false)
+            ||
+            (playersMap[playerOrderList[2]].isHost == true && playersMap[playerOrderList[2]].isBot == false && playersMap[playerOrderList[0]].isHost == false && playersMap[playerOrderList[1]].isHost == false)
+          ))
+          ||
+          (size == 4 && (
+            (playersMap[playerOrderList[0]].isHost == true && playersMap[playerOrderList[0]].isBot == false && playersMap[playerOrderList[1]].isHost == false && playersMap[playerOrderList[2]].isHost == false && playersMap[playerOrderList[3]].isHost == false)
+            ||
+            (playersMap[playerOrderList[1]].isHost == true && playersMap[playerOrderList[1]].isBot == false && playersMap[playerOrderList[0]].isHost == false && playersMap[playerOrderList[2]].isHost == false && playersMap[playerOrderList[3]].isHost == false)
+            ||
+            (playersMap[playerOrderList[2]].isHost == true && playersMap[playerOrderList[2]].isBot == false && playersMap[playerOrderList[0]].isHost == false && playersMap[playerOrderList[1]].isHost == false && playersMap[playerOrderList[3]].isHost == false)
+            ||
+            (playersMap[playerOrderList[3]].isHost == true && playersMap[playerOrderList[3]].isBot == false && playersMap[playerOrderList[0]].isHost == false && playersMap[playerOrderList[1]].isHost == false && playersMap[playerOrderList[2]].isHost == false)
+          ))
+        );
+      }
+
+      // 確保沒有 Bot 成為房主
+      function hasNoBotHost(playersMap, playerOrderList) {
+        let size = playerOrderList.size();
+        return (
+          (size < 1 || (playersMap[playerOrderList[0]].isHost == false || !isBotPlayer(playerOrderList[0], playersMap)))
+          &&
+          (size < 2 || (playersMap[playerOrderList[1]].isHost == false || !isBotPlayer(playerOrderList[1], playersMap)))
+          &&
+          (size < 3 || (playersMap[playerOrderList[2]].isHost == false || !isBotPlayer(playerOrderList[2], playersMap)))
+          &&
+          (size < 4 || (playersMap[playerOrderList[3]].isHost == false || !isBotPlayer(playerOrderList[3], playersMap)))
+        );
+      }
+
+      // 重設 isPassed 時，限定新值必須是 false，防堵普通玩家作弊將別人 isPassed 設為 true
+      function isPlayerUnchangedExceptPassed(uid, oldPlayers, newPlayers) {
+        return !(uid in newPlayers) 
+          || newPlayers[uid] == oldPlayers[uid] 
+          || (newPlayers[uid].diff(oldPlayers[uid]).affectedKeys().hasOnly(['isPassed']) && newPlayers[uid].isPassed == false);
+      }
+
+      function validateRealPlayersUnchangedExceptSelf() {
+        let order = resource.data.playerOrder;
+        let size = order.size();
+        let oldPlayers = resource.data.players;
+        let newPlayers = request.resource.data.players;
+        return (
+          (size < 1 || (order[0].matches('^bot_.*') || order[0] == request.auth.uid || isPlayerUnchangedExceptPassed(order[0], oldPlayers, newPlayers)))
+          &&
+          (size < 2 || (order[1].matches('^bot_.*') || order[1] == request.auth.uid || isPlayerUnchangedExceptPassed(order[1], oldPlayers, newPlayers)))
+          &&
+          (size < 3 || (order[2].matches('^bot_.*') || order[2] == request.auth.uid || isPlayerUnchangedExceptPassed(order[2], oldPlayers, newPlayers)))
+          &&
+          (size < 4 || (order[3].matches('^bot_.*') || order[3] == request.auth.uid || isPlayerUnchangedExceptPassed(order[3], oldPlayers, newPlayers)))
+        );
+      }
+
+      function validatePlayersUnchangedExceptSelfAndPassed() {
+        let order = resource.data.playerOrder;
+        let size = order.size();
+        let oldPlayers = resource.data.players;
+        let newPlayers = request.resource.data.players;
+        return (
+          (size < 1 || (order[0] == request.auth.uid || isPlayerUnchangedExceptPassed(order[0], oldPlayers, newPlayers)))
+          &&
+          (size < 2 || (order[1] == request.auth.uid || isPlayerUnchangedExceptPassed(order[1], oldPlayers, newPlayers)))
+          &&
+          (size < 3 || (order[2] == request.auth.uid || isPlayerUnchangedExceptPassed(order[2], oldPlayers, newPlayers)))
+          &&
+          (size < 4 || (order[3] == request.auth.uid || isPlayerUnchangedExceptPassed(order[3], oldPlayers, newPlayers)))
+        );
+      }
+
+      function validateRealPlayersUnchanged() {
+        let order = resource.data.playerOrder;
+        let size = order.size();
+        let oldPlayers = resource.data.players;
+        let newPlayers = request.resource.data.players;
+        return (
+          (size < 1 || (order[0].matches('^bot_.*') || (order[0] in newPlayers && newPlayers[order[0]] == oldPlayers[order[0]])))
+          &&
+          (size < 2 || (order[1].matches('^bot_.*') || (order[1] in newPlayers && newPlayers[order[1]] == oldPlayers[order[1]])))
+          &&
+          (size < 3 || (order[2].matches('^bot_.*') || (order[2] in newPlayers && newPlayers[order[2]] == oldPlayers[order[2]])))
+          &&
+          (size < 4 || (order[3].matches('^bot_.*') || (order[3] in newPlayers && newPlayers[order[3]] == oldPlayers[order[3]])))
+        );
+      }
+
+      function validateNewPlayersAreBots() {
+        let order = request.resource.data.playerOrder;
+        let size = order.size();
+        let oldPlayers = resource.data.players;
+        let newPlayers = request.resource.data.players;
+        return (
+          (size < 1 || (order[0] in oldPlayers || (order[0].matches('^bot_.*') && newPlayers[order[0]].isBot == true && newPlayers[order[0]].isHost == false)))
+          &&
+          (size < 2 || (order[1] in oldPlayers || (order[1].matches('^bot_.*') && newPlayers[order[1]].isBot == true && newPlayers[order[1]].isHost == false)))
+          &&
+          (size < 3 || (order[2] in oldPlayers || (order[2].matches('^bot_.*') && newPlayers[order[2]].isBot == true && newPlayers[order[2]].isHost == false)))
+          &&
+          (size < 4 || (order[3] in oldPlayers || (order[3].matches('^bot_.*') && newPlayers[order[3]].isBot == true && newPlayers[order[3]].isHost == false)))
+        );
+      }
+
+      function validateTransferRealPlayersUnchanged(oldPlayers, newPlayers, oldOrder, newHostUid, oldHostUid) {
+        let size = oldOrder.size();
+        return (
+          (size < 1 || oldOrder[0] == oldHostUid || oldOrder[0] == newHostUid || newPlayers[oldOrder[0]] == oldPlayers[oldOrder[0]])
+          &&
+          (size < 2 || oldOrder[1] == oldHostUid || oldOrder[1] == newHostUid || newPlayers[oldOrder[1]] == oldPlayers[oldOrder[1]])
+          &&
+          (size < 3 || oldOrder[2] == oldHostUid || oldOrder[2] == newHostUid || newPlayers[oldOrder[2]] == oldPlayers[oldOrder[2]])
+          &&
+          (size < 4 || oldOrder[3] == oldHostUid || oldOrder[3] == newHostUid || newPlayers[oldOrder[3]] == oldPlayers[oldOrder[3]])
+        );
+      }
+
+      // 1. 新玩家加入
       function isJoiningSelf() {
         return isSignedIn()
-          && newHasPlayers()
-          && request.resource.data.players.keys().hasAny([request.auth.uid])
+          && oldHasPlayers()
+          && resource.data.status == "waiting"
+          && !(request.auth.uid in resource.data.players)
+          && resource.data.playerOrder.size() < 4
+          && request.auth.uid in request.resource.data.players
+          && request.resource.data.players[request.auth.uid].isBot == false
+          && request.resource.data.players[request.auth.uid].isHost == false
+          && (!('uid' in request.resource.data.players[request.auth.uid]) || request.resource.data.players[request.auth.uid].uid == request.auth.uid)
+          && request.resource.data.playerOrder == resource.data.playerOrder.concat([request.auth.uid])
+          && request.resource.data.players.diff(resource.data.players).affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt']);
+      }
+
+      // 2. 玩家主動退出 (非解散，房間還有其他真人)
+      function isLeavingSelf() {
+        let myUid = request.auth.uid;
+        let newPlayers = request.resource.data.players;
+        let oldPlayers = resource.data.players;
+        return isSignedIn()
+          && oldHasPlayers()
+          && myUid in oldPlayers
+          && oldPlayers[myUid].isHost == false
+          && !(myUid in newPlayers)
+          && request.resource.data.playerOrder == resource.data.playerOrder.removeAll([myUid])
           && (
-            !oldHasPlayers()
-            || !resource.data.players.keys().hasAny([request.auth.uid])
+            // case 1: waiting 狀態下退出
+            (resource.data.status == 'waiting'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt'])
+              && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
+            )
+            ||
+            // case 2: playing 狀態下退出
+            (resource.data.status == 'playing'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt'])
+              && (
+                // 剩下一人，遊戲結束
+                (request.resource.data.status == 'finished'
+                  && request.resource.data.winnerUid != null
+                  && request.resource.data.winnerUid in oldPlayers
+                  && request.resource.data.winnerUid != myUid
+                  && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid, request.resource.data.winnerUid])
+                  && (newPlayers[request.resource.data.winnerUid] == oldPlayers[request.resource.data.winnerUid] || (newPlayers[request.resource.data.winnerUid].diff(oldPlayers[request.resource.data.winnerUid]).affectedKeys().hasOnly(['wins']) && newPlayers[request.resource.data.winnerUid].wins == oldPlayers[request.resource.data.winnerUid].wins + 1))
+                )
+                ||
+                // 剩下多於一人，遊戲繼續
+                (request.resource.data.status == 'playing'
+                  && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
+                )
+              )
+            )
           );
       }
 
-      function isLastPlayer() {
+      // 3. 房主退出與轉移房主
+      function isHostLeavingAndTransferring() {
+        let oldHostUid = request.auth.uid;
+        let newOrder = request.resource.data.playerOrder;
+        let newSize = newOrder.size();
+        return isSignedIn()
+          && oldHasPlayers()
+          && oldHostUid in resource.data.players
+          && resource.data.players[oldHostUid].isHost == true
+          && !(oldHostUid in request.resource.data.players)
+          && request.resource.data.playerOrder == resource.data.playerOrder.removeAll([oldHostUid])
+          && newSize >= 1
+          && (
+            // case 1: waiting 狀態下退出
+            (resource.data.status == 'waiting'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt'])
+              && validateTransferRealPlayersUnchanged(resource.data.players, request.resource.data.players, resource.data.playerOrder, (newSize == 1 ? newOrder[0] : (newSize == 2 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : newOrder[1]) : (newSize == 3 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : (request.resource.data.players[newOrder[1]].isHost ? newOrder[1] : newOrder[2])) : null))), oldHostUid)
+              && request.resource.data.players[(newSize == 1 ? newOrder[0] : (newSize == 2 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : newOrder[1]) : (newSize == 3 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : (request.resource.data.players[newOrder[1]].isHost ? newOrder[1] : newOrder[2])) : null)))].isBot == false
+            )
+            ||
+            // case 2: playing 狀態下退出
+            (resource.data.status == 'playing'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt'])
+              && request.resource.data.players[(newSize == 1 ? newOrder[0] : (newSize == 2 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : newOrder[1]) : (newSize == 3 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : (request.resource.data.players[newOrder[1]].isHost ? newOrder[1] : newOrder[2])) : null)))].isBot == false
+            )
+          );
+      }
+
+      // 4. 房主在大廳 (waiting 狀態) 新增/移除 Bot
+      function isHostBotManagement() {
+        return isSignedIn()
+          && oldHasPlayers()
+          && resource.data.status == "waiting"
+          && request.auth.uid in resource.data.players
+          && resource.data.players[request.auth.uid].isHost == true
+          && resource.data.players[request.auth.uid].isBot == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt'])
+          && request.resource.data.playerOrder.size() >= 1
+          && request.resource.data.playerOrder.size() <= 4
+          && validateRealPlayersUnchanged()
+          && validateNewPlayersAreBots();
+      }
+
+      // 5. 真人/房主在線進行遊戲操作 (準備、出牌、轉玩等)
+      function isValidGameUpdate() {
+        let newStatus = request.resource.data.get("status", "waiting");
+        let winner = request.resource.data.get("winnerUid", null);
+        return isSignedIn()
+          && oldHasPlayers()
+          && request.auth.uid in resource.data.players
+          && resource.data.players[request.auth.uid].isBot == false
+          // 嚴格限制：遊戲更新時不能增減或重排玩家
+          && request.resource.data.playerOrder == resource.data.playerOrder
+          && request.resource.data.players.keys().toSet() == resource.data.players.keys().toSet()
+          // 限制修改的欄位清單
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'status', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'winnerUid', 'firstPlayRequiredCardId', 'updatedAt', 'expiresAt'])
+          // winnerUid 必須是合法玩家
+          && (winner == null || winner in request.resource.data.players)
+          // 只有當 winnerUid 的卡牌出完時，才允許將狀態設為 finished 並宣告獲勝
+          && (newStatus != "finished" || (winner != null && request.resource.data.players[winner].cards.size() == 0))
+          // 確保任何時候都不能將自己的 isBot 改成 true
+          && (!(request.auth.uid in request.resource.data.players) || request.resource.data.players[request.auth.uid].isBot == false)
+          // 房主與普通玩家對其他玩家修改的限制
+          && (resource.data.players[request.auth.uid].isHost == true ? validateRealPlayersUnchangedExceptSelf() : validatePlayersUnchangedExceptSelfAndPassed());
+      }
+
+      // 刪除房間條件：除了自己之外，所有其餘玩家都必須為 Bot
+      function isLastRealPlayer() {
+        let order = resource.data.playerOrder;
+        let size = order.size();
+        let players = resource.data.players;
         return isExistingPlayer()
-          && resource.data.players.keys().size() == 1;
+          && (
+            (size < 1 || order[0] == request.auth.uid || players[order[0]].isBot == true)
+            &&
+            (size < 2 || order[1] == request.auth.uid || players[order[1]].isBot == true)
+            &&
+            (size < 3 || order[2] == request.auth.uid || players[order[2]].isBot == true)
+            &&
+            (size < 4 || order[3] == request.auth.uid || players[order[3]].isBot == true)
+          );
       }
 
       function isExpired() {
@@ -47,67 +323,43 @@ service cloud.firestore {
       /* 已登入使用者可讀取房間，以便用房號加入 */
       allow read: if isSignedIn();
 
-      /*
-       * 建立房間：
-       * - 必須登入
-       * - 建立者必須出現在 players
-       * - 建立者必須出現在 playerOrder
-       * - 必須有必要時間欄位
-       */
+      /* 建立房間：必須登入，且初始必須有必要的結構 */
       allow create: if isSignedIn()
         && 'players' in request.resource.data
         && 'playerOrder' in request.resource.data
+        && 'status' in request.resource.data
         && 'createdAt' in request.resource.data
         && 'updatedAt' in request.resource.data
         && 'expiresAt' in request.resource.data
-        && request.resource.data.players.keys()
-             .hasAny([request.auth.uid])
-        && request.resource.data.playerOrder
-             .hasAny([request.auth.uid])
-        && request.resource.data.players[request.auth.uid].isHost == true;
+        && request.resource.data.status == "waiting"
+        && request.resource.data.players.keys().size() == 1
+        && request.resource.data.players.keys().hasOnly([request.auth.uid])
+        && request.resource.data.playerOrder == [request.auth.uid]
+        && request.resource.data.players[request.auth.uid].isHost == true
+        && request.resource.data.players[request.auth.uid].isBot == false
+        && (!('uid' in request.resource.data.players[request.auth.uid]) || request.resource.data.players[request.auth.uid].uid == request.auth.uid)
+        && hasValidPlayerStructure(request.resource.data.players, request.resource.data.playerOrder)
+        && validateSingleRealHost(request.resource.data.players, request.resource.data.playerOrder);
 
-      /*
-       * 更新分成兩種：
-       *
-       * A. 原本已經在房間內的玩家
-       *    可執行遊戲、準備、退出及房主轉移。
-       *
-       * B. 新玩家加入
-       *    只能改 players、playerOrder、updatedAt、expiresAt，
-       *    防止加入時順便篡改牌局或勝場。
-       */
-      allow update: if isSignedIn() && (
-        isExistingPlayer()
-        ||
-        (
-          isJoiningSelf()
-          && request.resource.data
-               .diff(resource.data)
-               .affectedKeys()
-               .hasOnly([
-                 'players',
-                 'playerOrder',
-                 'updatedAt',
-                 'expiresAt'
-               ])
-        )
-      );
+      /* 更新房間 */
+      allow update: if (
+        isJoiningSelf()
+        || isLeavingSelf()
+        || isHostLeavingAndTransferring()
+        || isHostBotManagement()
+        || isValidGameUpdate()
+      )
+      && hasNoBotHost(request.resource.data.players, request.resource.data.playerOrder);
 
-      /*
-       * 刪除：
-       * A. 房間最後一位玩家可以刪除房間
-       * B. 任何登入使用者可以刪除已過期房間
-       */
+      /* 刪除房間 */
       allow delete: if isSignedIn() && (
-        isLastPlayer()
+        isLastRealPlayer()
         || isExpired()
       );
     }
 
     match /users/{userId} {
-      /* 已登入的使用者可以讀取其他玩家的暱稱資訊 */
       allow read: if request.auth != null;
-      /* 僅限使用者本人可以修改自己的暱稱與更新時間 */
       allow write: if request.auth != null && request.auth.uid == userId;
     }
   }

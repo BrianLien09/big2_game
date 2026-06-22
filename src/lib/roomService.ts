@@ -1,9 +1,11 @@
 import { db } from './firebase';
 import { 
   doc, setDoc, getDoc, updateDoc, onSnapshot, serverTimestamp,
-  Timestamp, runTransaction, writeBatch, query, where, limit, getDocs, collection 
+  Timestamp, runTransaction, writeBatch, query, where, limit, getDocs, collection,
+  Transaction, DocumentReference
 } from 'firebase/firestore';
-import { Card, PlayedHand, createDeck, shuffleDeck, sortCards, compareSingleCard } from './big2Logic';
+import { Card, PlayedHand, createDeck, shuffleDeck, sortCards, compareSingleCard, validatePlay, evaluateHand } from './big2Logic';
+import { selectBotAction } from './botLogic';
 
 export interface Player {
   uid: string;
@@ -14,6 +16,7 @@ export interface Player {
   isPassed: boolean;
   wins: number;
   avatarUrl?: string;
+  isBot: boolean; // 新增 isBot 欄位
 }
 
 export interface RoomState {
@@ -60,7 +63,8 @@ export const createRoom = async (roomId: string, hostUid: string, hostNickname: 
         isHost: true,
         isPassed: false,
         wins: 0,
-        avatarUrl: hostAvatarUrl
+        avatarUrl: hostAvatarUrl,
+        isBot: false // 真人玩家明確設定
       }
     },
     status: 'waiting',
@@ -121,7 +125,8 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
       isHost: false,
       isPassed: false,
       wins: 0,
-      avatarUrl
+      avatarUrl,
+      isBot: false // 真人玩家明確設定
     };
     
     transaction.update(roomRef, {
@@ -232,29 +237,24 @@ export const leaveRoom = async (roomId: string, uid: string) => {
       return;
     }
 
-    const wasHost = updatedPlayers[uid].isHost;
     delete updatedPlayers[uid];
     
     const updatedOrder = roomData.playerOrder.filter(id => id !== uid);
 
-    // 如果沒有玩家了，直接徹底刪除房間 (1次刪除)
-    if (updatedOrder.length === 0) {
+    // 如果沒有真人玩家了，直接徹底刪除房間 (1次刪除)
+    const hasRealPlayers = updatedOrder.some(id => !updatedPlayers[id]?.isBot);
+    if (!hasRealPlayers) {
       transaction.delete(roomRef);
       return;
     }
 
-    // 房主轉移：如果退出者是房主，將 playerOrder 第一位玩家設為新房主
-    if (wasHost) {
-      const newHostUid = updatedOrder[0];
-      if (updatedPlayers[newHostUid]) {
-        updatedPlayers[newHostUid] = { ...updatedPlayers[newHostUid], isHost: true };
-      }
-    }
+    // 房主轉移：新房主只能從剩餘的真人玩家中選擇
+    const nextHostUid = updatedOrder.find(id => !updatedPlayers[id]?.isBot);
 
-    // 確保其他玩家的 isHost 都是 false 且只有第一位是房主
-    updatedOrder.forEach((id, idx) => {
+    // 確保其他玩家的 isHost 都是 false，只有選中的真人是房主
+    updatedOrder.forEach((id) => {
       if (updatedPlayers[id]) {
-        updatedPlayers[id].isHost = (idx === 0);
+        updatedPlayers[id].isHost = (id === nextHostUid);
       }
     });
 
@@ -280,9 +280,13 @@ export const leaveRoom = async (roomId: string, uid: string) => {
         // 如果目前 turnUid 是退出者，將回合交給下一位仍在線的玩家
         if (roomData.turnUid === uid) {
           const idx = roomData.playerOrder.indexOf(uid);
-          const rawNextUid = roomData.playerOrder[(idx + 1) % roomData.playerOrder.length];
-          const nextTurnUid = updatedOrder.includes(rawNextUid) ? rawNextUid : updatedOrder[0];
-          updates.turnUid = nextTurnUid;
+          let nextIdx = (idx + 1) % roomData.playerOrder.length;
+          let nextUid = roomData.playerOrder[nextIdx];
+          while (!updatedOrder.includes(nextUid)) {
+            nextIdx = (nextIdx + 1) % roomData.playerOrder.length;
+            nextUid = roomData.playerOrder[nextIdx];
+          }
+          updates.turnUid = nextUid;
         }
 
         // 如果退出者是最後出牌者 lastPlayedUid，清空該輪出牌狀態
@@ -416,3 +420,302 @@ export async function cleanupLegacyRoomsOnce(): Promise<number> {
     throw error;
   }
 }
+
+// ==========================================
+// Bot (人機) 相關服務與共用出牌/Pass 邏輯
+// ==========================================
+
+// 新增人機 (Transaction)
+export const addBot = async (
+  roomId: string,
+  hostUid: string,
+  nickname?: string
+): Promise<string> => {
+  if (!db) throw new Error("Firebase DB not initialized");
+  const roomRef = doc(db, 'rooms', roomId);
+  return await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error("房間不存在");
+    const roomData = roomSnap.data() as RoomState;
+    
+    // 1. 檢查呼叫者是否存在且為房主
+    const caller = roomData.players[hostUid];
+    if (!caller || !caller.isHost) {
+      throw new Error("只有房主可以添加人機");
+    }
+
+    // 2. 檢查房間狀態
+    if (roomData.status !== 'waiting') {
+      throw new Error("只能在等待大廳添加人機");
+    }
+
+    // 3. 檢查玩家數限制
+    if (roomData.playerOrder.length >= 4) {
+      throw new Error("房間已滿 (最多4人)");
+    }
+
+    // 4. 決定暱稱，防重複
+    let chosenName = nickname;
+    if (!chosenName) {
+      const botNames = ["呆萌水豚", "天才水豚", "大老二水豚", "墨鏡水豚", "溫泉水豚", "橘子水豚", "紳士水豚"];
+      const existingNames = Object.values(roomData.players).map(p => p.nickname);
+      const availableNames = botNames.filter(name => !existingNames.includes(`🤖 ${name}`));
+      const selectedName = availableNames.length > 0 
+        ? availableNames[Math.floor(Math.random() * availableNames.length)] 
+        : `水豚人機 ${Math.floor(Math.random() * 100)}`;
+      chosenName = `🤖 ${selectedName}`;
+    } else {
+      if (Object.values(roomData.players).some(p => p.nickname === chosenName)) {
+        throw new Error("人機暱稱重複");
+      }
+    }
+
+    // 5. 產生 UID (bot_ 前綴)
+    let botUid;
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      botUid = `bot_${crypto.randomUUID()}`;
+    } else {
+      botUid = `bot_${Date.now()}_${Math.floor(Math.random() * 1000000).toString(36)}`;
+    }
+
+    const newBot: Player = {
+      uid: botUid,
+      nickname: chosenName,
+      avatarUrl: "",
+      isBot: true,
+      isHost: false,
+      isReady: true, // Bot 預設已準備
+      isPassed: false,
+      cards: [],
+      wins: 0
+    };
+
+    transaction.update(roomRef, {
+      [`players.${botUid}`]: newBot,
+      playerOrder: [...roomData.playerOrder, botUid],
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp()
+    });
+
+    return botUid;
+  });
+};
+
+// 移除人機 (Transaction)
+export const removeBot = async (
+  roomId: string,
+  hostUid: string,
+  botUid: string
+): Promise<void> => {
+  if (!db) throw new Error("Firebase DB not initialized");
+  const roomRef = doc(db, 'rooms', roomId);
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error("房間不存在");
+    const roomData = roomSnap.data() as RoomState;
+
+    // 1. 檢查呼叫者是否為房主
+    const caller = roomData.players[hostUid];
+    if (!caller || !caller.isHost) {
+      throw new Error("只有房主可以移除人機");
+    }
+
+    // 2. 檢查房間狀態
+    if (roomData.status !== 'waiting') {
+      throw new Error("只能在等待大廳移除人機");
+    }
+
+    // 3. 檢查目標玩家
+    const targetPlayer = roomData.players[botUid];
+    if (!targetPlayer) {
+      throw new Error("目標人機不存在於房間");
+    }
+
+    if (!targetPlayer.isBot) {
+      throw new Error("不允許透過此函式移除真人玩家");
+    }
+
+    const updatedPlayers = { ...roomData.players };
+    delete updatedPlayers[botUid];
+    const updatedOrder = roomData.playerOrder.filter(id => id !== botUid);
+
+    transaction.update(roomRef, {
+      players: updatedPlayers,
+      playerOrder: updatedOrder,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp()
+    });
+  });
+};
+
+// 共用出牌 Transaction Helper
+export const commitPlayerPlayTx = (
+  transaction: Transaction,
+  roomRef: DocumentReference,
+  roomData: RoomState,
+  playerUid: string,
+  cards: Card[]
+) => {
+  if (roomData.status !== 'playing') {
+    throw new Error("遊戲尚未開始或已結束");
+  }
+  if (roomData.turnUid !== playerUid) {
+    throw new Error("不是該玩家的回合");
+  }
+
+  const player = roomData.players[playerUid];
+  if (!player) {
+    throw new Error("玩家不存在於此房間");
+  }
+
+  // 驗證出牌合法性
+  const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== playerUid ? roomData.lastPlayedHand : null;
+  const validation = validatePlay(cards, prevHandToCompare, roomData.firstPlayRequiredCardId);
+  if (!validation.allowed) {
+    throw new Error(validation.reason || "出牌不合法");
+  }
+
+  const evaluated = evaluateHand(cards);
+  if (!evaluated) {
+    throw new Error("無法估算牌型");
+  }
+
+  // 扣除手牌
+  const remainingCards = player.cards.filter(c => !cards.find(sc => sc.id === c.id));
+  const isWin = remainingCards.length === 0;
+
+  // 下一個玩家
+  const currentIndex = roomData.playerOrder.indexOf(playerUid);
+  const nextUid = roomData.playerOrder[(currentIndex + 1) % roomData.playerOrder.length];
+
+  const updates: Record<string, unknown> = {
+    [`players.${playerUid}.cards`]: remainingCards,
+    lastPlayedHand: evaluated,
+    lastPlayedUid: playerUid,
+    turnUid: isWin ? null : nextUid,
+    passCount: 0,
+    updatedAt: serverTimestamp(),
+    expiresAt: getRoomExpirationTimestamp()
+  };
+
+  if (roomData.firstPlayRequiredCardId) {
+    updates.firstPlayRequiredCardId = null;
+  }
+
+  roomData.playerOrder.forEach(pUid => {
+    updates[`players.${pUid}.isPassed`] = false;
+  });
+
+  if (isWin) {
+    updates.status = "finished";
+    updates.winnerUid = playerUid;
+    updates[`players.${playerUid}.wins`] = (player.wins || 0) + 1;
+  }
+
+  transaction.update(roomRef, updates);
+};
+
+// 共用 Pass Transaction Helper
+export const commitPlayerPassTx = (
+  transaction: Transaction,
+  roomRef: DocumentReference,
+  roomData: RoomState,
+  playerUid: string
+) => {
+  if (roomData.status !== 'playing') {
+    throw new Error("遊戲尚未開始或已結束");
+  }
+  if (roomData.turnUid !== playerUid) {
+    throw new Error("不是該玩家的回合");
+  }
+  if (!roomData.lastPlayedUid || roomData.lastPlayedUid === playerUid) {
+    throw new Error("該玩家是這一輪的發起人，必須出牌，不能 Pass");
+  }
+
+  const currentIndex = roomData.playerOrder.indexOf(playerUid);
+  const nextUid = roomData.playerOrder[(currentIndex + 1) % roomData.playerOrder.length];
+  const newPassCount = roomData.passCount + 1;
+
+  const updates: Record<string, unknown> = {
+    [`players.${playerUid}.isPassed`]: true,
+    turnUid: nextUid,
+    passCount: newPassCount,
+    updatedAt: serverTimestamp(),
+    expiresAt: getRoomExpirationTimestamp()
+  };
+
+  if (newPassCount >= roomData.playerOrder.length - 1) {
+    updates.turnUid = roomData.lastPlayedUid;
+    updates.lastPlayedHand = null;
+    updates.passCount = 0;
+    roomData.playerOrder.forEach(pUid => {
+      updates[`players.${pUid}.isPassed`] = false;
+    });
+  }
+
+  transaction.update(roomRef, updates);
+};
+
+// 真人呼叫的 Exported 出牌服務
+export const commitPlayerPlay = async (
+  roomId: string,
+  playerUid: string,
+  cards: Card[]
+): Promise<void> => {
+  if (!db) throw new Error("Firebase DB not initialized");
+  const roomRef = doc(db, 'rooms', roomId);
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error("房間不存在");
+    const roomData = roomSnap.data() as RoomState;
+    commitPlayerPlayTx(transaction, roomRef, roomData, playerUid, cards);
+  });
+};
+
+// 真人呼叫的 Exported Pass 服務
+export const commitPlayerPass = async (
+  roomId: string,
+  playerUid: string
+): Promise<void> => {
+  if (!db) throw new Error("Firebase DB not initialized");
+  const roomRef = doc(db, 'rooms', roomId);
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error("房間不存在");
+    const roomData = roomSnap.data() as RoomState;
+    commitPlayerPassTx(transaction, roomRef, roomData, playerUid);
+  });
+};
+
+// 執行人機回合 (Transaction，具備冪等性)
+export const executeBotTurn = async (
+  roomId: string,
+  botUid: string
+): Promise<void> => {
+  if (!db) throw new Error("Firebase DB not initialized");
+  const roomRef = doc(db, 'rooms', roomId);
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error("房間不存在");
+    const roomData = roomSnap.data() as RoomState;
+
+    // 驗證回合以及狀態是否一致，確保冪等性
+    if (roomData.status !== 'playing' || roomData.turnUid !== botUid) {
+      return; // 狀態已改變，直接忽略以防重複出牌
+    }
+
+    const botPlayer = roomData.players[botUid];
+    if (!botPlayer || !botPlayer.isBot) {
+      return; // 確保是人機玩家
+    }
+
+    const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== botUid ? roomData.lastPlayedHand : null;
+    const action = selectBotAction(botPlayer.cards, prevHandToCompare, roomData.firstPlayRequiredCardId || null);
+
+    if (action.type === 'play') {
+      commitPlayerPlayTx(transaction, roomRef, roomData, botUid, action.cards);
+    } else {
+      commitPlayerPassTx(transaction, roomRef, roomData, botUid);
+    }
+  });
+};
