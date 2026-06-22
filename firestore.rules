@@ -216,45 +216,51 @@ service cloud.firestore {
            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt']);
        }
 
-      // 2. 玩家主動退出 (非解散，房間還有其他真人)
-      function isLeavingSelf() {
-        let myUid = request.auth.uid;
-        let newPlayers = request.resource.data.players;
-        let oldPlayers = resource.data.players;
-        return isSignedIn()
-          && oldHasPlayers()
-          && myUid in oldPlayers
-          && oldPlayers[myUid].isHost == false
-          && !(myUid in newPlayers)
-          && request.resource.data.playerOrder == resource.data.playerOrder.removeAll([myUid])
-          && (
-            // case 1: waiting 狀態下退出
-            (resource.data.status == 'waiting'
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt'])
-              && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
-            )
-            ||
-            // case 2: playing 狀態下退出
-            (resource.data.status == 'playing'
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt'])
-              && (
-                // 剩下一人，遊戲結束
-                (request.resource.data.status == 'finished'
-                  && request.resource.data.winnerUid != null
-                  && request.resource.data.winnerUid in oldPlayers
-                  && request.resource.data.winnerUid != myUid
-                  && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid, request.resource.data.winnerUid])
-                  && (newPlayers[request.resource.data.winnerUid] == oldPlayers[request.resource.data.winnerUid] || (newPlayers[request.resource.data.winnerUid].diff(oldPlayers[request.resource.data.winnerUid]).affectedKeys().hasOnly(['wins']) && newPlayers[request.resource.data.winnerUid].wins == oldPlayers[request.resource.data.winnerUid].wins + 1))
-                )
-                ||
-                // 剩下多於一人，遊戲繼續
-                (request.resource.data.status == 'playing'
-                  && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
-                )
-              )
-            )
-          );
-      }
+       // 2. 玩家主動退出 (非解散，房間還有其他真人)
+       function isLeavingSelf() {
+         let myUid = request.auth.uid;
+         let newPlayers = request.resource.data.players;
+         let oldPlayers = resource.data.players;
+         return isSignedIn()
+           && oldHasPlayers()
+           && myUid in oldPlayers
+           && oldPlayers[myUid].isHost == false
+           && !(myUid in newPlayers)
+           && request.resource.data.playerOrder == resource.data.playerOrder.removeAll([myUid])
+           && (
+             // case 1: waiting 狀態下退出
+             (resource.data.status == 'waiting'
+               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt'])
+               && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
+             )
+             ||
+             // case 2: playing 狀態下退出
+             (resource.data.status == 'playing'
+               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt'])
+               && (
+                 // 剩下一人，遊戲結束
+                 (request.resource.data.status == 'finished'
+                   && request.resource.data.winnerUid != null
+                   && request.resource.data.winnerUid in oldPlayers
+                   && request.resource.data.winnerUid != myUid
+                   && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid, request.resource.data.winnerUid])
+                   && (newPlayers[request.resource.data.winnerUid] == oldPlayers[request.resource.data.winnerUid] || (newPlayers[request.resource.data.winnerUid].diff(oldPlayers[request.resource.data.winnerUid]).affectedKeys().hasOnly(['wins']) && newPlayers[request.resource.data.winnerUid].wins == oldPlayers[request.resource.data.winnerUid].wins + 1))
+                 )
+                 ||
+                 // 剩下多於一人，遊戲繼續
+                 (request.resource.data.status == 'playing'
+                   && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
+                 )
+               )
+             )
+             ||
+             // case 3: finished 狀態下退出（遊戲已結束，正常退出）
+             (resource.data.status == 'finished'
+               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt'])
+               && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
+             )
+           );
+       }
 
       // 3. 房主退出與轉移房主
       function isHostLeavingAndTransferring() {

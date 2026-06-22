@@ -714,35 +714,48 @@ function RoomContent() {
           <p style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "2rem" }}>
             贏家：{room.players[room.winnerUid!]?.nickname}
           </p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-            {me?.isHost ? (
-              <button className="comic-btn" style={{ background: "#fbbf24" }} onClick={async () => {
-                if (!db) return;
-                await updateDoc(doc(db, "rooms", roomId), {
-                  status: "waiting", winnerUid: null,
-                  lastPlayedHand: null, lastPlayedUid: null,
-                  turnUid: null, passCount: 0,
-                  updatedAt: serverTimestamp(),
-                  expiresAt: getRoomExpirationTimestamp()
-                });
-              }}>
-                再玩一局
-              </button>
-            ) : (
-              <button
-                className="comic-btn"
-                style={{
-                  background: me?.isReady ? "#dcfce7" : "#fbbf24",
-                  color: me?.isReady ? "#16a34a" : "#000",
-                  border: "3px solid #000"
-                }}
-                onClick={() => toggleReady(roomId, uid, !me?.isReady)}
-              >
-                {me?.isReady ? "✓ 已準備" : "再玩一局"}
-              </button>
-            )}
-            <button className="comic-btn" onClick={handleLeaveRoom}>回到大廳</button>
-          </div>
+           <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+             {me?.isHost ? (
+               <button className="comic-btn" style={{ background: "#fbbf24" }} onClick={async () => {
+                 if (!db) return;
+                 try {
+                   await updateDoc(doc(db, "rooms", roomId), {
+                     status: "waiting", winnerUid: null,
+                     lastPlayedHand: null, lastPlayedUid: null,
+                     turnUid: null, passCount: 0,
+                     updatedAt: serverTimestamp(),
+                     expiresAt: getRoomExpirationTimestamp()
+                   });
+                   addToast("已重置為待機狀態，準備新一局", "success");
+                 } catch (err) {
+                   const errMsg = err instanceof Error ? err.message : String(err);
+                   addToast(errMsg || "重置遊戲失敗", "error");
+                 }
+               }}>
+                 再玩一局
+               </button>
+             ) : (
+               <button
+                 className="comic-btn"
+                 style={{
+                   background: me?.isReady ? "#dcfce7" : "#fbbf24",
+                   color: me?.isReady ? "#16a34a" : "#000",
+                   border: "3px solid #000"
+                 }}
+                 onClick={async () => {
+                   try {
+                     await toggleReady(roomId, uid, !me?.isReady);
+                   } catch (err) {
+                     const errMsg = err instanceof Error ? err.message : String(err);
+                     addToast(errMsg || "切換準備狀態失敗", "error");
+                   }
+                 }}
+               >
+                 {me?.isReady ? "✓ 已準備" : "再玩一局"}
+               </button>
+             )}
+             <button className="comic-btn" onClick={handleLeaveRoom}>回到大廳</button>
+           </div>
         </div>
       </div>
     );

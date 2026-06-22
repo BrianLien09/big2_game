@@ -296,6 +296,8 @@ export const leaveRoom = async (roomId: string, uid: string) => {
           updates.passCount = 0;
         }
       }
+    } else if (roomData.status === 'finished') {
+      // 遊戲已結束，正常退出（不需要特殊邏輯）
     }
 
     transaction.update(roomRef, updates);
