@@ -1575,7 +1575,7 @@ function RoomContent() {
             min-width: 0;
             padding: 7px 10px 4px;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: 66px 1fr 66px;
             align-items: center;
             gap: 8px;
             box-sizing: border-box;
@@ -1586,6 +1586,7 @@ function RoomContent() {
             display: flex;
             align-items: center;
             gap: 7px;
+            justify-self: center;
           }
           .self-avatar {
             width: 40px;
@@ -1982,6 +1983,17 @@ function RoomContent() {
 
         {/* 手機版操作列 */}
         <div className="action-main-row mobile-only">
+          <button
+            className="comic-btn pass-button"
+            style={{
+              opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
+            }}
+            disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
+            onClick={handlePass}
+          >
+            Pass
+          </button>
+
           <div className="self-player-summary">
             {me?.avatarUrl ? (
               <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" />
@@ -1996,28 +2008,16 @@ function RoomContent() {
             <span className="self-name comic-badge">{me?.nickname}</span>
           </div>
 
-          <div className="action-buttons">
-            <button
-              className="comic-btn pass-button"
-              style={{
-                opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
-              }}
-              disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
-              onClick={handlePass}
-            >
-              Pass
-            </button>
-            <button
-              className="comic-btn play-button"
-              style={{
-                opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
-              }}
-              disabled={!isMyTurn || selectedCards.length === 0}
-              onClick={handlePlayCard}
-            >
-              出牌
-            </button>
-          </div>
+          <button
+            className="comic-btn play-button"
+            style={{
+              opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
+            }}
+            disabled={!isMyTurn || selectedCards.length === 0}
+            onClick={handlePlayCard}
+          >
+            出牌
+          </button>
         </div>
 
         <div className="turn-hint-row mobile-only">

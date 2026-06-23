@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
     unoptimized: true, // 靜態匯出不支援 Next.js 預設圖片優化，必須關閉
   },
   // 允許區網裝置（如手機）存取 dev server 的 HMR，方便本地預覽
-  allowedDevOrigins: ['192.168.0.185'],
+  allowedDevOrigins: ['192.168.0.185', '192.168.0.186'],
 };
 
 export default nextConfig;
