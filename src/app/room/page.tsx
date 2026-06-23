@@ -451,7 +451,7 @@ function RoomContent() {
                   </span>
                 </div>
                 <div style={{ fontSize: "12px", fontWeight: 800, color: "#b45309", marginTop: compact ? 0 : 2 }}>
-                  🏆 勝場: {p.wins || 0}
+                  🪙 積分: {p.points ?? 0}
                 </div>
               </div>
               {me?.isHost && p.isBot && (
@@ -711,9 +711,79 @@ function RoomContent() {
         <div className="comic-panel" style={{ padding: "3rem", textAlign: "center" }}>
           <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>{isWinner ? "🎉" : "🥺"}</div>
           <h1 style={{ fontSize: "2.5rem", fontWeight: 900, marginBottom: "0.5rem" }}>{isWinner ? "你贏了！" : "遊戲結束"}</h1>
-          <p style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "2rem" }}>
+          <p style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "1rem" }}>
             贏家：{room.players[room.winnerUid!]?.nickname}
           </p>
+
+          {/* 結算名次與積分表 */}
+          <div style={{
+            margin: "0.5rem auto 2rem",
+            width: "90dvw",
+            maxWidth: "460px",
+            background: "#fff",
+            border: "3px solid #000",
+            borderRadius: "16px",
+            boxShadow: "4px 4px 0 #000",
+            overflow: "hidden"
+          }}>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "60px 1fr 80px 80px",
+              fontWeight: 900,
+              fontSize: "0.85rem",
+              background: "#f3f4f6",
+              borderBottom: "3px solid #000",
+              padding: "10px 12px",
+              textAlign: "left"
+            }}>
+              <div>名次</div>
+              <div>玩家</div>
+              <div style={{ textAlign: "center" }}>本局積分</div>
+              <div style={{ textAlign: "center" }}>累計總分</div>
+            </div>
+            {room.finishedOrder?.map((pUid, index) => {
+              const player = room.players[pUid];
+              if (!player) return null;
+              const roundScore = room.roundScores?.[pUid] ?? 0;
+              const isMe = pUid === uid;
+              
+              const placementEmojis = ["🥇", "🥈", "🥉", "💩"];
+              const placementText = placementEmojis[index] || `${index + 1}`;
+
+              return (
+                <div key={pUid} style={{
+                  display: "grid",
+                  gridTemplateColumns: "60px 1fr 80px 80px",
+                  fontWeight: 800,
+                  fontSize: "0.85rem",
+                  borderBottom: index === room.finishedOrder!.length - 1 ? "none" : "2px solid #000",
+                  padding: "10px 12px",
+                  textAlign: "left",
+                  background: isMe ? "#fef9c3" : "#fff",
+                  alignItems: "center"
+                }}>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 900 }}>{placementText}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    {player.avatarUrl ? (
+                      <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.75rem", fontWeight: 900 }}>
+                        {player.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
+                  </div>
+                  <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900 }}>
+                    {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
+                  </div>
+                  <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900 }}>
+                    🪙 {player.points ?? 0}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
              {me?.isHost ? (
                <button className="comic-btn" style={{ background: "#fbbf24" }} onClick={async () => {
@@ -1473,7 +1543,8 @@ function RoomContent() {
           .table-center {
             position: absolute;
             left: 50%;
-            top: 48%;
+            /* 調整出牌區中心點高度，避開左右兩側玩家/機器人 Pass 標籤的顯示範圍，防止遮擋 */
+            top: 56%;
             transform: translate(-50%, -50%);
             width: 100%;
             display: flex;
@@ -1804,7 +1875,13 @@ function RoomContent() {
 
         {topPlayer ? (
           <div className="header-card-count">
-            🂠 {topPlayer.cards.length}
+            {topPlayer.cards.length === 0 ? (
+              <span className="text-[10px] font-black text-green-600 bg-green-50 border-[1.5px] border-green-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] ml-1">
+                已出完
+              </span>
+            ) : (
+              `🂠 ${topPlayer.cards.length}`
+            )}
           </div>
         ) : (
           <div className="header-card-count" style={{ opacity: 0 }} />
@@ -1844,7 +1921,13 @@ function RoomContent() {
                 </span>
               )}
               <div className="opponent-count">
-                <span>🂠 {leftPlayer.cards.length}</span>
+                {leftPlayer.cards.length === 0 ? (
+                  <span className="text-[10px] font-black text-green-600 bg-green-50 border-2 border-green-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-5deg] mt-1">
+                    已出完
+                  </span>
+                ) : (
+                  <span>🂠 {leftPlayer.cards.length}</span>
+                )}
               </div>
               {leftPlayer.isPassed && (
                 <span className="text-[10px] font-black text-red-600 bg-red-50 border-2 border-red-600 px-1 py-0 rounded-md shadow-[1px_1px_0_#000] rotate-[-5deg] mt-1">
@@ -1908,7 +1991,13 @@ function RoomContent() {
                 </span>
               )}
               <div className="opponent-count">
-                <span>🂠 {rightPlayer.cards.length}</span>
+                {rightPlayer.cards.length === 0 ? (
+                  <span className="text-[10px] font-black text-green-600 bg-green-50 border-2 border-green-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[5deg] mt-1">
+                    已出完
+                  </span>
+                ) : (
+                  <span>🂠 {rightPlayer.cards.length}</span>
+                )}
               </div>
               {rightPlayer.isPassed && (
                 <span className="text-[10px] font-black text-red-600 bg-red-50 border-2 border-red-600 px-1 py-0 rounded-md shadow-[1px_1px_0_#000] rotate-[5deg] mt-1">
@@ -1925,181 +2014,228 @@ function RoomContent() {
         className="bottom-panel"
         style={{
           borderTopColor: isMyTurn ? "#fbbf24" : "#000",
-          backgroundColor: isMyTurn ? "#fffbeb" : "#fff",
+          backgroundColor: (me && me.cards.length === 0) ? "#f0fdf4" : (isMyTurn ? "#fffbeb" : "#fff"),
         }}
       >
-        {/* 操作列 */}
-        {/* 桌機與平板版操作列 */}
-        <div className="action-row desktop-only">
-          <div className="mobile-self-info">
-            {me?.avatarUrl ? (
-              <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" />
-            ) : (
-              <div 
-                className="self-avatar"
-                style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
-              >
-                {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+        {me && me.cards.length === 0 ? (
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+            padding: "1.5rem 1rem",
+            gap: "1rem"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", width: "100%", maxWidth: "600px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {me.avatarUrl ? (
+                  <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" style={{ width: 40, height: 40, borderRadius: "50%" }} />
+                ) : (
+                  <div 
+                    className="self-avatar"
+                    style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1rem", backgroundColor: "#f3f4f6", width: 40, height: 40, borderRadius: "50%", border: "2px solid #000" }}
+                  >
+                    {me.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="self-name comic-badge" style={{ fontSize: "0.9rem" }}>{me.nickname}</span>
               </div>
-            )}
-            <span className="self-name comic-badge">{me?.nickname}</span>
-            <div className="turn-indicator-row">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button className="comic-btn" onClick={handleLeaveRoom} style={{ padding: "8px 16px", fontSize: "0.9rem" }}>回到大廳</button>
+              </div>
+            </div>
+
+            <div style={{
+              textAlign: "center",
+              fontWeight: 900,
+              fontSize: "1.2rem",
+              color: "#16a34a",
+              background: "#fff",
+              border: "3px solid #000",
+              boxShadow: "3px 3px 0 #000",
+              padding: "12px 30px",
+              borderRadius: "999px",
+              transform: "rotate(-0.5deg)"
+            }}>
+              🎉 你已出完所有手牌！<br />等待其他玩家完成本局……
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* 操作列 */}
+            {/* 桌機與平板版操作列 */}
+            <div className="action-row desktop-only">
+              <div className="mobile-self-info">
+                {me?.avatarUrl ? (
+                  <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" />
+                ) : (
+                  <div 
+                    className="self-avatar"
+                    style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
+                  >
+                    {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="self-name comic-badge">{me?.nickname}</span>
+                <div className="turn-indicator-row">
+                  {isMyTurn && (
+                    <span className="animate-pulse turn-badge">
+                      👉 你的回合
+                    </span>
+                  )}
+                  {isMyTurn && room.firstPlayRequiredCardId && (
+                    <span className="required-badge">
+                      💡 必出 {getCardName(room.firstPlayRequiredCardId)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="action-buttons">
+                <button
+                  className="comic-btn pass-button"
+                  style={{
+                    opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
+                  }}
+                  disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
+                  onClick={handlePass}
+                >
+                  Pass
+                </button>
+                <button
+                  className="comic-btn play-button"
+                  style={{
+                    opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
+                  }}
+                  disabled={!isMyTurn || selectedCards.length === 0}
+                  onClick={handlePlayCard}
+                >
+                  出牌
+                </button>
+              </div>
+            </div>
+
+            {/* 手機版操作列 */}
+            <div className="action-main-row mobile-only">
+              <button
+                className="comic-btn pass-button"
+                style={{
+                  opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
+                }}
+                disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
+                onClick={handlePass}
+              >
+                Pass
+              </button>
+
+              <div className="self-player-summary">
+                {me?.avatarUrl ? (
+                  <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" />
+                ) : (
+                  <div 
+                    className="self-avatar"
+                    style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
+                  >
+                    {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="self-name comic-badge">{me?.nickname}</span>
+              </div>
+
+              <button
+                className="comic-btn play-button"
+                style={{
+                  opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
+                }}
+                disabled={!isMyTurn || selectedCards.length === 0}
+                onClick={handlePlayCard}
+              >
+                出牌
+              </button>
+            </div>
+
+            <div className="turn-hint-row mobile-only">
               {isMyTurn && (
-                <span className="animate-pulse turn-badge">
-                  👉 你的回合
-                </span>
+                <span className="animate-pulse turn-badge">👉 你的回合</span>
               )}
               {isMyTurn && room.firstPlayRequiredCardId && (
-                <span className="required-badge">
-                  💡 必出 {getCardName(room.firstPlayRequiredCardId)}
-                </span>
+                <span className="required-badge">💡 必出 {getMobileCardName(room.firstPlayRequiredCardId)}</span>
               )}
             </div>
-          </div>
 
-          <div className="action-buttons">
-            <button
-              className="comic-btn pass-button"
-              style={{
-                opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
-              }}
-              disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
-              onClick={handlePass}
-            >
-              Pass
-            </button>
-            <button
-              className="comic-btn play-button"
-              style={{
-                opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
-              }}
-              disabled={!isMyTurn || selectedCards.length === 0}
-              onClick={handlePlayCard}
-            >
-              出牌
-            </button>
-          </div>
-        </div>
+            {/* 手牌區 */}
+            <div ref={handContainerRef} className="hand-container-wrapper">
 
-        {/* 手機版操作列 */}
-        <div className="action-main-row mobile-only">
-          <button
-            className="comic-btn pass-button"
-            style={{
-              opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
-            }}
-            disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
-            onClick={handlePass}
-          >
-            Pass
-          </button>
+              {/* 桌機與平板版：絕對定位重疊 */}
+              <div className="desktop-tablet-hand">
+                {me?.cards.map((card, i) => {
+                  const total = me.cards.length;
+                  const cardWidth = isTablet ? 64 : 84;
+                  const maxHandWidth = isTablet ? 720 : 980;
+                  const selectedLift = isTablet ? 14 : 18;
 
-          <div className="self-player-summary">
-            {me?.avatarUrl ? (
-              <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" />
-            ) : (
-              <div 
-                className="self-avatar"
-                style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
-              >
-                {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                  const availableWidth = Math.min(
+                    handContainerWidth,
+                    maxHandWidth
+                  );
+
+                  const maxSpan = Math.max(
+                    0,
+                    availableWidth - cardWidth - 24
+                  );
+
+                  const cardSpacing =
+                    total > 1
+                      ? Math.min(cardWidth * 0.68, maxSpan / (total - 1))
+                      : 0;
+
+                  const offset = total > 1 ? (i - (total - 1) / 2) * cardSpacing : 0;
+                  const isSelected = selectedCards.some(c => c.id === card.id);
+                  return (
+                    <div
+                      key={card.id}
+                      style={{
+                        position: "absolute",
+                        bottom: isSelected ? selectedLift : 0,
+                        left: "50%",
+                        transform: `translateX(calc(-50% + ${offset}px))`,
+                        zIndex: i,
+                        transition: "bottom 0.15s ease",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => handleToggleCard(card)}
+                    >
+                      <PlayingCard card={card} size={isTablet ? "tablet" : "desktop"} selected={isSelected} className="playing-card" />
+                    </div>
+                  );
+                })}
               </div>
-            )}
-            <span className="self-name comic-badge">{me?.nickname}</span>
-          </div>
 
-          <button
-            className="comic-btn play-button"
-            style={{
-              opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
-            }}
-            disabled={!isMyTurn || selectedCards.length === 0}
-            onClick={handlePlayCard}
-          >
-            出牌
-          </button>
-        </div>
-
-        <div className="turn-hint-row mobile-only">
-          {isMyTurn && (
-            <span className="animate-pulse turn-badge">👉 你的回合</span>
-          )}
-          {isMyTurn && room.firstPlayRequiredCardId && (
-            <span className="required-badge">💡 必出 {getMobileCardName(room.firstPlayRequiredCardId)}</span>
-          )}
-        </div>
-
-
-        {/* 手牌區 */}
-        <div ref={handContainerRef} className="hand-container-wrapper">
-
-          {/* 桌機與平板版：絕對定位重疊 */}
-          <div className="desktop-tablet-hand">
-            {me?.cards.map((card, i) => {
-              const total = me.cards.length;
-              const cardWidth = isTablet ? 64 : 84;
-              const maxHandWidth = isTablet ? 720 : 980;
-              const selectedLift = isTablet ? 14 : 18;
-
-              const availableWidth = Math.min(
-                handContainerWidth,
-                maxHandWidth
-              );
-
-              const maxSpan = Math.max(
-                0,
-                availableWidth - cardWidth - 24
-              );
-
-              const cardSpacing =
-                total > 1
-                  ? Math.min(cardWidth * 0.68, maxSpan / (total - 1))
-                  : 0;
-
-              const offset = total > 1 ? (i - (total - 1) / 2) * cardSpacing : 0;
-              const isSelected = selectedCards.some(c => c.id === card.id);
-              return (
-                <div
-                  key={card.id}
-                  style={{
-                    position: "absolute",
-                    bottom: isSelected ? selectedLift : 0,
-                    left: "50%",
-                    transform: `translateX(calc(-50% + ${offset}px))`,
-                    zIndex: i,
-                    transition: "bottom 0.15s ease",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => handleToggleCard(card)}
-                >
-                  <PlayingCard card={card} size={isTablet ? "tablet" : "desktop"} selected={isSelected} className="playing-card" />
+              {/* 手機版：橫向滑動 */}
+              <div className="mobile-hand-scroll">
+                <div className="mobile-hand-cards">
+                  {me?.cards.map((card, i) => {
+                    const isSelected = selectedCards.some(c => c.id === card.id);
+                    return (
+                      <div
+                        key={card.id}
+                        className={`playing-card-wrapper ${isSelected ? 'selected' : ''}`}
+                        style={{ zIndex: i }}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={() => handlePointerUp(card)}
+                        onPointerCancel={handlePointerCancel}
+                      >
+                        <PlayingCard card={card} size="mobile" selected={isSelected} className="playing-card" />
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-
-          {/* 手機版：橫向滑動 */}
-          <div className="mobile-hand-scroll">
-            <div className="mobile-hand-cards">
-              {me?.cards.map((card, i) => {
-                const isSelected = selectedCards.some(c => c.id === card.id);
-                return (
-                  <div
-                    key={card.id}
-                    className={`playing-card-wrapper ${isSelected ? 'selected' : ''}`}
-                    style={{ zIndex: i }}
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={() => handlePointerUp(card)}
-                    onPointerCancel={handlePointerCancel}
-                  >
-                    <PlayingCard card={card} size="mobile" selected={isSelected} className="playing-card" />
-                  </div>
-                );
-              })}
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

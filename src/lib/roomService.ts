@@ -17,6 +17,7 @@ export interface Player {
   wins: number;
   avatarUrl?: string;
   isBot: boolean; // 新增 isBot 欄位
+  points?: number; // 新增積分欄位
 }
 
 export interface RoomState {
@@ -34,6 +35,48 @@ export interface RoomState {
   expiresAt: Timestamp;
   winnerUid: string | null;
   firstPlayRequiredCardId?: string | null; 
+  finishedOrder?: string[];
+  roundParticipants?: string[];
+  roundPlayerSnapshots?: Record<
+    string,
+    {
+      nickname: string;
+      avatarUrl: string;
+      isBot: boolean;
+    }
+  >;
+  roundScores?: Record<string, number>;
+}
+
+
+// 取得手牌大於 0 的活躍玩家 UID 清單
+export function getActivePlayerUids(
+  playerOrder: string[],
+  players: Record<string, Player>
+): string[] {
+  return playerOrder.filter(uid => players[uid] !== undefined && players[uid].cards.length > 0);
+}
+
+// 輪轉尋找下一位活躍玩家的 UID
+export function getNextActiveUid(
+  playerOrder: string[],
+  players: Record<string, Player>,
+  currentUid: string
+): string | null {
+  const activeUids = getActivePlayerUids(playerOrder, players);
+  if (activeUids.length === 0) return null;
+  const currentIndex = playerOrder.indexOf(currentUid);
+  if (currentIndex === -1) return activeUids[0];
+  
+  let nextIdx = (currentIndex + 1) % playerOrder.length;
+  for (let i = 0; i < playerOrder.length; i++) {
+    const nextUid = playerOrder[nextIdx];
+    if (activeUids.includes(nextUid)) {
+      return nextUid;
+    }
+    nextIdx = (nextIdx + 1) % playerOrder.length;
+  }
+  return null;
 }
 
 // 最佳額度策略常數定義
@@ -63,6 +106,7 @@ export const createRoom = async (roomId: string, hostUid: string, hostNickname: 
         isHost: true,
         isPassed: false,
         wins: 0,
+        points: 0, // 初始化積分
         avatarUrl: hostAvatarUrl,
         isBot: false // 真人玩家明確設定
       }
@@ -125,6 +169,7 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
       isHost: false,
       isPassed: false,
       wins: 0,
+      points: 0, // 初始化積分
       avatarUrl,
       isBot: false // 真人玩家明確設定
     };
@@ -206,6 +251,19 @@ export const startGame = async (roomId: string) => {
     }
   }
   
+  // 建立當局參賽玩家快照
+  const roundPlayerSnapshots: Record<string, { nickname: string; avatarUrl: string; isBot: boolean }> = {};
+  order.forEach(pUid => {
+    const p = roomData.players[pUid];
+    if (p) {
+      roundPlayerSnapshots[pUid] = {
+        nickname: p.nickname,
+        avatarUrl: p.avatarUrl || '',
+        isBot: !!p.isBot
+      };
+    }
+  });
+
   await updateDoc(roomRef, {
     ...playersUpdates,
     status: 'playing',
@@ -215,6 +273,10 @@ export const startGame = async (roomId: string) => {
     passCount: 0,
     winnerUid: null,
     firstPlayRequiredCardId: firstPlayRequiredCardId,
+    finishedOrder: [],
+    roundScores: {},
+    roundParticipants: [...order],
+    roundPlayerSnapshots,
     updatedAt: serverTimestamp(),
     expiresAt: getRoomExpirationTimestamp()
   });
@@ -267,34 +329,27 @@ export const leaveRoom = async (roomId: string, uid: string) => {
 
     // 處理遊戲進行中玩家退出的情況
     if (roomData.status === 'playing') {
-      if (updatedOrder.length === 1) {
-        // 剩下一人，他直接獲勝，遊戲結束
-        const winnerUid = updatedOrder[0];
-        updates.status = 'finished';
-        updates.winnerUid = winnerUid;
-        updates.turnUid = null;
-        if (updatedPlayers[winnerUid]) {
-          updatedPlayers[winnerUid].wins = (updatedPlayers[winnerUid].wins || 0) + 1;
-        }
-      } else {
-        // 如果目前 turnUid 是退出者，將回合交給下一位仍在線的玩家
+      const currentFinishedOrder = roomData.finishedOrder || [];
+      const newFinishedOrder = [...currentFinishedOrder];
+
+      // 重新計算剩下的 active 玩家 (在 updatedPlayers 中手牌數大於 0)
+      const activeRemaining = getActivePlayerUids(updatedOrder, updatedPlayers);
+
+      if (activeRemaining.length > 1) {
+        // 遊戲繼續
+        // 1. 如果目前 turnUid 是退出者，將回合交給下一位活躍的玩家
         if (roomData.turnUid === uid) {
-          const idx = roomData.playerOrder.indexOf(uid);
-          let nextIdx = (idx + 1) % roomData.playerOrder.length;
-          let nextUid = roomData.playerOrder[nextIdx];
-          while (!updatedOrder.includes(nextUid)) {
-            nextIdx = (nextIdx + 1) % roomData.playerOrder.length;
-            nextUid = roomData.playerOrder[nextIdx];
-          }
+          const nextUid = getNextActiveUid(roomData.playerOrder, roomData.players, uid);
           updates.turnUid = nextUid;
         }
-
-        // 如果退出者是最後出牌者 lastPlayedUid，清空該輪出牌狀態
-        if (roomData.lastPlayedUid === uid) {
-          updates.lastPlayedHand = null;
-          updates.lastPlayedUid = null;
-          updates.passCount = 0;
-        }
+      } else if (activeRemaining.length === 1) {
+        // 剩下一位 active 玩家，立即結算
+        const finalFinishedOrder = getFinalFinishedOrder(roomData, newFinishedOrder, updatedPlayers);
+        buildRoundSettlementWithPlayers(roomData, finalFinishedOrder, updatedPlayers, updates);
+      } else {
+        // activeRemaining.length === 0
+        const finalFinishedOrder = getFinalFinishedOrder(roomData, newFinishedOrder, updatedPlayers);
+        buildRoundSettlementWithPlayers(roomData, finalFinishedOrder, updatedPlayers, updates);
       }
     } else if (roomData.status === 'finished') {
       // 遊戲已結束，正常退出（不需要特殊邏輯）
@@ -458,8 +513,8 @@ export const getAssetPath = (path: string): string => {
       basePath = '/big2_game';
     }
     // 檢查 __NEXT_DATA__ 中的 basePath
-    else if ((window as any).__NEXT_DATA__?.basePath) {
-      basePath = (window as any).__NEXT_DATA__.basePath;
+    else if ((window as unknown as { __NEXT_DATA__?: { basePath?: string } }).__NEXT_DATA__?.basePath) {
+      basePath = (window as unknown as { __NEXT_DATA__?: { basePath?: string } }).__NEXT_DATA__!.basePath!;
     }
   }
   
@@ -534,7 +589,8 @@ export const addBot = async (
       isReady: true, // Bot 預設已準備
       isPassed: false,
       cards: [],
-      wins: 0
+      wins: 0,
+      points: 0
     };
 
     transaction.update(roomRef, {
@@ -595,6 +651,78 @@ export const removeBot = async (
   });
 };
 
+// 取得最終的 finishedOrder（包含在線與離線退出的參賽者）
+export function getFinalFinishedOrder(
+  room: RoomState,
+  currentFinished: string[],
+  currentPlayers: Record<string, Player>
+): string[] {
+  const finalOrder = [...currentFinished];
+  const participants = room.roundParticipants || room.playerOrder;
+  
+  // 找出所有尚未在排名中的參賽者
+  const remaining = participants.filter(uid => !finalOrder.includes(uid));
+  
+  // 按照：在線且未出完 -> 離線且未出完 的順序追加
+  const onlineRemaining = remaining.filter(uid => currentPlayers[uid] !== undefined);
+  const offlineRemaining = remaining.filter(uid => currentPlayers[uid] === undefined);
+  
+  return [...finalOrder, ...onlineRemaining, ...offlineRemaining];
+}
+
+// 共用結算函式
+export function buildRoundSettlementWithPlayers(
+  room: RoomState,
+  finalFinishedOrder: string[],
+  currentPlayers: Record<string, Player>,
+  updates: Record<string, unknown>
+) {
+  if (room.status === 'finished') {
+    return;
+  }
+
+  const participants = room.roundParticipants || room.playerOrder;
+  const playerCount = participants.length;
+
+  const roundScores: Record<string, number> = {};
+  participants.forEach(uid => {
+    roundScores[uid] = 0;
+  });
+
+  finalFinishedOrder.forEach((uid, index) => {
+    if (participants.includes(uid)) {
+      let pointsToAdd = 0;
+      if (playerCount === 4) {
+        if (index === 0) pointsToAdd = 3;
+        else if (index === 1) pointsToAdd = 2;
+        else if (index === 2) pointsToAdd = 1;
+        else pointsToAdd = 0;
+      } else if (playerCount === 3) {
+        if (index === 0) pointsToAdd = 3;
+        else if (index === 1) pointsToAdd = 2;
+        else pointsToAdd = 0;
+      } else if (playerCount === 2) {
+        if (index === 0) pointsToAdd = 3;
+        else pointsToAdd = 0;
+      }
+      roundScores[uid] = pointsToAdd;
+    }
+  });
+
+  // 對仍存在於 players 中的玩家累加積分
+  Object.keys(currentPlayers).forEach(uid => {
+    const playerObj = currentPlayers[uid];
+    const score = roundScores[uid] || 0;
+    updates[`players.${uid}.points`] = (playerObj.points ?? 0) + score;
+  });
+
+  updates.status = 'finished';
+  updates.finishedOrder = finalFinishedOrder;
+  updates.roundScores = roundScores;
+  updates.winnerUid = finalFinishedOrder[0];
+  updates.turnUid = null;
+}
+
 // 共用出牌 Transaction Helper
 export const commitPlayerPlayTx = (
   transaction: Transaction,
@@ -615,6 +743,10 @@ export const commitPlayerPlayTx = (
     throw new Error("玩家不存在於此房間");
   }
 
+  if (player.cards.length === 0) {
+    throw new Error("玩家手牌已空，無法出牌");
+  }
+
   // 驗證出牌合法性
   const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== playerUid ? roomData.lastPlayedHand : null;
   const validation = validatePlay(cards, prevHandToCompare, roomData.firstPlayRequiredCardId);
@@ -629,17 +761,27 @@ export const commitPlayerPlayTx = (
 
   // 扣除手牌
   const remainingCards = player.cards.filter(c => !cards.find(sc => sc.id === c.id));
-  const isWin = remainingCards.length === 0;
+  const isPlayerFinished = remainingCards.length === 0;
 
-  // 下一個玩家
-  const currentIndex = roomData.playerOrder.indexOf(playerUid);
-  const nextUid = roomData.playerOrder[(currentIndex + 1) % roomData.playerOrder.length];
+  const currentFinishedOrder = roomData.finishedOrder || [];
+  const newFinishedOrder = [...currentFinishedOrder];
+  if (isPlayerFinished && !newFinishedOrder.includes(playerUid)) {
+    newFinishedOrder.push(playerUid);
+  }
+
+  // 建立暫時的 players 狀態以重新計算 active 玩家
+  const tempPlayers = { ...roomData.players };
+  tempPlayers[playerUid] = {
+    ...player,
+    cards: remainingCards
+  };
+
+  const activePlayers = getActivePlayerUids(roomData.playerOrder, tempPlayers);
 
   const updates: Record<string, unknown> = {
     [`players.${playerUid}.cards`]: remainingCards,
     lastPlayedHand: evaluated,
     lastPlayedUid: playerUid,
-    turnUid: isWin ? null : nextUid,
     passCount: 0,
     updatedAt: serverTimestamp(),
     expiresAt: getRoomExpirationTimestamp()
@@ -653,10 +795,25 @@ export const commitPlayerPlayTx = (
     updates[`players.${pUid}.isPassed`] = false;
   });
 
-  if (isWin) {
-    updates.status = "finished";
-    updates.winnerUid = playerUid;
-    updates[`players.${playerUid}.wins`] = (player.wins || 0) + 1;
+  if (activePlayers.length > 1) {
+    // 遊戲繼續，將 turnUid 交給下一個活躍玩家
+    const nextUid = getNextActiveUid(roomData.playerOrder, tempPlayers, playerUid);
+    updates.turnUid = nextUid;
+    if (isPlayerFinished) {
+      updates.finishedOrder = newFinishedOrder;
+    }
+  } else if (activePlayers.length === 1) {
+    // 遊戲結束，將最後一位 active 玩家追加至排名
+    const lastPlayerUid = activePlayers[0];
+    if (!newFinishedOrder.includes(lastPlayerUid)) {
+      newFinishedOrder.push(lastPlayerUid);
+    }
+    const finalFinishedOrder = getFinalFinishedOrder(roomData, newFinishedOrder, tempPlayers);
+    buildRoundSettlementWithPlayers(roomData, finalFinishedOrder, tempPlayers, updates);
+  } else {
+    // activePlayers.length === 0 (以防萬一的安全處理)
+    const finalFinishedOrder = getFinalFinishedOrder(roomData, newFinishedOrder, tempPlayers);
+    buildRoundSettlementWithPlayers(roomData, finalFinishedOrder, tempPlayers, updates);
   }
 
   transaction.update(roomRef, updates);
@@ -679,25 +836,50 @@ export const commitPlayerPassTx = (
     throw new Error("該玩家是這一輪的發起人，必須出牌，不能 Pass");
   }
 
-  const currentIndex = roomData.playerOrder.indexOf(playerUid);
-  const nextUid = roomData.playerOrder[(currentIndex + 1) % roomData.playerOrder.length];
-  const newPassCount = roomData.passCount + 1;
+  // 尋找下一個 active 玩家
+  const nextUid = getNextActiveUid(roomData.playerOrder, roomData.players, playerUid);
 
   const updates: Record<string, unknown> = {
     [`players.${playerUid}.isPassed`]: true,
     turnUid: nextUid,
-    passCount: newPassCount,
     updatedAt: serverTimestamp(),
     expiresAt: getRoomExpirationTimestamp()
   };
 
-  if (newPassCount >= roomData.playerOrder.length - 1) {
-    updates.turnUid = roomData.lastPlayedUid;
+  const activePlayers = getActivePlayerUids(roomData.playerOrder, roomData.players);
+
+  // 建立 active 玩家的 isPassed 暫時對照
+  const activePassedStatus: Record<string, boolean> = {};
+  activePlayers.forEach(uid => {
+    if (uid === playerUid) {
+      activePassedStatus[uid] = true;
+    } else {
+      activePassedStatus[uid] = !!roomData.players[uid].isPassed;
+    }
+  });
+
+  const activePassedCount = activePlayers.filter(uid => activePassedStatus[uid]).length;
+  const isLastPlayedActive = roomData.lastPlayedUid && activePlayers.includes(roomData.lastPlayedUid);
+
+  // 若 lastPlayedUid 仍 active，其餘 active 玩家皆 Pass 則新一輪
+  // 若 lastPlayedUid 已出完 (inactive)，則所有 active 玩家皆 Pass 則新一輪
+  const roundResetThreshold = isLastPlayedActive ? (activePlayers.length - 1) : activePlayers.length;
+
+  if (activePassedCount >= roundResetThreshold) {
+    // 觸發新的一輪
+    if (isLastPlayedActive) {
+      updates.turnUid = roomData.lastPlayedUid;
+    } else {
+      // 由 lastPlayedUid 順序的下一位 active 玩家開始新一輪
+      updates.turnUid = getNextActiveUid(roomData.playerOrder, roomData.players, roomData.lastPlayedUid!);
+    }
     updates.lastPlayedHand = null;
     updates.passCount = 0;
     roomData.playerOrder.forEach(pUid => {
       updates[`players.${pUid}.isPassed`] = false;
     });
+  } else {
+    updates.passCount = roomData.passCount + 1;
   }
 
   transaction.update(roomRef, updates);
@@ -754,6 +936,10 @@ export const executeBotTurn = async (
     const botPlayer = roomData.players[botUid];
     if (!botPlayer || !botPlayer.isBot) {
       return; // 確保是人機玩家
+    }
+
+    if (botPlayer.cards.length === 0 || (roomData.finishedOrder && roomData.finishedOrder.includes(botUid))) {
+      return; // 已出完牌的人機不可執行
     }
 
     const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== botUid ? roomData.lastPlayedHand : null;
