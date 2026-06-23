@@ -1135,6 +1135,9 @@ function RoomContent() {
             box-sizing: border-box;
             z-index: 20;
           }
+          .empty-hand-header {
+            height: 82px;
+          }
           .action-row {
             height: 82px;
             padding: 10px 30px;
@@ -1503,8 +1506,8 @@ function RoomContent() {
           .game-page {
             height: 100dvh;
             display: grid;
-            /* 配合變高與往上抬的操作區，將第三個 row 高度調大至 265px */
-            grid-template-rows: 58px minmax(0, 1fr) calc(265px + env(safe-area-inset-bottom));
+            /* 配合變高與往上抬的操作區，將第三個 row 高度調大至 310px */
+            grid-template-rows: 58px minmax(0, 1fr) calc(310px + env(safe-area-inset-bottom));
             overflow: hidden;
             background-color: #f8f9fa;
           }
@@ -1691,14 +1694,17 @@ function RoomContent() {
           }
           .bottom-panel {
             /* 配合操作區整體再往上抬與放大卡片，將總高度與各 row 高度加大 */
-            height: calc(265px + env(safe-area-inset-bottom));
+            height: calc(310px + env(safe-area-inset-bottom));
             display: grid;
-            grid-template-rows: 72px 38px 155px;
+            grid-template-rows: 72px 38px 200px;
             border-top-width: 3px;
             border-top-style: solid;
             box-sizing: border-box;
             z-index: 20;
             padding-bottom: env(safe-area-inset-bottom);
+          }
+          .empty-hand-header {
+            height: 72px;
           }
           .desktop-tablet-hand {
             display: none;
@@ -1835,8 +1841,8 @@ function RoomContent() {
             width: 100%;
             min-width: 0;
             max-width: 100vw;
-            /* 配合操作區再往上抬，將高度放大至 155px */
-            height: 155px;
+            /* 配合操作區與手牌再往上抬與放大，將高度放大至 200px */
+            height: 200px;
             overflow-x: auto;
             overflow-y: hidden;
             padding: 14px 0 6px;
@@ -1852,32 +1858,32 @@ function RoomContent() {
           .mobile-hand-cards {
             width: max-content;
             min-width: max-content;
-            /* 配合操作區與手牌再往上抬，將高度放大至 141px */
-            height: 141px;
+            /* 配合操作區與手牌再往上抬與放大，將高度放大至 180px */
+            height: 180px;
             display: flex;
             align-items: flex-end;
             justify-content: flex-start;
-            /* 增大底部 padding 至 18px，更顯著抬高卡片底線 */
-            padding: 0 30px 18px;
+            /* 增大底部 padding 至 22px，更顯著抬高卡片底線 */
+            padding: 0 30px 22px;
             box-sizing: border-box;
           }
           .playing-card-wrapper {
-            /* 大幅提升手機端清晰度，將卡片寬高放大至 62px/92px，並調整 margin-left 重疊度 */
-            width: 62px;
-            height: 92px;
-            flex: 0 0 62px;
+            /* 大幅提升手機端清晰度與操作性，將卡片寬高從 62px/92px 放大至 76px/112px，並調整 margin-left 重疊度 */
+            width: 76px;
+            height: 112px;
+            flex: 0 0 76px;
             position: relative;
-            margin-left: -22px;
-            /* 預設往上抬 8px，使卡片底部留白增加、視覺浮起更顯眼 */
-            transform: translateY(-8px);
+            margin-left: -28px;
+            /* 預設往上抬 20px，使卡片底部留白增加、視覺浮起更顯眼 */
+            transform: translateY(-20px);
             transition: transform 0.15s ease;
           }
           .playing-card-wrapper:first-child {
             margin-left: 0;
           }
           .playing-card-wrapper.selected {
-            /* 調整選取時彈起的高度，往上移動 28px，視覺效果非常明顯 */
-            transform: translateY(-28px);
+            /* 調整選取時彈起的高度，往上移動至 42px，使選取效果更加明顯 */
+            transform: translateY(-42px);
           }
           .hand-container-wrapper {
             width: 100%;
@@ -2083,15 +2089,30 @@ function RoomContent() {
       >
         {me && me.cards.length === 0 ? (
           <div style={{
+            gridRow: "1 / -1",
+            height: "100%",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            justifyContent: "center",
+            justifyContent: "stretch",
             width: "100%",
-            padding: "1.5rem 1rem",
-            gap: "1rem"
+            boxSizing: "border-box"
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", width: "100%", maxWidth: "600px" }}>
+            {/* 上半部玩家資訊與回到大廳按鈕，高度固定以匹配出牌時的頭部高度 */}
+            <div 
+              className="empty-hand-header"
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: 12, 
+                justifyContent: "space-between", 
+                width: "100%", 
+                maxWidth: "600px",
+                padding: "0 1rem",
+                boxSizing: "border-box",
+                flexShrink: 0
+              }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {me.avatarUrl ? (
                   <img src={getAssetPath(me.avatarUrl)} alt="avatar" className="self-avatar" style={{ width: 40, height: 40, borderRadius: "50%" }} />
@@ -2110,19 +2131,30 @@ function RoomContent() {
               </div>
             </div>
 
+            {/* 下半部完全置中的提示訊息區 */}
             <div style={{
-              textAlign: "center",
-              fontWeight: 900,
-              fontSize: "1.2rem",
-              color: "#16a34a",
-              background: "#fff",
-              border: "3px solid #000",
-              boxShadow: "3px 3px 0 #000",
-              padding: "12px 30px",
-              borderRadius: "999px",
-              transform: "rotate(-0.5deg)"
+              flexGrow: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              padding: "1rem",
+              boxSizing: "border-box"
             }}>
-              🎉 你已出完所有手牌！<br />等待其他玩家完成本局……
+              <div style={{
+                textAlign: "center",
+                fontWeight: 900,
+                fontSize: "1.2rem",
+                color: "#16a34a",
+                background: "#fff",
+                border: "3px solid #000",
+                boxShadow: "3px 3px 0 #000",
+                padding: "12px 30px",
+                borderRadius: "999px",
+                transform: "rotate(-0.5deg)"
+              }}>
+                🎉 你已出完所有手牌！<br />等待其他玩家完成本局……
+              </div>
             </div>
           </div>
         ) : (
@@ -2291,7 +2323,7 @@ function RoomContent() {
                         onPointerUp={() => handlePointerUp(card)}
                         onPointerCancel={handlePointerCancel}
                       >
-                        <PlayingCard card={card} size="mobile" selected={isSelected} className="playing-card" />
+                        <PlayingCard card={card} size="mobile-hand" selected={isSelected} className="playing-card" />
                       </div>
                     );
                   })}
