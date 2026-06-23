@@ -916,30 +916,45 @@ export const commitPlayerPass = async (
   });
 };
 
+export type BotTurnResult =
+  | "executed"
+  | "skipped"
+  | "room-finished";
+
 // 執行人機回合 (Transaction，具備冪等性)
 export const executeBotTurn = async (
   roomId: string,
   botUid: string
-): Promise<void> => {
+): Promise<BotTurnResult> => {
   if (!db) throw new Error("Firebase DB not initialized");
   const roomRef = doc(db, 'rooms', roomId);
-  await runTransaction(db, async (transaction) => {
+  return await runTransaction(db, async (transaction) => {
     const roomSnap = await transaction.get(roomRef);
-    if (!roomSnap.exists()) throw new Error("房間不存在");
+    if (!roomSnap.exists()) {
+      return 'skipped';
+    }
     const roomData = roomSnap.data() as RoomState;
 
-    // 驗證回合以及狀態是否一致，確保冪等性
-    if (roomData.status !== 'playing' || roomData.turnUid !== botUid) {
-      return; // 狀態已改變，直接忽略以防重複出牌
+    // 一、重新讀取最新房間，並確認狀態與回合
+    if (roomData.status === 'finished') {
+      return 'room-finished';
+    }
+
+    if (roomData.status !== 'playing') {
+      return 'skipped';
+    }
+
+    if (roomData.turnUid !== botUid) {
+      return 'skipped';
     }
 
     const botPlayer = roomData.players[botUid];
     if (!botPlayer || !botPlayer.isBot) {
-      return; // 確保是人機玩家
+      return 'skipped';
     }
 
     if (botPlayer.cards.length === 0 || (roomData.finishedOrder && roomData.finishedOrder.includes(botUid))) {
-      return; // 已出完牌的人機不可執行
+      return 'skipped';
     }
 
     const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== botUid ? roomData.lastPlayedHand : null;
@@ -950,5 +965,8 @@ export const executeBotTurn = async (
     } else {
       commitPlayerPassTx(transaction, roomRef, roomData, botUid);
     }
+
+    return 'executed';
   });
 };
+

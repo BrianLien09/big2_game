@@ -95,7 +95,13 @@ service cloud.firestore {
       function isPlayerUnchangedExceptPassed(uid, oldPlayers, newPlayers) {
         return !(uid in newPlayers) 
           || newPlayers[uid] == oldPlayers[uid] 
-          || (newPlayers[uid].diff(oldPlayers[uid]).affectedKeys().hasOnly(['isPassed']) && newPlayers[uid].isPassed == false);
+          || (
+            newPlayers[uid].diff(oldPlayers[uid]).affectedKeys().hasOnly(['isPassed', 'points', 'wins'])
+            && (
+              !newPlayers[uid].diff(oldPlayers[uid]).affectedKeys().hasAny(['isPassed'])
+              || newPlayers[uid].isPassed == false
+            )
+          );
       }
 
       // 開始遊戲時，限定新舊玩家資訊一致，或只修改了 cards 與 isPassed (用於發牌)
@@ -236,7 +242,7 @@ service cloud.firestore {
              ||
              // case 2: playing 狀態下退出
              (resource.data.status == 'playing'
-               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt'])
+               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores'])
                && (
                  // 剩下一人，遊戲結束
                  (request.resource.data.status == 'finished'
@@ -244,7 +250,7 @@ service cloud.firestore {
                    && request.resource.data.winnerUid in oldPlayers
                    && request.resource.data.winnerUid != myUid
                    && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid, request.resource.data.winnerUid])
-                   && (newPlayers[request.resource.data.winnerUid] == oldPlayers[request.resource.data.winnerUid] || (newPlayers[request.resource.data.winnerUid].diff(oldPlayers[request.resource.data.winnerUid]).affectedKeys().hasOnly(['wins']) && newPlayers[request.resource.data.winnerUid].wins == oldPlayers[request.resource.data.winnerUid].wins + 1))
+                   && (newPlayers[request.resource.data.winnerUid] == oldPlayers[request.resource.data.winnerUid] || (newPlayers[request.resource.data.winnerUid].diff(oldPlayers[request.resource.data.winnerUid]).affectedKeys().hasOnly(['wins', 'points']) && (newPlayers[request.resource.data.winnerUid].wins == oldPlayers[request.resource.data.winnerUid].wins || newPlayers[request.resource.data.winnerUid].wins == oldPlayers[request.resource.data.winnerUid].wins + 1)))
                  )
                  ||
                  // 剩下多於一人，遊戲繼續
@@ -284,7 +290,7 @@ service cloud.firestore {
             ||
             // case 2: playing 狀態下退出
             (resource.data.status == 'playing'
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt'])
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores'])
               && request.resource.data.players[(newSize == 1 ? newOrder[0] : (newSize == 2 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : newOrder[1]) : (newSize == 3 ? (request.resource.data.players[newOrder[0]].isHost ? newOrder[0] : (request.resource.data.players[newOrder[1]].isHost ? newOrder[1] : newOrder[2])) : null)))].isBot == false
             )
           );
@@ -317,7 +323,7 @@ service cloud.firestore {
            && request.resource.data.playerOrder == resource.data.playerOrder
            && request.resource.data.players.keys().toSet() == resource.data.players.keys().toSet()
            // 限制修改的欄位清單
-           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'status', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'winnerUid', 'firstPlayRequiredCardId', 'updatedAt', 'expiresAt'])
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'status', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'winnerUid', 'firstPlayRequiredCardId', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores'])
            // winnerUid 必須是合法玩家
            && (winner == null || winner in request.resource.data.players)
            // 只有當 winnerUid 的卡牌出完時，才允許將狀態設為 finished 並宣告獲勝
