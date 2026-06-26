@@ -225,8 +225,16 @@ function RoomContent() {
           }
           prevPlayerOrder.current = roomData.playerOrder;
           setRoom(roomData);
+
+          // 只要自己在房間內且對局未徹底結束，就紀錄房號以便斷線重連
+          if (user.uid && roomData.players[user.uid] && roomData.status !== "gameOver") {
+            localStorage.setItem("last_joined_room_id", roomId);
+          } else {
+            localStorage.removeItem("last_joined_room_id");
+          }
         } else {
           setError("房間已解散");
+          localStorage.removeItem("last_joined_room_id");
         }
       });
     });
@@ -359,6 +367,7 @@ function RoomContent() {
 
   const handleLeaveRoom = async () => {
     if (!uid) return;
+    localStorage.removeItem("last_joined_room_id");
     await leaveRoom(roomId, uid);
     router.push("/lobby");
   };
@@ -2269,7 +2278,7 @@ function RoomContent() {
         {/* 中央出牌區 */}
         <div className="table-center">
           {room.lastPlayedHand ? (
-            <div className="flex flex-col items-center gap-1 w-full">
+            <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
                 【{room.players[room.lastPlayedUid!]?.nickname}】 出牌
               </span>
@@ -2282,10 +2291,25 @@ function RoomContent() {
               </div>
             </div>
           ) : (
-            <div className="waiting-text">
+            <div className="waiting-text" style={{ marginBottom: "10px" }}>
               等待出牌
             </div>
           )}
+          {/* 房號浮水印 (採用 Flex 自然排版，避免因高度被 overflow: hidden 切除，並加深對比) */}
+          <div style={{
+            fontSize: "11px",
+            fontWeight: 900,
+            color: "rgba(0, 0, 0, 0.35)",
+            letterSpacing: "1.5px",
+            pointerEvents: "none",
+            userSelect: "none",
+            whiteSpace: "nowrap",
+            marginTop: "6px",
+            textAlign: "center",
+            zIndex: 10
+          }}>
+            房號: {roomId}
+          </div>
         </div>
 
         {/* 右側玩家 */}

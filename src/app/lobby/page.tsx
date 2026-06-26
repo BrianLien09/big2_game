@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/store/useGameStore";
-import { auth, logoutWithGoogle } from "@/lib/firebase";
+import { auth, logoutWithGoogle, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { cleanupExpiredRoomsIfNeeded } from "@/lib/roomService";
+import { cleanupExpiredRoomsIfNeeded, leaveRoom } from "@/lib/roomService";
 
 export default function Lobby() {
   const router = useRouter();
@@ -21,13 +22,17 @@ export default function Lobby() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 快速重連狀態
+  const [reconnectRoomId, setReconnectRoomId] = useState<string | null>(null);
+  const [reconnectRoomName, setReconnectRoomName] = useState<string | null>(null);
+
   useEffect(() => {
     if (!auth) {
       setTimeout(() => setLoading(false), 0);
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         // 未登入 Google，直接重定向回首頁
         router.replace("/");
@@ -39,11 +44,36 @@ export default function Lobby() {
       const savedName = localStorage.getItem("big2_nickname");
       if (savedName) {
         setNickname(savedName);
+      }
+      
+      const finalNickname = savedName || nickname;
+      if (finalNickname) {
         setLoading(false);
         cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
-      } else if (nickname) {
-        setLoading(false);
-        cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
+
+        // 偵測是否可以快速重連
+        const savedRoomId = localStorage.getItem("last_joined_room_id");
+        if (savedRoomId && db) {
+          try {
+            const roomSnap = await getDoc(doc(db, "rooms", savedRoomId));
+            if (roomSnap.exists()) {
+              const roomData = roomSnap.data();
+              const isPlayerInRoom = roomData.players && roomData.players[user.uid];
+              const isRoomActive = roomData.status && roomData.status !== "gameOver";
+              
+              if (isPlayerInRoom && isRoomActive) {
+                setReconnectRoomId(savedRoomId);
+                setReconnectRoomName(roomData.name || "對局");
+              } else {
+                localStorage.removeItem("last_joined_room_id");
+              }
+            } else {
+              localStorage.removeItem("last_joined_room_id");
+            }
+          } catch (err) {
+            console.error("驗證重連房間失敗:", err);
+          }
+        }
       } else {
         // 已登入但本地無暱稱，引導回首頁輸入暱稱
         router.replace("/");
@@ -79,6 +109,24 @@ export default function Lobby() {
     if (!joinRoomId.trim()) return;
     await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     router.push(`/room?id=${joinRoomId.trim()}`);
+  };
+
+  const handleReconnect = () => {
+    if (reconnectRoomId) {
+      router.push(`/room?id=${reconnectRoomId}`);
+    }
+  };
+
+  const handleIgnoreReconnect = async () => {
+    if (reconnectRoomId && currentUser) {
+      // 異步在後台呼叫 leaveRoom 以釋放資源 (如果只剩 Bot 會自動刪除房間)
+      leaveRoom(reconnectRoomId, currentUser.uid).catch(err => {
+        console.error("Failed to release room during ignore:", err);
+      });
+    }
+    localStorage.removeItem("last_joined_room_id");
+    setReconnectRoomId(null);
+    setReconnectRoomName(null);
   };
 
   if (loading || !nickname) {
@@ -129,6 +177,72 @@ export default function Lobby() {
         <p className="text-sm md:text-base font-bold tracking-widest text-gray-600" style={{ marginBottom: "40px" }}>
           在線大老二・多人實時對戰・經典撲克挑戰
         </p>
+
+        {/* 快速重連橫幅 */}
+        {reconnectRoomId && (
+          <div className="comic-panel animate-in fade-in slide-in-from-top-4 duration-200" style={{
+            background: "#fef9c3",
+            padding: "16px 24px",
+            margin: "0 auto 32px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "14px",
+            width: "90dvw",
+            maxWidth: "420px",
+            boxSizing: "border-box",
+            border: "3px solid #000",
+            borderRadius: "16px",
+            boxShadow: "4px 4px 0 #000"
+          }}>
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontWeight: 900, fontSize: "1.1rem", color: "#000" }}>
+                ⚡ 偵測到未完成的對局！
+              </p>
+              <p style={{ fontWeight: 700, fontSize: "0.85rem", color: "#4b5563", marginTop: "4px" }}>
+                房間：{reconnectRoomName} (房號: {reconnectRoomId})
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "12px", width: "100%" }}>
+              <button 
+                onClick={handleReconnect}
+                className="comic-btn"
+                style={{
+                  background: "#fbbf24",
+                  fontSize: "0.9rem",
+                  padding: "8px 16px",
+                  flex: 1,
+                  boxShadow: "2px 2px 0 #000",
+                  border: "2.5px solid #000",
+                  borderRadius: "10px",
+                  fontWeight: 900,
+                  transform: "none",
+                }}
+              >
+                快速重連
+              </button>
+              <button
+                onClick={handleIgnoreReconnect}
+                className="comic-btn"
+                style={{
+                  background: "#ef4444",
+                  color: "#fff",
+                  fontSize: "0.9rem",
+                  padding: "8px 16px",
+                  flex: 1,
+                  boxShadow: "2px 2px 0 #000",
+                  border: "2.5px solid #000",
+                  borderRadius: "10px",
+                  fontWeight: 900,
+                  transform: "none",
+                }}
+              >
+                忽略
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row justify-center items-center" style={{ gap: "20px", marginTop: "16px" }}>
           <button 
