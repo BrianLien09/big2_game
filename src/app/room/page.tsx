@@ -76,6 +76,77 @@ function isRetryableBotError(error: unknown): boolean {
   return false;
 }
 
+interface WindowWithWebkit extends Window {
+  AudioContext?: typeof AudioContext;
+  webkitAudioContext?: typeof AudioContext;
+}
+
+function getCardRotateAngle(cardId: string): number {
+  let hash = 0;
+  for (let i = 0; i < cardId.length; i++) {
+    hash = cardId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const angle = (hash % 11) - 5; // -5 到 5 度之間
+  return angle;
+}
+
+function playCardSound(): void {
+  if (typeof window === "undefined") return;
+  const win = window as WindowWithWebkit;
+  const AudioContextClass = win.AudioContext || win.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  try {
+    const ctx = new AudioContextClass();
+    
+    // 1. 合成「刷」的紙張聲音 (白噪音 + 帶通濾波器)
+    const bufferSize = ctx.sampleRate * 0.12; // 0.12 秒
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = buffer;
+    
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(1200, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.1);
+    filter.Q.setValueAtTime(3, ctx.currentTime);
+    
+    const gainNode = ctx.createGain();
+    gainNode.gain.setValueAtTime(0.01, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    
+    noiseSource.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    // 2. 合成「啪」的敲擊桌面聲音 (低頻正弦波掃頻)
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(180, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.08);
+    
+    oscGain.gain.setValueAtTime(0.12, ctx.currentTime);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+    
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    
+    // 啟動與播放
+    noiseSource.start();
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+  } catch (err) {
+    console.warn("播放出牌音效失敗:", err);
+  }
+}
+
 function RoomContent() {
   const router = useRouter();
   const { nickname, addToast } = useGameStore();
@@ -244,6 +315,24 @@ function RoomContent() {
       unsubscribe();
     };
   }, [roomId, nickname, router, searchParams, addToast]);
+
+  // 監聽出牌並播放音效
+  const prevLastPlayedKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (room?.lastPlayedHand && room.lastPlayedUid) {
+      const currentKey = `${room.lastPlayedUid}-${room.lastPlayedHand.cards.map(c => c.id).join(',')}`;
+      if (currentKey !== prevLastPlayedKey.current) {
+        // 當不是首次載入且遊戲狀態為 playing 時播放
+        if (prevLastPlayedKey.current !== null && room.status === "playing") {
+          playCardSound();
+        }
+        prevLastPlayedKey.current = currentKey;
+      }
+    } else {
+      prevLastPlayedKey.current = null;
+    }
+  }, [room?.lastPlayedHand, room?.lastPlayedUid, room?.status]);
 
   const currentMe = uid && room?.players[uid] ? room.players[uid] : null;
   const hasCurrentMe = !!currentMe;
@@ -1049,7 +1138,7 @@ function RoomContent() {
           {/* 結算名次與積分表 */}
           <div style={{
             margin: "0.5rem auto 2rem",
-            width: "90dvw",
+            width: "100%",
             maxWidth: "460px",
             background: "#fff",
             border: "3px solid #000",
@@ -1059,12 +1148,12 @@ function RoomContent() {
           }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: "60px 1fr 80px 80px",
+              gridTemplateColumns: isMobile ? "50px 1fr 65px 75px" : "60px 1fr 80px 80px",
               fontWeight: 900,
-              fontSize: "0.85rem",
+              fontSize: isMobile ? "0.78rem" : "0.85rem",
               background: "#f3f4f6",
               borderBottom: "3px solid #000",
-              padding: "10px 12px",
+              padding: isMobile ? "8px 10px" : "10px 12px",
               textAlign: "left"
             }}>
               <div>名次</div>
@@ -1084,11 +1173,11 @@ function RoomContent() {
               return (
                 <div key={pUid} style={{
                   display: "grid",
-                  gridTemplateColumns: "60px 1fr 80px 80px",
+                  gridTemplateColumns: isMobile ? "50px 1fr 65px 75px" : "60px 1fr 80px 80px",
                   fontWeight: 800,
-                  fontSize: "0.85rem",
+                  fontSize: isMobile ? "0.78rem" : "0.85rem",
                   borderBottom: index === room.finishedOrder!.length - 1 ? "none" : "2px solid #000",
-                  padding: "10px 12px",
+                  padding: isMobile ? "8px 10px" : "10px 12px",
                   textAlign: "left",
                   background: isMe ? "#fef9c3" : "#fff",
                   alignItems: "center"
@@ -1207,6 +1296,19 @@ function RoomContent() {
         .header-avatar-active {
           animation: turn-glow 1.5s infinite;
           border-color: #fbbf24 !important;
+        }
+        .animate-card-appear {
+          animation: cardAppear 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+        }
+        @keyframes cardAppear {
+          0% {
+            opacity: 0;
+            transform: scale(1.6) translateY(-25px);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
         }
         /* ================= 桌面版 (Desktop: >= 901px) ================= */
         @media (min-width: 901px) {
@@ -2282,12 +2384,23 @@ function RoomContent() {
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
                 【{room.players[room.lastPlayedUid!]?.nickname}】 出牌
               </span>
-              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full">
-                {room.lastPlayedHand.cards.map((card) => (
-                  <div key={card.id} className="transform transition-transform hover:scale-105">
-                    <PlayingCard card={card} size={tableCardSize} className="playing-card" />
-                  </div>
-                ))}
+              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full" style={{ perspective: "600px" }}>
+                {room.lastPlayedHand.cards.map((card, idx) => {
+                  const angle = getCardRotateAngle(card.id);
+                  const uniqueKey = `${card.id}-${room.lastPlayedUid}-${room.lastPlayedHand?.keyCard?.id || ""}`;
+                  return (
+                    <div 
+                      key={uniqueKey} 
+                      className="animate-card-appear transform transition-transform hover:scale-105"
+                      style={{ 
+                        transform: `rotate(${angle}deg)`,
+                        animationDelay: `${idx * 55}ms`
+                      }}
+                    >
+                      <PlayingCard card={card} size={tableCardSize} className="playing-card" />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : (
