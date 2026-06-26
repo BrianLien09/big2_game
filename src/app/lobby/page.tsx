@@ -15,6 +15,7 @@ export default function Lobby() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
+  const [targetPoints, setTargetPoints] = useState<number>(15);
 
   // Firebase 使用者與載入狀態
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -70,7 +71,7 @@ export default function Lobby() {
     await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
     const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的對局`);
-    router.push(`/room?id=${newRoomId}&name=${encodedName}`);
+    router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}`);
   };
 
   const handleJoinRoom = async (e: React.FormEvent) => {
@@ -215,6 +216,38 @@ export default function Lobby() {
                   onChange={(e) => setRoomName(e.target.value)}
                   maxLength={16}
                 />
+              </div>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>目標結束積分</label>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  {[10, 15, 20].map((pts) => {
+                    const isSelected = targetPoints === pts;
+                    return (
+                      <button
+                        key={pts}
+                        type="button"
+                        onClick={() => setTargetPoints(pts)}
+                        className="comic-btn"
+                        style={{
+                          flex: 1,
+                          padding: "10px 0",
+                          fontSize: "1.1rem",
+                          background: isSelected ? "#fbbf24" : "#fff",
+                          border: "3px solid #000",
+                          borderRadius: "12px",
+                          boxShadow: isSelected ? "2px 2px 0px #000" : "none",
+                          transform: isSelected ? "translate(-2px, -2px)" : "none",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        {pts} 分
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <button 
                 type="submit" 

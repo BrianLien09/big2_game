@@ -245,7 +245,7 @@ service cloud.firestore {
                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'status', 'winnerUid', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores'])
                && (
                  // 剩下一人，遊戲結束
-                 (request.resource.data.status == 'finished'
+                 ((request.resource.data.status == 'finished' || request.resource.data.status == 'gameOver')
                    && request.resource.data.winnerUid != null
                    && request.resource.data.winnerUid in oldPlayers
                    && request.resource.data.winnerUid != myUid
@@ -260,8 +260,8 @@ service cloud.firestore {
                )
              )
              ||
-             // case 3: finished 狀態下退出（遊戲已結束，正常退出）
-             (resource.data.status == 'finished'
+             // case 3: finished 或 gameOver 狀態下退出（遊戲已結束，正常退出）
+             ((resource.data.status == 'finished' || resource.data.status == 'gameOver')
                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'playerOrder', 'updatedAt', 'expiresAt'])
                && oldPlayers.diff(newPlayers).affectedKeys().hasOnly([myUid])
              )
@@ -323,11 +323,11 @@ service cloud.firestore {
            && request.resource.data.playerOrder == resource.data.playerOrder
            && request.resource.data.players.keys().toSet() == resource.data.players.keys().toSet()
            // 限制修改的欄位清單
-           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'status', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'winnerUid', 'firstPlayRequiredCardId', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores'])
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'status', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'winnerUid', 'firstPlayRequiredCardId', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores', 'targetPoints'])
            // winnerUid 必須是合法玩家
            && (winner == null || winner in request.resource.data.players)
-           // 只有當 winnerUid 的卡牌出完時，才允許將狀態設為 finished 並宣告獲勝
-           && (newStatus != "finished" || (winner != null && request.resource.data.players[winner].cards.size() == 0))
+           // 只有當 winnerUid 的卡牌出完時，才允許將狀態設為 finished 或 gameOver 並宣告獲勝
+           && ((newStatus != "finished" && newStatus != "gameOver") || (winner != null && request.resource.data.players[winner].cards.size() == 0))
            // 確保任何時候都不能將自己的 isBot 改成 true
            && (!(request.auth.uid in request.resource.data.players) || request.resource.data.players[request.auth.uid].isBot == false)
            // 確保房主標記不會被普通玩家竄改

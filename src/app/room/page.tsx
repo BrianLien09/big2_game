@@ -6,7 +6,7 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath } from "@/lib/roomService";
+import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -85,6 +85,7 @@ function RoomContent() {
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
   const [copied, setCopied] = useState<string>("");
   const [loadingBot, setLoadingBot] = useState(false);
+  const [isUpdatingPoints, setIsUpdatingPoints] = useState(false);
   const searchParams = useSearchParams();
 
   // 監聽手牌容器寬度以實現自適應重疊效果
@@ -185,8 +186,9 @@ function RoomContent() {
           const err = e as Error;
           if (err.message === "房間不存在") {
             const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
+            const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
             try {
-              await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "");
+              await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam);
               isCreator = true;
             } catch (createErr) {
               const cErr = createErr as Error;
@@ -654,6 +656,50 @@ function RoomContent() {
             </button>
           </div>
 
+          {/* 目標積分設定列 */}
+          <div style={{ flexShrink: 0, padding: "10px 16px", background: "#fff", borderBottom: "2px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#4b5563" }}>目標結束積分</span>
+            {me?.isHost ? (
+              <div style={{ display: "flex", gap: 6 }}>
+                {[10, 15, 20].map((pts) => {
+                  const isSelected = room.targetPoints === pts;
+                  return (
+                    <button
+                      key={pts}
+                      disabled={isUpdatingPoints}
+                      onClick={async () => {
+                        try {
+                          setIsUpdatingPoints(true);
+                          await updateTargetPoints(roomId, pts);
+                        } catch (err) {
+                          addToast("更新目標積分失敗", "error");
+                        } finally {
+                          setIsUpdatingPoints(false);
+                        }
+                      }}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "0.8rem",
+                        background: isSelected ? "#fbbf24" : "#fff",
+                        border: "2px solid #000",
+                        borderRadius: 6,
+                        fontWeight: 900,
+                        boxShadow: isSelected ? "1px 1px 0px #000" : "none",
+                        cursor: "pointer"
+                      }}
+                    >
+                      {pts}分
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <span style={{ fontSize: "0.85rem", fontWeight: 900, color: "#b45309" }}>
+                🏆 {room.targetPoints || 15} 分
+              </span>
+            )}
+          </div>
+
           {/* 玩家列表（可捲動） */}
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px 8px" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#6b7280", marginBottom: 10 }}>玩家列表</div>
@@ -725,6 +771,52 @@ function RoomContent() {
                   </div>
                 </div>
 
+                {/* 目標積分設定區域 */}
+                <div style={{ width: "100%", marginBottom: 20, textAlign: "center" }}>
+                  <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>目標結束積分</div>
+                  {me?.isHost ? (
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                      {[10, 15, 20].map((pts) => {
+                        const isSelected = room.targetPoints === pts;
+                        return (
+                          <button
+                            key={pts}
+                            disabled={isUpdatingPoints}
+                            onClick={async () => {
+                              try {
+                                setIsUpdatingPoints(true);
+                                await updateTargetPoints(roomId, pts);
+                              } catch (err) {
+                                addToast("更新目標積分失敗", "error");
+                              } finally {
+                                setIsUpdatingPoints(false);
+                              }
+                            }}
+                            className="comic-btn"
+                            style={{
+                              padding: "6px 16px",
+                              fontSize: "0.9rem",
+                              background: isSelected ? "#fbbf24" : "#fff",
+                              border: "2px solid #000",
+                              borderRadius: 8,
+                              boxShadow: isSelected ? "2px 2px 0px #000" : "none",
+                              transform: isSelected ? "translate(-1px, -1px)" : "none",
+                              fontWeight: 900,
+                              cursor: "pointer"
+                            }}
+                          >
+                            {pts}分
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="comic-badge" style={{ background: "#f3f4f6", color: "#000", padding: "6px 16px", border: "2px solid #000", fontWeight: 900, borderRadius: 8, display: "inline-block" }}>
+                      🏆 {room.targetPoints || 15} 分結束
+                    </span>
+                  )}
+                </div>
+
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginTop: 6, width: "100%" }}>
                   {me?.isHost ? (
                     <button className="comic-btn" style={{ width: 300, maxWidth: "75%", height: 52, background: "#111", color: "#fff", fontSize: 17, fontWeight: 800, border: "3px solid #111", borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 0 #777", padding: 0 }} onClick={handleStart}>開始遊戲</button>
@@ -767,12 +859,178 @@ function RoomContent() {
     );
   }
 
+  // ---- 整場遊戲結束畫面 (Game Over) ----
+  if (room.status === "gameOver") {
+    const target = room.targetPoints || 15;
+    const reachedPlayers = Object.values(room.players).filter(p => (p.points ?? 0) >= target);
+    const sortedPlayers = [...Object.values(room.players)].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+    const isMultiWinner = reachedPlayers.length > 1;
+    
+    return (
+      <div key="gameover-view" style={{ 
+        height: "100dvh", 
+        width: "100%",
+        overflowY: "auto",
+        display: "flex", 
+        flexDirection: "column",
+        alignItems: "center", 
+        justifyContent: "flex-start", 
+        padding: isMobile ? "16px 10px" : "40px 24px",
+        boxSizing: "border-box",
+        backgroundColor: "#fef08a", 
+        backgroundImage: "radial-gradient(circle, rgba(251,191,36,0.15) 1.5px, transparent 1.5px)", 
+        backgroundSize: "24px 24px" 
+      }}>
+        <div className="comic-panel" style={{ 
+          padding: isMobile ? "20px 16px" : "3rem", 
+          textAlign: "center", 
+          background: "#fff", 
+          maxWidth: "500px", 
+          width: "100%",
+          boxSizing: "border-box"
+        }}>
+          <div style={{ fontSize: isMobile ? "2.5rem" : "4rem", marginBottom: "0.25rem" }}>🏆</div>
+          <h1 style={{ fontSize: isMobile ? "1.8rem" : "2.5rem", fontWeight: 900, marginBottom: "0.5rem", color: "#b45309" }}>整場遊戲結束</h1>
+          
+          {isMultiWinner ? (
+            <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
+              <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜多人同時達到！</h2>
+              <p style={{ fontWeight: 800, fontSize: isMobile ? "0.9rem" : "1.1rem", marginTop: "6px", color: "#1e293b" }}>
+                達到積分玩家：{reachedPlayers.map(p => p.nickname).join("、")}
+              </p>
+            </div>
+          ) : reachedPlayers.length === 1 ? (
+            <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
+              <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜 {reachedPlayers[0].nickname}！</h2>
+              <p style={{ fontWeight: 800, fontSize: isMobile ? "0.9rem" : "1.1rem", marginTop: "6px", color: "#1e293b" }}>
+                率先達到目標 {target} 積分！
+              </p>
+            </div>
+          ) : (
+            <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
+              <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜 {sortedPlayers[0]?.nickname}！</h2>
+            </div>
+          )}
+
+          <p style={{ fontWeight: 700, fontSize: isMobile ? "0.9rem" : "1rem", color: "#475569", marginBottom: isMobile ? "12px" : "1.5rem" }}>
+            目標結束積分：{target} 分
+          </p>
+
+          <div style={{
+            margin: isMobile ? "8px auto 16px" : "0.5rem auto 1.5rem",
+            width: "100%",
+            background: "#fff",
+            border: "3px solid #000",
+            borderRadius: "16px",
+            boxShadow: "4px 4px 0 #000",
+            overflow: "hidden"
+          }}>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "55px 1fr 85px" : "60px 1fr 100px",
+              fontWeight: 900,
+              fontSize: isMobile ? "0.78rem" : "0.85rem",
+              background: "#f3f4f6",
+              borderBottom: "3px solid #000",
+              padding: isMobile ? "8px 10px" : "10px 12px",
+              textAlign: "left"
+            }}>
+              <div>名次</div>
+              <div>玩家</div>
+              <div style={{ textAlign: "center" }}>最終總分</div>
+            </div>
+            {sortedPlayers.map((player, index) => {
+              const isMe = player.uid === uid;
+              const placementEmojis = ["🥇", "🥈", "🥉", "💩"];
+              const placementText = placementEmojis[index] || `${index + 1}`;
+              const isWinner = reachedPlayers.some(p => p.uid === player.uid);
+
+              return (
+                <div key={player.uid} style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "55px 1fr 85px" : "60px 1fr 100px",
+                  fontWeight: 800,
+                  fontSize: isMobile ? "0.78rem" : "0.85rem",
+                  borderBottom: index === sortedPlayers.length - 1 ? "none" : "2px solid #000",
+                  padding: isMobile ? "8px 10px" : "10px 12px",
+                  textAlign: "left",
+                  background: isWinner ? "#fef9c3" : "#fff",
+                  alignItems: "center"
+                }}>
+                  <div style={{ fontSize: isMobile ? "0.95rem" : "1.1rem", fontWeight: 900 }}>{placementText}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    {player.avatarUrl ? (
+                      <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.72rem", fontWeight: 900 }}>
+                        {player.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
+                  </div>
+                  <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.88rem" : "1rem" }}>
+                    🪙 {player.points ?? 0}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ 
+            display: "flex", 
+            flexDirection: isMobile ? "column" : "row",
+            gap: 10, 
+            justifyContent: "center",
+            width: "100%"
+          }}>
+            {me?.isHost ? (
+              <button className="comic-btn" style={{ background: "#fbbf24", width: isMobile ? "100%" : "auto", padding: isMobile ? "12px 0" : "12px 28px" }} onClick={async () => {
+                try {
+                  await restartWholeGame(roomId);
+                  addToast("已重新開局，積分已歸零", "success");
+                } catch (err) {
+                   const errMsg = err instanceof Error ? err.message : String(err);
+                   addToast(errMsg || "重新開局失敗", "error");
+                }
+              }}>
+                重新開局
+              </button>
+            ) : (
+              <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#6b7280", alignSelf: "center", margin: isMobile ? "6px 0" : 0 }}>
+                等待房主重新開局...
+              </div>
+            )}
+            <button className="comic-btn" style={{ width: isMobile ? "100%" : "auto", padding: isMobile ? "12px 0" : "12px 28px" }} onClick={handleLeaveRoom}>回到大廳</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ---- 結束畫面 ----
   if (room.status === "finished") {
     const isWinner = room.winnerUid === uid;
     return (
-      <div key="finished-view" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f8f9fa" }}>
-        <div className="comic-panel" style={{ padding: "3rem", textAlign: "center" }}>
+      <div key="finished-view" style={{ 
+        height: "100dvh", 
+        width: "100%",
+        overflowY: "auto",
+        display: "flex", 
+        flexDirection: "column",
+        alignItems: "center", 
+        justifyContent: "flex-start", 
+        padding: isMobile ? "24px 12px" : "40px 24px",
+        boxSizing: "border-box",
+        backgroundColor: "#f8f9fa" 
+      }}>
+        <div className="comic-panel" style={{ 
+          padding: isMobile ? "24px 16px" : "3rem", 
+          textAlign: "center",
+          background: "#fff",
+          maxWidth: "500px",
+          width: "100%",
+          boxSizing: "border-box"
+        }}>
           <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>{isWinner ? "🎉" : "🥺"}</div>
           <h1 style={{ fontSize: "2.5rem", fontWeight: 900, marginBottom: "0.5rem" }}>{isWinner ? "你贏了！" : "遊戲結束"}</h1>
           <p style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "1rem" }}>

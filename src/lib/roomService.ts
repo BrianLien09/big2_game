@@ -24,7 +24,7 @@ export interface RoomState {
   id: string;
   name: string;
   players: Record<string, Player>;
-  status: 'waiting' | 'playing' | 'finished';
+  status: 'waiting' | 'playing' | 'finished' | 'gameOver';
   turnUid: string | null; 
   lastPlayedHand: PlayedHand | null;
   lastPlayedUid: string | null;
@@ -46,6 +46,7 @@ export interface RoomState {
     }
   >;
   roundScores?: Record<string, number>;
+  targetPoints?: number;
 }
 
 
@@ -90,13 +91,14 @@ export function getRoomExpirationTimestamp(): Timestamp {
 }
 
 // 建立房間 (寫入包含 createdAt, updatedAt, expiresAt)
-export const createRoom = async (roomId: string, hostUid: string, hostNickname: string, roomName: string = "大老二對局", hostAvatarUrl: string = "") => {
+export const createRoom = async (roomId: string, hostUid: string, hostNickname: string, roomName: string = "大老二對局", hostAvatarUrl: string = "", targetPoints: number = 15) => {
   if (!db) throw new Error("Firebase DB not initialized");
   
   const roomRef = doc(db, 'rooms', roomId);
   const initialRoom: RoomState = {
     id: roomId,
     name: roomName,
+    targetPoints,
     players: {
       [hostUid]: {
         uid: hostUid,
@@ -351,7 +353,7 @@ export const leaveRoom = async (roomId: string, uid: string) => {
         const finalFinishedOrder = getFinalFinishedOrder(roomData, newFinishedOrder, updatedPlayers);
         buildRoundSettlementWithPlayers(roomData, finalFinishedOrder, updatedPlayers, updates);
       }
-    } else if (roomData.status === 'finished') {
+    } else if (roomData.status === 'finished' || roomData.status === 'gameOver') {
       // 遊戲已結束，正常退出（不需要特殊邏輯）
     }
 
@@ -677,7 +679,7 @@ export function buildRoundSettlementWithPlayers(
   currentPlayers: Record<string, Player>,
   updates: Record<string, unknown>
 ) {
-  if (room.status === 'finished') {
+  if (room.status === 'finished' || room.status === 'gameOver') {
     return;
   }
 
@@ -709,14 +711,25 @@ export function buildRoundSettlementWithPlayers(
     }
   });
 
-  // 對仍存在於 players 中的玩家累加積分
+  // 對仍存在於 players 中的玩家累加積分，並檢查是否有人達到目標積分
+  let isAnyPlayerReachedTarget = false;
+  const target = room.targetPoints || 15;
   Object.keys(currentPlayers).forEach(uid => {
     const playerObj = currentPlayers[uid];
     const score = roundScores[uid] || 0;
-    updates[`players.${uid}.points`] = (playerObj.points ?? 0) + score;
+    const nextPoints = (playerObj.points ?? 0) + score;
+    updates[`players.${uid}.points`] = nextPoints;
+    
+    if (nextPoints >= target) {
+      isAnyPlayerReachedTarget = true;
+    }
   });
 
-  updates.status = 'finished';
+  if (isAnyPlayerReachedTarget) {
+    updates.status = 'gameOver';
+  } else {
+    updates.status = 'finished';
+  }
   updates.finishedOrder = finalFinishedOrder;
   updates.roundScores = roundScores;
   updates.winnerUid = finalFinishedOrder[0];
@@ -936,7 +949,7 @@ export const executeBotTurn = async (
     const roomData = roomSnap.data() as RoomState;
 
     // 一、重新讀取最新房間，並確認狀態與回合
-    if (roomData.status === 'finished') {
+    if (roomData.status === 'finished' || roomData.status === 'gameOver') {
       return 'room-finished';
     }
 
@@ -967,6 +980,48 @@ export const executeBotTurn = async (
     }
 
     return 'executed';
+  });
+};
+
+// 更新房間目標積分
+export const updateTargetPoints = async (roomId: string, targetPoints: number) => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  await updateDoc(roomRef, {
+    targetPoints,
+    updatedAt: serverTimestamp(),
+    expiresAt: getRoomExpirationTimestamp()
+  });
+};
+
+// 重新開始整場遊戲 (清空所有玩家的積分)
+export const restartWholeGame = async (roomId: string) => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) return;
+    const roomData = roomSnap.data() as RoomState;
+    
+    const updates: Record<string, unknown> = {
+      status: 'waiting',
+      winnerUid: null,
+      lastPlayedHand: null,
+      lastPlayedUid: null,
+      turnUid: null,
+      passCount: 0,
+      finishedOrder: [],
+      roundScores: {},
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp()
+    };
+    
+    // 將所有玩家的 points 重置為 0
+    Object.keys(roomData.players).forEach(uid => {
+      updates[`players.${uid}.points`] = 0;
+    });
+    
+    transaction.update(roomRef, updates);
   });
 };
 
