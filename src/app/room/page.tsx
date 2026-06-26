@@ -83,6 +83,17 @@ interface WindowWithWebkit extends Window {
 
 let globalAudioContext: AudioContext | null = null;
 
+function safeResume(ctx: AudioContext): void {
+  try {
+    const p = ctx.resume();
+    if (p && typeof p.catch === "function") {
+      p.catch((err) => console.warn("喚醒 AudioContext 失敗:", err));
+    }
+  } catch (e) {
+    console.warn("喚醒 AudioContext 異常:", e);
+  }
+}
+
 function initOrResumeAudio(): void {
   if (typeof window === "undefined") return;
   const win = window as WindowWithWebkit;
@@ -94,9 +105,7 @@ function initOrResumeAudio(): void {
   }
   
   if (globalAudioContext.state === "suspended") {
-    globalAudioContext.resume().catch(err => {
-      console.warn("喚醒 AudioContext 失敗:", err);
-    });
+    safeResume(globalAudioContext);
   }
 }
 
@@ -111,63 +120,192 @@ function getCardRotateAngle(cardId: string): number {
 
 function playCardSound(): void {
   if (typeof window === "undefined") return;
-  
-  if (!globalAudioContext) {
-    initOrResumeAudio();
-  }
+
+  if (!globalAudioContext) initOrResumeAudio();
   if (!globalAudioContext) return;
 
   const ctx = globalAudioContext;
-  if (ctx.state === "suspended") {
-    ctx.resume().catch(() => {});
-  }
+  if (ctx.state === "suspended") safeResume(ctx);
 
   try {
-    // 1. 合成「刷」的紙張聲音 (白噪音 + 帶通濾波器)
-    const bufferSize = ctx.sampleRate * 0.12; // 0.12 秒
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
+    const t = ctx.currentTime;
+
+    // === 層一：紙張輕滑聲 ===
+    // 白噪音經帶通濾波，從中高頻平滑掃向低頻，模擬卡牌滑過桌面的質感
+    // 使用 exponentialRampToValueAtTime 確保衰減曲線自然，避免截斷爆音
+    const noiseBufSize = Math.floor(ctx.sampleRate * 0.18);
+    const noiseBuf = ctx.createBuffer(1, noiseBufSize, ctx.sampleRate);
+    const noiseData = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseBufSize; i++) {
+      noiseData[i] = Math.random() * 2 - 1;
     }
-    
+
     const noiseSource = ctx.createBufferSource();
-    noiseSource.buffer = buffer;
-    
-    const filter = ctx.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.setValueAtTime(1200, ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.1);
-    filter.Q.setValueAtTime(3, ctx.currentTime);
-    
-    const gainNode = ctx.createGain();
-    gainNode.gain.setValueAtTime(0.01, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-    
-    noiseSource.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    
-    // 2. 合成「啪」的敲擊桌面聲音 (低頻正弦波掃頻)
-    const osc = ctx.createOscillator();
-    const oscGain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(180, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.08);
-    
-    oscGain.gain.setValueAtTime(0.12, ctx.currentTime);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-    
-    osc.connect(oscGain);
-    oscGain.connect(ctx.destination);
-    
-    // 啟動與播放
-    noiseSource.start();
-    osc.start();
-    osc.stop(ctx.currentTime + 0.08);
+    noiseSource.buffer = noiseBuf;
+
+    const bpFilter = ctx.createBiquadFilter();
+    bpFilter.type = "bandpass";
+    // 從 1400Hz 掃到 350Hz：先有紙張「沙」感，後段轉為較柔和的摩擦底色
+    bpFilter.frequency.setValueAtTime(1400, t);
+    bpFilter.frequency.exponentialRampToValueAtTime(350, t + 0.16);
+    bpFilter.Q.setValueAtTime(1.8, t);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.0, t);
+    noiseGain.gain.linearRampToValueAtTime(0.55, t + 0.015); // 緩慢起音，避免爆音
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+    noiseSource.connect(bpFilter);
+    bpFilter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+
+    // === 層二：輕拍桌面聲 ===
+    // 低頻正弦波快速衰減，模擬牌輕放桌面時的短促震動感
+    const thudOsc = ctx.createOscillator();
+    const thudGain = ctx.createGain();
+    thudOsc.type = "sine";
+    thudOsc.frequency.setValueAtTime(140, t);
+    thudOsc.frequency.exponentialRampToValueAtTime(65, t + 0.09);
+
+    thudGain.gain.setValueAtTime(0.0, t);
+    thudGain.gain.linearRampToValueAtTime(0.38, t + 0.006);
+    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+
+    thudOsc.connect(thudGain);
+    thudGain.connect(ctx.destination);
+
+    // === 啟動 ===
+    noiseSource.start(t);
+    thudOsc.start(t);
+    thudOsc.stop(t + 0.11);
   } catch (err) {
     console.warn("播放出牌音效失敗:", err);
+  }
+}
+
+// Pass 音效：輕柔的「咻」聲，高頻→低頻掃頻，象徵放棄這輪出牌機會
+function playPassSound(): void {
+  if (typeof window === "undefined") return;
+
+  if (!globalAudioContext) initOrResumeAudio();
+  if (!globalAudioContext) return;
+
+  const ctx = globalAudioContext;
+  if (ctx.state === "suspended") safeResume(ctx);
+
+  try {
+    // 高頻→低頻的嗖聲（振盪器掃頻）
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.25);
+
+    gainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.20, ctx.currentTime + 0.04);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.26);
+  } catch (err) {
+    console.warn("播放 Pass 音效失敗:", err);
+  }
+}
+
+let cachedWinBuffer: AudioBuffer | null = null;
+let cachedCheeringBuffer: AudioBuffer | null = null;
+
+async function getAudioBuffer(ctx: AudioContext, url: string, cacheKey: 'win' | 'cheering'): Promise<AudioBuffer> {
+  if (cacheKey === 'win' && cachedWinBuffer) return cachedWinBuffer;
+  if (cacheKey === 'cheering' && cachedCheeringBuffer) return cachedCheeringBuffer;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Fetch audio file failed with status ${response.status}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+
+  // 使用高相容性 Promise 包裝 decodeAudioData，以相容各類瀏覽器 API 的實現差異
+  const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+    try {
+      const p = ctx.decodeAudioData(
+        arrayBuffer,
+        (buf) => resolve(buf),
+        (err) => reject(err)
+      );
+      if (p && typeof p.catch === "function") {
+        p.catch(reject);
+      }
+    } catch (e) {
+      reject(e);
+    }
+  });
+
+  if (cacheKey === 'win') cachedWinBuffer = audioBuffer;
+  if (cacheKey === 'cheering') cachedCheeringBuffer = audioBuffer;
+
+  return audioBuffer;
+}
+
+// 單局結束音效：播放 win.mp3 檔案
+function playRoundOverSound(): void {
+  if (typeof window === "undefined") return;
+
+  if (!globalAudioContext) initOrResumeAudio();
+  if (!globalAudioContext) return;
+
+  const ctx = globalAudioContext;
+  if (ctx.state === "suspended") safeResume(ctx);
+
+  try {
+    const url = getAssetPath("/music/win.mp3");
+    getAudioBuffer(ctx, url, 'win')
+      .then((buffer) => {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(0.5, ctx.currentTime); // 調整為合適的音量
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        source.start(0);
+      })
+      .catch((err) => {
+        console.warn("載入或播放 win.mp3 失敗:", err);
+      });
+  } catch (err) {
+    console.warn("播放單局結束音效失敗:", err);
+  }
+}
+
+// 整局遊戲結束音效：播放 cheering.mp3 檔案，恭喜第一名
+function playGameOverSound(): void {
+  if (typeof window === "undefined") return;
+
+  if (!globalAudioContext) initOrResumeAudio();
+  if (!globalAudioContext) return;
+
+  const ctx = globalAudioContext;
+  if (ctx.state === "suspended") safeResume(ctx);
+
+  try {
+    const url = getAssetPath("/music/cheering.mp3");
+    getAudioBuffer(ctx, url, 'cheering')
+      .then((buffer) => {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(0.6, ctx.currentTime); // 調整為合適的音量
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        source.start(0);
+      })
+      .catch((err) => {
+        console.warn("載入或播放 cheering.mp3 失敗:", err);
+      });
+  } catch (err) {
+    console.warn("播放整局結束音效失敗:", err);
   }
 }
 
@@ -355,23 +493,77 @@ function RoomContent() {
     };
   }, [roomId, nickname, router, searchParams, addToast]);
 
-  // 監聽出牌並播放音效
+  // 監聽出牌與 Pass 狀態變化並播放對應音效
+  const isFirstMountRef = useRef(true);
   const prevLastPlayedKey = useRef<string | null>(null);
+  const prevPassCount = useRef<number | null>(null);
+  const prevTurnUid = useRef<string | null>(null);
 
   useEffect(() => {
-    if (room?.lastPlayedHand && room.lastPlayedUid) {
-      const currentKey = `${room.lastPlayedUid}-${room.lastPlayedHand.cards.map(c => c.id).join(',')}`;
-      if (currentKey !== prevLastPlayedKey.current) {
-        // 當不是首次載入且遊戲狀態為 playing 時播放
-        if (prevLastPlayedKey.current !== null && room.status === "playing") {
+    const count = room?.passCount ?? 0;
+    const turnUid = room?.turnUid ?? null;
+    const status = room?.status ?? null;
+
+    const currentKey = (room?.lastPlayedHand && room.lastPlayedUid)
+      ? `${room.lastPlayedUid}-${room.lastPlayedHand.cards.map(c => c.id).join(',')}`
+      : null;
+
+    if (isFirstMountRef.current) {
+      // 首次掛載：只記錄初始值，不播放任何音效
+      prevPassCount.current = count;
+      prevTurnUid.current = turnUid;
+      prevLastPlayedKey.current = currentKey;
+      isFirstMountRef.current = false;
+      return;
+    }
+
+    if (prevPassCount.current === null) return;
+
+    if (status === "playing") {
+      // === 1. 偵測出牌音效 ===
+      if (currentKey !== null && currentKey !== prevLastPlayedKey.current) {
+        // 排除自己：如果上一個回合的玩家是我自己，代表這是我點擊出牌的，已在 handlePlayCard 中播放過
+        if (prevTurnUid.current !== uid) {
           playCardSound();
         }
-        prevLastPlayedKey.current = currentKey;
       }
-    } else {
-      prevLastPlayedKey.current = null;
+
+      // === 2. 偵測 Pass 音效 ===
+      const isPassDetected = (count > prevPassCount.current) || 
+        (count === 0 && prevPassCount.current > 0 && room?.lastPlayedHand === null);
+
+      if (isPassDetected) {
+        // 排除自己：如果上一個回合的玩家是我自己，代表這是我按的 Pass，已在 handlePass 中播放過
+        if (prevTurnUid.current !== uid) {
+          playPassSound();
+        }
+      }
     }
-  }, [room?.lastPlayedHand, room?.lastPlayedUid, room?.status]);
+
+    prevPassCount.current = count;
+    prevTurnUid.current = turnUid;
+    prevLastPlayedKey.current = currentKey;
+  }, [room?.passCount, room?.status, room?.turnUid, room?.lastPlayedHand, uid]);
+
+  // 監聽單局結束 (status: finished) 並播放音效
+  const prevStatusForSound = useRef<string | null>(null);
+
+  useEffect(() => {
+    const status = room?.status ?? null;
+    if (prevStatusForSound.current === null) {
+      // 首次掛載：只記錄初始值，不播音效
+      prevStatusForSound.current = status;
+      return;
+    }
+    if (status === "finished" && prevStatusForSound.current !== "finished") {
+      // 從 playing → finished：單局結束
+      playRoundOverSound();
+    } else if (status === "gameOver" && prevStatusForSound.current !== "gameOver") {
+      // 從 finished/playing → gameOver：整局結束，恭喜第一名
+      playGameOverSound();
+    }
+    prevStatusForSound.current = status;
+  }, [room?.status]);
 
   const currentMe = uid && room?.players[uid] ? room.players[uid] : null;
   const hasCurrentMe = !!currentMe;
@@ -546,6 +738,8 @@ function RoomContent() {
     if (room.turnUid !== uid) return;
 
     try {
+      // 玩家自己出牌時，立即播放出牌音效以提供即時反饋
+      playCardSound();
       await commitPlayerPlay(roomId, uid, selectedCards);
       setSelectedCards([]);
     } catch (err) {
@@ -559,6 +753,8 @@ function RoomContent() {
     if (room.turnUid !== uid) return;
 
     try {
+      // 玩家自己按 Pass 時，立即播放 Pass 音效以提供即時反饋
+      playPassSound();
       await commitPlayerPass(roomId, uid);
       setSelectedCards([]);
     } catch (err) {
