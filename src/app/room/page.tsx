@@ -81,6 +81,25 @@ interface WindowWithWebkit extends Window {
   webkitAudioContext?: typeof AudioContext;
 }
 
+let globalAudioContext: AudioContext | null = null;
+
+function initOrResumeAudio(): void {
+  if (typeof window === "undefined") return;
+  const win = window as WindowWithWebkit;
+  const AudioContextClass = win.AudioContext || win.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  if (!globalAudioContext) {
+    globalAudioContext = new AudioContextClass();
+  }
+  
+  if (globalAudioContext.state === "suspended") {
+    globalAudioContext.resume().catch(err => {
+      console.warn("喚醒 AudioContext 失敗:", err);
+    });
+  }
+}
+
 function getCardRotateAngle(cardId: string): number {
   let hash = 0;
   for (let i = 0; i < cardId.length; i++) {
@@ -92,13 +111,18 @@ function getCardRotateAngle(cardId: string): number {
 
 function playCardSound(): void {
   if (typeof window === "undefined") return;
-  const win = window as WindowWithWebkit;
-  const AudioContextClass = win.AudioContext || win.webkitAudioContext;
-  if (!AudioContextClass) return;
+  
+  if (!globalAudioContext) {
+    initOrResumeAudio();
+  }
+  if (!globalAudioContext) return;
+
+  const ctx = globalAudioContext;
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
 
   try {
-    const ctx = new AudioContextClass();
-    
     // 1. 合成「刷」的紙張聲音 (白噪音 + 帶通濾波器)
     const bufferSize = ctx.sampleRate * 0.12; // 0.12 秒
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -158,6 +182,21 @@ function RoomContent() {
   const [loadingBot, setLoadingBot] = useState(false);
   const [isUpdatingPoints, setIsUpdatingPoints] = useState(false);
   const searchParams = useSearchParams();
+
+  // 透過使用者互動 (點擊/觸摸) 喚醒 Web Audio API，解決瀏覽器自動播放限制 (Autoplay Policy)
+  useEffect(() => {
+    const handleInteraction = () => {
+      initOrResumeAudio();
+    };
+    
+    document.addEventListener("click", handleInteraction);
+    document.addEventListener("pointerdown", handleInteraction);
+    
+    return () => {
+      document.removeEventListener("click", handleInteraction);
+      document.removeEventListener("pointerdown", handleInteraction);
+    };
+  }, []);
 
   // 監聽手牌容器寬度以實現自適應重疊效果
   const handContainerRef = useRef<HTMLDivElement>(null);
