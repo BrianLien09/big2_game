@@ -6,11 +6,13 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame } from "@/lib/roomService";
+import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, getCardName } from "@/lib/big2Logic";
+import BridgeBiddingView from "@/components/bridge/BridgeBiddingView";
+import BridgePlayingView from "@/components/bridge/BridgePlayingView";
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false);
@@ -435,8 +437,9 @@ function RoomContent() {
           if (err.message === "房間不存在") {
             const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
             const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
+            const gameModeParam = (searchParams.get("gameMode") === 'BRIDGE' ? 'BRIDGE' : 'BIG2') as 'BIG2' | 'BRIDGE';
             try {
-              await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam);
+              await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, gameModeParam);
               isCreator = true;
             } catch (createErr) {
               const cErr = createErr as Error;
@@ -678,7 +681,16 @@ function RoomContent() {
       return;
     }
     try {
-      await startGame(roomId);
+      if (room.gameMode === 'BRIDGE') {
+        // 橋牌需要恰好 4 位玩家
+        if (room.playerOrder.length !== 4) {
+          addToast("橋牌需要恰好 4 位玩家！", "warning");
+          return;
+        }
+        await startBridgeGame(roomId);
+      } else {
+        await startGame(roomId);
+      }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       addToast(errMsg || "開始遊戲失敗，請檢查權限或重試", "error");
@@ -994,7 +1006,7 @@ function RoomContent() {
             <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#4b5563" }}>目標結束積分</span>
             {me?.isHost ? (
               <div style={{ display: "flex", gap: 6 }}>
-                {[10, 15, 20].map((pts) => {
+                {(room.gameMode === 'BRIDGE' ? [500, 1000, 1500] : [10, 15, 20]).map((pts) => {
                   const isSelected = room.targetPoints === pts;
                   return (
                     <button
@@ -1028,7 +1040,7 @@ function RoomContent() {
               </div>
             ) : (
               <span style={{ fontSize: "0.85rem", fontWeight: 900, color: "#b45309" }}>
-                🏆 {room.targetPoints || 15} 分
+                🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15)} 分
               </span>
             )}
           </div>
@@ -1109,7 +1121,7 @@ function RoomContent() {
                   <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>目標結束積分</div>
                   {me?.isHost ? (
                     <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                      {[10, 15, 20].map((pts) => {
+                      {(room.gameMode === 'BRIDGE' ? [500, 1000, 1500] : [10, 15, 20]).map((pts) => {
                         const isSelected = room.targetPoints === pts;
                         return (
                           <button
@@ -1118,7 +1130,7 @@ function RoomContent() {
                             onClick={async () => {
                               try {
                                 setIsUpdatingPoints(true);
-                                await updateTargetPoints(roomId, pts);
+                                  await updateTargetPoints(roomId, pts);
                               } catch (err) {
                                 addToast("更新目標積分失敗", "error");
                               } finally {
@@ -1145,7 +1157,7 @@ function RoomContent() {
                     </div>
                   ) : (
                     <span className="comic-badge" style={{ background: "#f3f4f6", color: "#000", padding: "6px 16px", border: "2px solid #000", fontWeight: 900, borderRadius: 8, display: "inline-block" }}>
-                      🏆 {room.targetPoints || 15} 分結束
+                      🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15)} 分結束
                     </span>
                   )}
                 </div>
@@ -1194,7 +1206,7 @@ function RoomContent() {
 
   // ---- 整場遊戲結束畫面 (Game Over) ----
   if (room.status === "gameOver") {
-    const target = room.targetPoints || 15;
+    const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15);
     const reachedPlayers = Object.values(room.players).filter(p => (p.points ?? 0) >= target);
     const sortedPlayers = [...Object.values(room.players)].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
     const isMultiWinner = reachedPlayers.length > 1;
@@ -1367,8 +1379,72 @@ function RoomContent() {
           <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>{isWinner ? "🎉" : "🥺"}</div>
           <h1 style={{ fontSize: "2.5rem", fontWeight: 900, marginBottom: "0.5rem" }}>{isWinner ? "你贏了！" : "遊戲結束"}</h1>
           <p style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "1rem" }}>
-            贏家：{room.players[room.winnerUid!]?.nickname}
+            {room.gameMode === 'BRIDGE' && room.bridgeBidding?.finalContract
+              ? `合約方：${room.players[room.bridgeBidding.finalContract.declarerUid]?.nickname}`
+              : `贏家：${room.players[room.winnerUid!]?.nickname}`
+            }
           </p>
+
+          {/* 橋牌計分卡（只在橋牌模式下顯示） */}
+          {room.gameMode === 'BRIDGE' && room.bridgeScore && room.bridgeBidding?.finalContract && (() => {
+            const sc = room.bridgeScore.result;
+            const contract = room.bridgeBidding.finalContract!;
+            const vuln = getVulnerability((room.gameRound ?? 1) - 1); // 剛結束的那局
+            const declarerIdx = room.playerOrder.indexOf(contract.declarerUid);
+            const isDeclarerNS = declarerIdx === 0 || declarerIdx === 2;
+            const isDeclarerVul = isDeclarerNS ? vuln.nsVulnerable : vuln.ewVulnerable;
+            return (
+              <div style={{
+                margin: "0 auto 1.5rem",
+                width: "100%",
+                maxWidth: 420,
+                background: sc.isContractMade ? "#f0fdf4" : "#fef2f2",
+                border: `3px solid ${sc.isContractMade ? "#16a34a" : "#dc2626"}`,
+                borderRadius: 14,
+                boxShadow: `3px 3px 0 ${sc.isContractMade ? "#16a34a" : "#dc2626"}`,
+                padding: "16px 18px",
+                textAlign: "left",
+              }}>
+                <div style={{ fontWeight: 900, fontSize: "1.1rem", marginBottom: 10, textAlign: "center" }}>
+                  🃏 {contractToString(contract)}
+                  {isDeclarerVul ? <span style={{ marginLeft: 8, fontSize: "0.7rem", background: "#dc2626", color: "#fff", padding: "1px 7px", borderRadius: 999, fontWeight: 800 }}>有身家</span> : ""}
+                  <span style={{ marginLeft: 8, fontSize: "0.85rem", color: sc.isContractMade ? "#16a34a" : "#dc2626", fontWeight: 900 }}>
+                    {sc.isContractMade ? "✓ 達成" : "✗ 倒牌"}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: "0.82rem", fontWeight: 700 }}>
+                  <div>🎯 目標吃圈：<strong>{sc.targetTricks}</strong></div>
+                  <div>✅ 實際吃圈：<strong>{sc.tricksMade}</strong></div>
+                  {sc.isContractMade ? (
+                    <>
+                      <div>📊 線位分：<strong style={{ color: "#2563eb" }}>+{sc.bidTrickScore}</strong></div>
+                      <div>🏆 成局獎分：<strong style={{ color: "#2563eb" }}>+{sc.gameBonusScore}</strong></div>
+                      {sc.overtrickScore > 0 && <div>💰 超圈獎分：<strong style={{ color: "#16a34a" }}>+{sc.overtrickScore}</strong></div>}
+                      {sc.slamBonusScore > 0 && <div>⭐ 滿貫獎分：<strong style={{ color: "#7c3aed" }}>+{sc.slamBonusScore}</strong></div>}
+                    </>
+                  ) : (
+                    <div style={{ gridColumn: "1/-1" }}>
+                      ⚠️ 倒牌罰分（防守方得）：<strong style={{ color: "#dc2626" }}>+{sc.defenderTotalScore}</strong>
+                    </div>
+                  )}
+                </div>
+                <div style={{
+                  marginTop: 12,
+                  paddingTop: 10,
+                  borderTop: "2px solid currentColor",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontWeight: 900,
+                  fontSize: "1rem",
+                }}>
+                  <span>{sc.isContractMade ? "進攻方得分" : "防守方得分"}</span>
+                  <span style={{ color: sc.isContractMade ? "#16a34a" : "#dc2626", fontSize: "1.3rem" }}>
+                    {sc.isContractMade ? sc.declarerTotalScore : sc.defenderTotalScore} 分
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 結算名次與積分表 */}
           <div style={{
@@ -1396,47 +1472,53 @@ function RoomContent() {
               <div style={{ textAlign: "center" }}>本局積分</div>
               <div style={{ textAlign: "center" }}>累計總分</div>
             </div>
-            {room.finishedOrder?.map((pUid, index) => {
-              const player = room.players[pUid];
-              if (!player) return null;
-              const roundScore = room.roundScores?.[pUid] ?? 0;
-              const isMe = pUid === uid;
+            {(() => {
+              const displayOrder = room.finishedOrder && room.finishedOrder.length > 0
+                ? room.finishedOrder
+                : [...room.playerOrder].sort((a, b) => (room.players[b]?.points ?? 0) - (room.players[a]?.points ?? 0));
               
-              const placementEmojis = ["🥇", "🥈", "🥉", "💩"];
-              const placementText = placementEmojis[index] || `${index + 1}`;
+              return displayOrder.map((pUid, index) => {
+                const player = room.players[pUid];
+                if (!player) return null;
+                const roundScore = room.roundScores?.[pUid] ?? 0;
+                const isMe = pUid === uid;
+                
+                const placementEmojis = ["🥇", "🥈", "🥉", "💩"];
+                const placementText = placementEmojis[index] || `${index + 1}`;
 
-              return (
-                <div key={pUid} style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile ? "50px 1fr 65px 75px" : "60px 1fr 80px 80px",
-                  fontWeight: 800,
-                  fontSize: isMobile ? "0.78rem" : "0.85rem",
-                  borderBottom: index === room.finishedOrder!.length - 1 ? "none" : "2px solid #000",
-                  padding: isMobile ? "8px 10px" : "10px 12px",
-                  textAlign: "left",
-                  background: isMe ? "#fef9c3" : "#fff",
-                  alignItems: "center"
-                }}>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 900 }}>{placementText}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                    {player.avatarUrl ? (
-                      <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
-                    ) : (
-                      <div style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.75rem", fontWeight: 900 }}>
-                        {player.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
+                return (
+                  <div key={pUid} style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "50px 1fr 65px 75px" : "60px 1fr 80px 80px",
+                    fontWeight: 800,
+                    fontSize: isMobile ? "0.78rem" : "0.85rem",
+                    borderBottom: index === displayOrder.length - 1 ? "none" : "2px solid #000",
+                    padding: isMobile ? "8px 10px" : "10px 12px",
+                    textAlign: "left",
+                    background: isMe ? "#fef9c3" : "#fff",
+                    alignItems: "center"
+                  }}>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 900 }}>{placementText}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      {player.avatarUrl ? (
+                        <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
+                      ) : (
+                        <div style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.75rem", fontWeight: 900 }}>
+                          {player.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
+                    </div>
+                    <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900 }}>
+                      {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
+                    </div>
+                    <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900 }}>
+                      🪙 {player.points ?? 0}
+                    </div>
                   </div>
-                  <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900 }}>
-                    {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
-                  </div>
-                  <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900 }}>
-                    🪙 {player.points ?? 0}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
 
            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
@@ -1444,13 +1526,17 @@ function RoomContent() {
                <button className="comic-btn" style={{ background: "#fbbf24" }} onClick={async () => {
                  if (!db) return;
                  try {
-                   await updateDoc(doc(db, "rooms", roomId), {
-                     status: "waiting", winnerUid: null,
-                     lastPlayedHand: null, lastPlayedUid: null,
-                     turnUid: null, passCount: 0,
-                     updatedAt: serverTimestamp(),
-                     expiresAt: getRoomExpirationTimestamp()
-                   });
+                   if (room.gameMode === 'BRIDGE') {
+                     await resetBridgeRound(roomId);
+                   } else {
+                     await updateDoc(doc(db, "rooms", roomId), {
+                       status: "waiting", winnerUid: null,
+                       lastPlayedHand: null, lastPlayedUid: null,
+                       turnUid: null, passCount: 0,
+                       updatedAt: serverTimestamp(),
+                       expiresAt: getRoomExpirationTimestamp()
+                     });
+                   }
                    addToast("已重置為待機狀態，準備新一局", "success");
                  } catch (err) {
                    const errMsg = err instanceof Error ? err.message : String(err);
@@ -1487,6 +1573,40 @@ function RoomContent() {
   }
 
   // ---- 遊戲畫面 ----
+  // ── 橋牌模式分路 ──────────────────────────────────────
+  if (room.gameMode === 'BRIDGE') {
+    // 叫牌階段
+    if (room.bridgeBidding && room.bridgeBidding.status === 'active') {
+      return (
+        <BridgeBiddingView
+          key="bridge-bidding-view"
+          room={room}
+          uid={uid}
+          isMobile={isMobile}
+          onBid={async (bid) => {
+            await submitBridgeBid(roomId, uid, bid);
+          }}
+          onLeave={handleLeaveRoom}
+        />
+      );
+    }
+    // 打牌階段（叫牌完成且有 bridgePlaying）
+    if (room.bridgeBidding?.status === 'completed' && room.bridgePlaying) {
+      return (
+        <BridgePlayingView
+          key="bridge-playing-view"
+          room={room}
+          uid={uid}
+          isMobile={isMobile}
+          onPlayCard={async (cardId) => {
+            await submitBridgeCard(roomId, uid, cardId);
+          }}
+          onLeave={handleLeaveRoom}
+        />
+      );
+    }
+  }
+
   const myIndex = room.playerOrder.indexOf(uid);
   const total = room.playerOrder.length;
 

@@ -345,7 +345,6 @@ export const selectBotAction = (
   }
 
   // B. 同類型打不過，且場上不是同花順，則嘗試怪物牌型
-  // 先嘗試鐵支，再嘗試同花順
   if (prevType !== 'straight_flush') {
     const fourOfAKinds = generateFourOfAKinds(botCards);
     const bestFour = selectBestPlay(fourOfAKinds, prevHand, strongCombos, firstPlayRequiredCardId);
@@ -363,3 +362,169 @@ export const selectBotAction = (
   // C. 均無合法大牌，Pass
   return { type: "pass" };
 };
+
+// ====================================================
+// 🗣️ 橋牌人機叫牌邏輯 (Bridge Bot Bidding Logic)
+// ====================================================
+
+import { Bid, ContractBid, BridgeSuit } from './bridgeLogic';
+
+const BRIDGE_RANK_WEIGHT_BOT: Record<string, number> = {
+  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+  '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+};
+
+// 計算大牌點 High Card Points (HCP): A=4, K=3, Q=2, J=1
+const calculateHCP = (cards: Card[]): number => {
+  let points = 0;
+  cards.forEach(c => {
+    if (c.rank === 'A') points += 4;
+    else if (c.rank === 'K') points += 3;
+    else if (c.rank === 'Q') points += 2;
+    else if (c.rank === 'J') points += 1;
+  });
+  return points;
+};
+
+const suitWeights = { C: 1, D: 2, H: 3, S: 4, NT: 5 };
+
+const isBidHigher = (
+  nLevel: number,
+  nSuit: BridgeSuit,
+  lLevel: number,
+  lSuit: BridgeSuit
+): boolean => {
+  if (nLevel !== lLevel) return nLevel > lLevel;
+  return suitWeights[nSuit] > suitWeights[lSuit];
+};
+
+/**
+ * 人機叫牌決策
+ * @param botCards 手牌
+ * @param lastContract 上一次場上的最高合約叫牌，若無則為 null
+ */
+export const selectBridgeBid = (
+  botCards: Card[],
+  lastContract: ContractBid | null
+): Bid => {
+  const hcp = calculateHCP(botCards);
+
+  // 1. 如果大牌點低於 12 點，一律 PASS
+  if (hcp < 12) {
+    return { type: "PASS" };
+  }
+
+  // 2. 找出最長花色作為推薦叫牌花色
+  const counts: Record<Card["suit"], number> = { spades: 0, hearts: 0, diamonds: 0, clubs: 0 };
+  botCards.forEach(c => counts[c.suit]++);
+  
+  let longestSuit: Card["suit"] = 'spades';
+  let maxCount = -1;
+  for (const suit in counts) {
+    if (counts[suit as Card["suit"]] > maxCount) {
+      maxCount = counts[suit as Card["suit"]];
+      longestSuit = suit as Card["suit"];
+    }
+  }
+
+  const suitToBridgeChar: Record<Card["suit"], 'C' | 'D' | 'H' | 'S'> = {
+    clubs: 'C',
+    diamonds: 'D',
+    hearts: 'H',
+    spades: 'S',
+  };
+  const botFavoredSuit = suitToBridgeChar[longestSuit];
+
+  // 3. 尋找可以壓過 lastContract 的最小叫牌
+  if (!lastContract) {
+    // 開叫：開最長的花色 (1線位)
+    return { type: 'contract', level: 1, suit: botFavoredSuit };
+  }
+
+  // 敵方/隊友已經叫牌，我們尋求在合適的線位叫出我們最長的花色
+  // 我們從 lastContract 的線位開始向上尋找
+  for (let lvl = lastContract.level; lvl <= 7; lvl++) {
+    if (isBidHigher(lvl, botFavoredSuit, lastContract.level, lastContract.suit)) {
+      // 確保不要叫得太高，如果需要超過 4 線，而我們 HCP 不足 16，就 PASS 避免倒牌太重
+      if (lvl >= 4 && hcp < 16) {
+        return { type: "PASS" };
+      }
+      return { type: 'contract', level: lvl as any, suit: botFavoredSuit };
+    }
+    // 試試同線位更高的花色 (或者 NT)
+    if (isBidHigher(lvl, 'NT', lastContract.level, lastContract.suit)) {
+      if (lvl >= 4 && hcp < 16) {
+        return { type: "PASS" };
+      }
+      return { type: 'contract', level: lvl as any, suit: 'NT' };
+    }
+  }
+
+  return { type: "PASS" };
+};
+
+// ====================================================
+// 🃏 橋牌人機打牌邏輯 (Bridge Bot Card Play Logic)
+// ====================================================
+
+/**
+ * 人機打牌出牌決策 (嚴格遵守「跟花色」與「王吃」規則)
+ * @param botCards 手牌
+ * @param leadCard 這一圈的引牌（第一張出的牌），若為 null 表示你是第一個出牌的（引牌者）
+ * @param trumpSuit 王牌花色 (clubs | diamonds | hearts | spades | null，null 表示無王)
+ */
+export const selectBridgeCardPlay = (
+  botCards: Card[],
+  leadCard: Card | null,
+  trumpSuit: Card["suit"] | null
+): Card => {
+  if (botCards.length === 0) {
+    throw new Error("Bot has no cards to play");
+  }
+
+  // ── 情境 A：你是引牌者 (Lead Player) ──
+  if (!leadCard) {
+    // 優先出手中點數最大的牌 (以 A, K 優先引出，或是最長花色中最大的牌)
+    return [...botCards].sort((a, b) => {
+      const wa = BRIDGE_RANK_WEIGHT_BOT[a.rank] ?? 0;
+      const wb = BRIDGE_RANK_WEIGHT_BOT[b.rank] ?? 0;
+      return wb - wa; // 降冪排序，拿最大的牌
+    })[0];
+  }
+
+  // ── 情境 B：後手出牌，必須跟花色 (Follow Suit) ──
+  const leadSuit = leadCard.suit;
+  const sameSuitCards = botCards.filter(c => c.suit === leadSuit);
+
+  if (sameSuitCards.length > 0) {
+    // 手中有主導花色，必須出同花色！
+    // 簡單防守策略：出該花色中最大的一張，嘗試搶吃；或是若牌太小，就跟出最小的牌
+    return sameSuitCards.sort((a, b) => {
+      const wa = BRIDGE_RANK_WEIGHT_BOT[a.rank] ?? 0;
+      const wb = BRIDGE_RANK_WEIGHT_BOT[b.rank] ?? 0;
+      return wb - wa;
+    })[0]; // 出最大的同花色牌
+  }
+
+  // ── 情境 C：手中沒有主導花色，可以墊牌或王吃 ──
+  if (trumpSuit) {
+    // 有王牌合約，且手中有王牌
+    const trumpsInHand = botCards.filter(c => c.suit === trumpSuit);
+    if (trumpsInHand.length > 0) {
+      // 選擇出最小的一張王牌來「王吃」奪回主導權！
+      return trumpsInHand.sort((a, b) => {
+        const wa = BRIDGE_RANK_WEIGHT_BOT[a.rank] ?? 0;
+        const wb = BRIDGE_RANK_WEIGHT_BOT[b.rank] ?? 0;
+        return wa - wb; // 升冪排序，拿最小 of 王牌王吃
+      })[0];
+    }
+  }
+
+  // 手中沒有王牌，或是無王(NT)合約：墊牌（出手中點數最小、最沒用的牌）
+  return [...botCards].sort((a, b) => {
+    const wa = BRIDGE_RANK_WEIGHT_BOT[a.rank] ?? 0;
+    const wb = BRIDGE_RANK_WEIGHT_BOT[b.rank] ?? 0;
+    return wa - wb; // 升冪排序，拿點數最小的牌墊掉
+  })[0];
+};
+

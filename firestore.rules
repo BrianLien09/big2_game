@@ -323,7 +323,7 @@ service cloud.firestore {
            && request.resource.data.playerOrder == resource.data.playerOrder
            && request.resource.data.players.keys().toSet() == resource.data.players.keys().toSet()
            // 限制修改的欄位清單
-           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'status', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'winnerUid', 'firstPlayRequiredCardId', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores', 'targetPoints'])
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players', 'status', 'turnUid', 'lastPlayedHand', 'lastPlayedUid', 'passCount', 'winnerUid', 'firstPlayRequiredCardId', 'updatedAt', 'expiresAt', 'finishedOrder', 'roundParticipants', 'roundPlayerSnapshots', 'roundScores', 'targetPoints', 'bridgeBidding', 'bridgePlaying', 'bridgeScore', 'gameRound'])
            // winnerUid 必須是合法玩家
            && (winner == null || winner in request.resource.data.players)
            // 只有當 winnerUid 的卡牌出完時，才允許將狀態設為 finished 或 gameOver 並宣告獲勝

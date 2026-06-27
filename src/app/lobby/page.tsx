@@ -14,9 +14,11 @@ export default function Lobby() {
   const { nickname, setNickname, addToast } = useGameStore();
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showTutorialModal, setShowTutorialModal] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [targetPoints, setTargetPoints] = useState<number>(15);
+  const [gameMode, setGameMode] = useState<'BIG2' | 'BRIDGE'>('BIG2');
 
   // Firebase 使用者與載入狀態
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -100,8 +102,8 @@ export default function Lobby() {
     e.preventDefault();
     await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-    const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的對局`);
-    router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}`);
+    const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的${gameMode === 'BRIDGE' ? '橋牌' : '大老二'}對局`);
+    router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}&gameMode=${gameMode}`);
   };
 
   const handleJoinRoom = async (e: React.FormEvent) => {
@@ -260,7 +262,7 @@ export default function Lobby() {
           </button>
 
           <button 
-            onClick={() => router.push('/tutorial')}
+            onClick={() => setShowTutorialModal(true)}
             className="comic-btn bg-white w-full sm:w-auto transform rotate-1"
           >
             了解規則
@@ -308,6 +310,57 @@ export default function Lobby() {
             </div>
             
             <form onSubmit={handleCreateRoomSubmit} style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
+              {/* 遊戲模式選擇 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>遊戲模式</label>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  {(["BIG2", "BRIDGE"] as const).map((mode) => {
+                    const isSelected = gameMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => {
+                          setGameMode(mode);
+                          setTargetPoints(mode === 'BRIDGE' ? 1000 : 15);
+                        }}
+                        className="comic-btn"
+                        style={{
+                          flex: 1,
+                          padding: "12px 8px",
+                          fontSize: "0.95rem",
+                          background: isSelected ? (mode === 'BRIDGE' ? "#3b82f6" : "#fbbf24") : "#fff",
+                          color: isSelected ? (mode === 'BRIDGE' ? "#fff" : "#000") : "#6b7280",
+                          border: `3px solid ${isSelected ? (mode === 'BRIDGE' ? "#2563eb" : "#000") : "#e5e7eb"}`,
+                          borderRadius: "12px",
+                          boxShadow: isSelected ? "2px 2px 0px #000" : "none",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        {mode === 'BIG2' ? '🂡 大老二' : '🃏 橋牌'}
+                      </button>
+                    );
+                  })}
+                </div>
+                {gameMode === 'BRIDGE' && (
+                  <div style={{
+                    background: "#eff6ff",
+                    border: "2px solid #93c5fd",
+                    borderRadius: "10px",
+                    padding: "10px 12px",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#1d4ed8",
+                    lineHeight: 1.5,
+                  }}>
+                    ℹ️ 橋牌需要恰好 <strong>4 位真人玩家</strong>，不支援人機。<br />
+                    包含叫牌→打牌→計分三個完整階段。
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>房間名稱 (可留空)</label>
                 <input
@@ -335,7 +388,7 @@ export default function Lobby() {
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>目標結束積分</label>
                 <div style={{ display: "flex", gap: "12px" }}>
-                  {[10, 15, 20].map((pts) => {
+                  {(gameMode === 'BRIDGE' ? [500, 1000, 1500] : [10, 15, 20]).map((pts) => {
                     const isSelected = targetPoints === pts;
                     return (
                       <button
@@ -434,6 +487,78 @@ export default function Lobby() {
                 確認加入
               </button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* 了解規則 Modal */}
+      {showTutorialModal && (
+        <div style={{
+          position: "fixed",
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0, 0, 0, 0.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+          padding: "1rem"
+        }}>
+          <div className="comic-panel" style={{
+            background: "#fff",
+            maxWidth: 360,
+            width: "100%",
+            padding: "24px 20px",
+            textAlign: "center",
+          }}>
+            <h3 style={{ margin: "0 0 16px 0", fontWeight: 900, fontSize: "1.4rem" }}>
+              📖 選擇遊戲規則
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <button
+                className="comic-btn"
+                style={{
+                  background: "#fbbf24",
+                  padding: "14px 0",
+                  fontSize: "1.05rem",
+                }}
+                onClick={() => {
+                  setShowTutorialModal(false);
+                  router.push('/tutorial');
+                }}
+              >
+                🂡 大老二規則與實操
+              </button>
+              <button
+                className="comic-btn"
+                style={{
+                  background: "#3b82f6",
+                  color: "#fff",
+                  padding: "14px 0",
+                  fontSize: "1.05rem",
+                  border: "3px solid #2563eb",
+                }}
+                onClick={() => {
+                  setShowTutorialModal(false);
+                  router.push('/bridge-tutorial');
+                }}
+              >
+                🃏 橋牌規則與計分
+              </button>
+            </div>
+            <button
+              onClick={() => setShowTutorialModal(false)}
+              className="comic-btn"
+              style={{
+                marginTop: 20,
+                width: "100%",
+                background: "#f3f4f6",
+                color: "#4b5563",
+                border: "3px solid #d1d5db",
+                padding: "8px 0",
+                fontSize: "0.9rem",
+              }}
+            >
+              取消
+            </button>
           </div>
         </div>
       )}

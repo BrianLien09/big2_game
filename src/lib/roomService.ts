@@ -5,7 +5,31 @@ import {
   Transaction, DocumentReference
 } from 'firebase/firestore';
 import { Card, PlayedHand, createDeck, shuffleDeck, sortCards, compareSingleCard, validatePlay, evaluateHand } from './big2Logic';
-import { selectBotAction } from './botLogic';
+import { selectBotAction, selectBridgeBid, selectBridgeCardPlay } from './botLogic';
+import {
+  type GameMode,
+  type BridgeBiddingState,
+  type BridgePlayingState,
+  type BridgeScoreState,
+  type Bid,
+  type CompletedTrick,
+  type TrickCard,
+  applyBid,
+  isValidBid,
+  getTrickWinner,
+  getTrumpSuit,
+  validateBridgePlay,
+  calculateBridgeScore,
+  sortBridgeHand,
+  createInitialBiddingState,
+  getVulnerability,
+  getPartnerUid,
+  BRIDGE_TO_SUIT,
+} from './bridgeLogic';
+
+// 供外部使用，重新匯出 bridgeLogic 型別（避免 UI 元件需要雙重 import）
+export type { GameMode, BridgeBiddingState, BridgePlayingState, BridgeScoreState, Bid, FinalContract, BridgeSuit, BidLevel, DoubleState, VulnerabilityInfo, BridgeScoreResult, CompletedTrick, TrickCard } from './bridgeLogic';
+export { bidToString, contractToString, BRIDGE_SUIT_LABELS, getBridgeSuitOrder, sortBridgeHand, getPlayableCardIds, getVulnerability, getPartnerUid, getOpponentUids, arePartners } from './bridgeLogic';
 
 export interface Player {
   uid: string;
@@ -47,6 +71,12 @@ export interface RoomState {
   >;
   roundScores?: Record<string, number>;
   targetPoints?: number;
+  // ─── 橋牌專屬欄位（只在 gameMode === 'BRIDGE' 時存在）───
+  gameMode?: GameMode;
+  gameRound?: number;              // 用於身家循環計算（0 開始遞增）
+  bridgeBidding?: BridgeBiddingState;   // 叫牌階段狀態
+  bridgePlaying?: BridgePlayingState;   // 打牌階段狀態
+  bridgeScore?: BridgeScoreState;       // 計分結果
 }
 
 
@@ -91,7 +121,15 @@ export function getRoomExpirationTimestamp(): Timestamp {
 }
 
 // 建立房間 (寫入包含 createdAt, updatedAt, expiresAt)
-export const createRoom = async (roomId: string, hostUid: string, hostNickname: string, roomName: string = "大老二對局", hostAvatarUrl: string = "", targetPoints: number = 15) => {
+export const createRoom = async (
+  roomId: string,
+  hostUid: string,
+  hostNickname: string,
+  roomName: string = "大老二對局",
+  hostAvatarUrl: string = "",
+  targetPoints: number = 15,
+  gameMode: GameMode = 'BIG2'
+) => {
   if (!db) throw new Error("Firebase DB not initialized");
   
   const roomRef = doc(db, 'rooms', roomId);
@@ -99,6 +137,7 @@ export const createRoom = async (roomId: string, hostUid: string, hostNickname: 
     id: roomId,
     name: roomName,
     targetPoints,
+    gameMode,
     players: {
       [hostUid]: {
         uid: hostUid,
@@ -934,7 +973,6 @@ export type BotTurnResult =
   | "skipped"
   | "room-finished";
 
-// 執行人機回合 (Transaction，具備冪等性)
 export const executeBotTurn = async (
   roomId: string,
   botUid: string
@@ -966,6 +1004,223 @@ export const executeBotTurn = async (
       return 'skipped';
     }
 
+    if (roomData.gameMode === 'BRIDGE') {
+      const order = roomData.playerOrder;
+
+      // A. 叫牌階段人機
+      if (roomData.bridgeBidding && roomData.bridgeBidding.status === 'active') {
+        const biddingState = roomData.bridgeBidding;
+        if (biddingState.currentBidderUid !== botUid) {
+          return 'skipped';
+        }
+
+        const lastContract = biddingState.currentContract || null;
+        const botBid = selectBridgeBid(botPlayer.cards, lastContract);
+
+        let finalBid: Bid = botBid;
+        const validation = isValidBid(finalBid, biddingState, botUid, order);
+        if (!validation.valid) {
+          finalBid = { type: "PASS" }; // 安全退路
+        }
+
+        const nextBidderUid = order[(order.indexOf(botUid) + 1) % 4];
+        const newBiddingState = applyBid(biddingState, finalBid, botUid, order, nextBidderUid);
+
+        if (newBiddingState === null) {
+          // 全員 PASS，重新發牌
+          transaction.update(roomRef, {
+            status: 'waiting',
+            bridgeBidding: null,
+            bridgePlaying: null,
+            turnUid: null,
+            updatedAt: serverTimestamp(),
+            expiresAt: getRoomExpirationTimestamp(),
+          });
+          return 'executed';
+        }
+
+        const updates: Record<string, unknown> = {
+          bridgeBidding: newBiddingState,
+          turnUid: newBiddingState.currentBidderUid,
+          updatedAt: serverTimestamp(),
+          expiresAt: getRoomExpirationTimestamp(),
+        };
+
+        if (newBiddingState.status === 'completed' && newBiddingState.finalContract) {
+          const contract = newBiddingState.finalContract;
+          const declarerIdx = order.indexOf(contract.declarerUid);
+          const firstLeaderUid = order[(declarerIdx + 1) % 4];
+
+          updates.bridgePlaying = {
+            currentTrick: [],
+            completedTricks: [],
+            currentLeaderUid: firstLeaderUid,
+            dummyCardsPublic: false,
+            declarerTeamTricks: 0,
+            defenderTeamTricks: 0,
+          } as BridgePlayingState;
+          updates.turnUid = firstLeaderUid;
+        }
+
+        transaction.update(roomRef, updates);
+        return 'executed';
+      }
+
+      // B. 打牌階段人機
+      if (roomData.bridgePlaying) {
+        const playingState = roomData.bridgePlaying;
+        const currentTurnUid = roomData.turnUid;
+
+        if (currentTurnUid !== botUid) {
+          return 'skipped';
+        }
+
+        const contract = roomData.bridgeBidding!.finalContract!;
+
+        // 🚨 若 Bot 是夢家，且莊家是真人玩家，則 Bot 跳過出牌（交由真人莊家手動代打）
+        const isDummy = botUid === contract.dummyUid;
+        const declarerPlayer = roomData.players[contract.declarerUid];
+        if (isDummy && declarerPlayer && !declarerPlayer.isBot) {
+          return 'skipped';
+        }
+
+        const currentTrick = playingState.currentTrick;
+        const leadCard = currentTrick.length > 0 ? currentTrick[0].card : null;
+        const trumpSuit = getTrumpSuit(contract.suit);
+
+        // 選擇要打出的牌
+        let playedCard = selectBridgeCardPlay(botPlayer.cards, leadCard, trumpSuit);
+
+        // 驗證跟花色
+        const validation = validateBridgePlay(playedCard, botPlayer.cards, leadCard ? leadCard.suit : null);
+        if (!validation.valid) {
+          const playable = botPlayer.cards.filter(c => validateBridgePlay(c, botPlayer.cards, leadCard ? leadCard.suit : null).valid);
+          playedCard = playable.length > 0 ? playable[0] : botPlayer.cards[0];
+        }
+
+        // 實施出牌
+        const newTrick: TrickCard[] = [...currentTrick, { uid: botUid, card: playedCard }];
+        const newHand = botPlayer.cards.filter(c => c.id !== playedCard.id);
+
+        const updates: Record<string, unknown> = {
+          [`players.${botUid}.cards`]: newHand,
+          updatedAt: serverTimestamp(),
+          expiresAt: getRoomExpirationTimestamp(),
+        };
+
+        // 首攻後夢家攤牌
+        if (!playingState.dummyCardsPublic && currentTrick.length === 0) {
+          updates['bridgePlaying.dummyCardsPublic'] = true;
+        }
+
+        if (newTrick.length < 4) {
+          const currentIdx = order.indexOf(botUid);
+          const nextUid = order[(currentIdx + 1) % 4];
+          updates['bridgePlaying.currentTrick'] = newTrick;
+          updates.turnUid = nextUid;
+        } else {
+          // 四人出滿一圈，結算贏家
+          const winnerUid = getTrickWinner(newTrick, trumpSuit) ?? botUid;
+          const isDeclarerTeamWin = contract.declarerUid === winnerUid || contract.dummyUid === winnerUid;
+
+          const completedTrick: CompletedTrick = {
+            cards: newTrick,
+            winnerUid,
+            leadSuit: newTrick[0].card.suit,
+          };
+
+          const newCompletedTricks = [...playingState.completedTricks, completedTrick];
+          const newDeclarerTricks = playingState.declarerTeamTricks + (isDeclarerTeamWin ? 1 : 0);
+          const newDefenderTricks = playingState.defenderTeamTricks + (isDeclarerTeamWin ? 0 : 1);
+
+          if (newCompletedTricks.length === 13) {
+            // 13 圈打完，結算積分
+            const currentRound = roomData.gameRound ?? 0;
+            const vuln = getVulnerability(currentRound);
+            const declarerIdx = order.indexOf(contract.declarerUid);
+            const isDeclarerNS = declarerIdx === 0 || declarerIdx === 2;
+            const isDeclarerVulnerable = isDeclarerNS ? vuln.nsVulnerable : vuln.ewVulnerable;
+
+            const scoreResult = calculateBridgeScore({
+              level: contract.level,
+              suit: contract.suit,
+              doubleState: contract.doubleState,
+              tricksMade: newDeclarerTricks,
+              isDeclarerVulnerable,
+            });
+
+            const bridgeScore: BridgeScoreState = {
+              isDeclarerVulnerable,
+              result: scoreResult,
+            };
+
+            const roundScores: Record<string, number> = {};
+            order.forEach(uid => { roundScores[uid] = 0; });
+
+            if (scoreResult.isContractMade) {
+              roundScores[contract.declarerUid] = scoreResult.declarerTotalScore;
+              const dummyUid = getPartnerUid(contract.declarerUid, order);
+              if (dummyUid) roundScores[dummyUid] = scoreResult.declarerTotalScore;
+            } else {
+              contract.defenderUids.forEach(uid => {
+                roundScores[uid] = scoreResult.defenderTotalScore;
+              });
+            }
+
+            let isAnyPlayerReachedTarget = false;
+            const target = roomData.targetPoints || 1000;
+
+            order.forEach(uid => {
+              const currentPoints = roomData.players[uid]?.points ?? 0;
+              const earnedPoints = roundScores[uid] ?? 0;
+              const nextPoints = currentPoints + earnedPoints;
+              updates[`players.${uid}.points`] = nextPoints;
+              if (nextPoints >= target) {
+                isAnyPlayerReachedTarget = true;
+              }
+            });
+
+            updates.bridgePlaying = {
+              currentTrick: [],
+              completedTricks: newCompletedTricks,
+              currentLeaderUid: winnerUid,
+              dummyCardsPublic: true,
+              declarerTeamTricks: newDeclarerTricks,
+              defenderTeamTricks: newDefenderTricks,
+            } as BridgePlayingState;
+            updates.bridgeScore = bridgeScore;
+            updates.roundScores = roundScores;
+            updates.winnerUid = scoreResult.isContractMade ? contract.declarerUid : contract.defenderUids[0];
+            updates.turnUid = null;
+            updates.gameRound = currentRound + 1;
+
+            if (isAnyPlayerReachedTarget) {
+              updates.status = 'gameOver';
+            } else {
+              updates.status = 'finished';
+            }
+          } else {
+            // 還沒打完，贏家引牌
+            updates.bridgePlaying = {
+              currentTrick: [],
+              completedTricks: newCompletedTricks,
+              currentLeaderUid: winnerUid,
+              dummyCardsPublic: true,
+              declarerTeamTricks: newDeclarerTricks,
+              defenderTeamTricks: newDefenderTricks,
+            } as BridgePlayingState;
+            updates.turnUid = winnerUid;
+          }
+        }
+
+        transaction.update(roomRef, updates);
+        return 'executed';
+      }
+
+      return 'skipped';
+    }
+
+    // ---- 原大老二模式人機邏輯 (Big2 Bot Logic) ----
     if (botPlayer.cards.length === 0 || (roomData.finishedOrder && roomData.finishedOrder.includes(botUid))) {
       return 'skipped';
     }
@@ -1022,6 +1277,364 @@ export const restartWholeGame = async (roomId: string) => {
     });
     
     transaction.update(roomRef, updates);
+  });
+};
+
+// ==========================================
+// 橋牌（Bridge）專屬服務函式
+// ==========================================
+
+/**
+ * 開始橋牌遊戲：發 13 張牌給 4 位玩家，初始化叫牌階段
+ * 注意：橋牌不支援 Bot，由呼叫端確認全為真人玩家
+ */
+export const startBridgeGame = async (roomId: string): Promise<void> => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnap = await getDoc(roomRef);
+  if (!roomSnap.exists()) return;
+
+  const roomData = roomSnap.data() as RoomState;
+  const order = roomData.playerOrder;
+
+  if (order.length !== 4) {
+    throw new Error('橋牌需要恰好 4 位玩家');
+  }
+
+  // 發牌：每人 13 張，橋牌花色排序
+  const deck = shuffleDeck(createDeck());
+  const playersUpdates: Record<string, unknown> = {};
+
+  for (let i = 0; i < 4; i++) {
+    const uid = order[i];
+    const hand = sortBridgeHand(deck.slice(i * 13, (i + 1) * 13));
+    playersUpdates[`players.${uid}.cards`] = hand;
+    playersUpdates[`players.${uid}.isPassed`] = false;
+  }
+
+  // 莊家（Dealer）輪替：以 gameRound 決定，index = gameRound % 4
+  const currentRound = roomData.gameRound ?? 0;
+  const dealerIndex = currentRound % 4;
+  // 橋牌中叫牌從 Dealer 開始
+  const firstBidderUid = order[dealerIndex];
+
+  // 建立叫牌初始狀態
+  const bridgeBidding = createInitialBiddingState(firstBidderUid);
+
+  // 建立當局參賽玩家快照
+  const roundPlayerSnapshots: Record<string, { nickname: string; avatarUrl: string; isBot: boolean }> = {};
+  order.forEach(pUid => {
+    const p = roomData.players[pUid];
+    if (p) {
+      roundPlayerSnapshots[pUid] = {
+        nickname: p.nickname,
+        avatarUrl: p.avatarUrl || '',
+        isBot: !!p.isBot,
+      };
+    }
+  });
+
+  await updateDoc(roomRef, {
+    ...playersUpdates,
+    status: 'playing',
+    // 橋牌叫牌時 turnUid 指向當前叫牌者（用於 UI 高亮）
+    turnUid: firstBidderUid,
+    lastPlayedHand: null,
+    lastPlayedUid: null,
+    passCount: 0,
+    winnerUid: null,
+    firstPlayRequiredCardId: null,
+    finishedOrder: [],
+    roundScores: {},
+    roundParticipants: [...order],
+    roundPlayerSnapshots,
+    bridgeBidding,
+    bridgePlaying: null,
+    bridgeScore: null,
+    updatedAt: serverTimestamp(),
+    expiresAt: getRoomExpirationTimestamp(),
+  });
+};
+
+/**
+ * 提交橋牌叫牌宣告（Transaction 保證原子性）
+ */
+export const submitBridgeBid = async (
+  roomId: string,
+  playerUid: string,
+  bid: Bid
+): Promise<void> => {
+  if (!db) throw new Error('Firebase DB not initialized');
+  const roomRef = doc(db, 'rooms', roomId);
+
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error('房間不存在');
+    const roomData = roomSnap.data() as RoomState;
+
+    if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
+    if (!roomData.bridgeBidding) throw new Error('叫牌狀態不存在');
+
+    const biddingState = roomData.bridgeBidding;
+    if (biddingState.status !== 'active') throw new Error('叫牌階段已結束');
+    if (biddingState.currentBidderUid !== playerUid) throw new Error('還沒輪到你叫牌');
+
+    // 合法性驗證
+    const validation = isValidBid(bid, biddingState, playerUid, roomData.playerOrder);
+    if (!validation.valid) throw new Error(validation.reason || '不合法的叫牌');
+
+    // 計算下一位叫牌者（順時針）
+    const order = roomData.playerOrder;
+    const currentIdx = order.indexOf(playerUid);
+    const nextBidderUid = order[(currentIdx + 1) % 4];
+
+    // 套用叫牌
+    const newBiddingState = applyBid(biddingState, bid, playerUid, order, nextBidderUid);
+
+    // null 表示全員 PASS，需重新發牌
+    if (newBiddingState === null) {
+      // 重新發牌：回到 waiting 狀態，讓房主重新開始
+      transaction.update(roomRef, {
+        status: 'waiting',
+        bridgeBidding: null,
+        bridgePlaying: null,
+        turnUid: null,
+        updatedAt: serverTimestamp(),
+        expiresAt: getRoomExpirationTimestamp(),
+      });
+      return;
+    }
+
+    const updates: Record<string, unknown> = {
+      bridgeBidding: newBiddingState,
+      turnUid: newBiddingState.currentBidderUid,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp(),
+    };
+
+    // 叫牌結束 → 初始化打牌階段
+    if (newBiddingState.status === 'completed' && newBiddingState.finalContract) {
+      const contract = newBiddingState.finalContract;
+      // 首攻由莊家左手方（順時針下一位）開始
+      const declarerIdx = order.indexOf(contract.declarerUid);
+      const firstLeaderUid = order[(declarerIdx + 1) % 4];
+
+      updates.bridgePlaying = {
+        currentTrick: [],
+        completedTricks: [],
+        currentLeaderUid: firstLeaderUid,
+        dummyCardsPublic: false,
+        declarerTeamTricks: 0,
+        defenderTeamTricks: 0,
+      } as BridgePlayingState;
+
+      updates.turnUid = firstLeaderUid;
+    }
+
+    transaction.update(roomRef, updates);
+  });
+};
+
+/**
+ * 提交橋牌出牌（單張，含跟花色驗證）
+ * 若是輪到夢家出牌，需由莊家代為呼叫此函式
+ */
+export const submitBridgeCard = async (
+  roomId: string,
+  playerUid: string, // 實際操作者（可能是莊家代打夢家）
+  cardId: string
+): Promise<void> => {
+  if (!db) throw new Error('Firebase DB not initialized');
+  const roomRef = doc(db, 'rooms', roomId);
+
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error('房間不存在');
+    const roomData = roomSnap.data() as RoomState;
+
+    if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
+    if (!roomData.bridgeBidding?.finalContract) throw new Error('合約尚未確定');
+    if (!roomData.bridgePlaying) throw new Error('打牌階段尚未開始');
+
+    const biddingState = roomData.bridgeBidding;
+    const playingState = roomData.bridgePlaying;
+    const contract = biddingState.finalContract!;
+    const order = roomData.playerOrder;
+
+    // 確認此次出牌者是合法的操作者
+    const currentTurnUid = roomData.turnUid;
+    const isDummyTurn = currentTurnUid === contract.dummyUid;
+    const isDeclarerActingForDummy = isDummyTurn && playerUid === contract.declarerUid;
+    const isNormalTurn = currentTurnUid === playerUid;
+
+    if (!isNormalTurn && !isDeclarerActingForDummy) {
+      throw new Error('不是你的出牌回合');
+    }
+
+    // 確認出牌者的手牌（夢家的牌由夢家 UID 的 hand 決定）
+    const handOwnerUid = currentTurnUid!;
+    const player = roomData.players[handOwnerUid];
+    if (!player) throw new Error('玩家不存在');
+
+    const card = player.cards.find(c => c.id === cardId);
+    if (!card) throw new Error('手牌中找不到該張牌');
+
+    // 跟花色驗證
+    const currentTrick = playingState.currentTrick;
+    const leadSuit = currentTrick.length > 0 ? currentTrick[0].card.suit : null;
+    const followValidation = validateBridgePlay(card, player.cards, leadSuit);
+    if (!followValidation.valid) {
+      throw new Error(followValidation.reason || '出牌不合法');
+    }
+
+    // 出牌：加入當前圈
+    const newTrick: TrickCard[] = [...currentTrick, { uid: handOwnerUid, card }];
+    const newHand = player.cards.filter(c => c.id !== cardId);
+
+    const updates: Record<string, unknown> = {
+      [`players.${handOwnerUid}.cards`]: newHand,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp(),
+    };
+
+    // 首攻後夢家攤牌
+    if (!playingState.dummyCardsPublic && currentTrick.length === 0) {
+      updates['bridgePlaying.dummyCardsPublic'] = true;
+    }
+
+    if (newTrick.length < 4) {
+      // 圈還沒完成，輪到下一位
+      const currentIdx = order.indexOf(handOwnerUid);
+      const nextUid = order[(currentIdx + 1) % 4];
+      updates['bridgePlaying.currentTrick'] = newTrick;
+      updates.turnUid = nextUid;
+    } else {
+      // 4 人都出牌，判定吃圈贏家
+      const trumpSuit = getTrumpSuit(contract.suit);
+      const winnerUid = getTrickWinner(newTrick, trumpSuit) ?? handOwnerUid;
+      const isDeclarerTeamWin = contract.declarerUid === winnerUid || contract.dummyUid === winnerUid;
+
+      const completedTrick: CompletedTrick = {
+        cards: newTrick,
+        winnerUid,
+        leadSuit: newTrick[0].card.suit,
+      };
+
+      const newCompletedTricks: CompletedTrick[] = [...playingState.completedTricks, completedTrick];
+      const newDeclarerTricks = playingState.declarerTeamTricks + (isDeclarerTeamWin ? 1 : 0);
+      const newDefenderTricks = playingState.defenderTeamTricks + (isDeclarerTeamWin ? 0 : 1);
+
+      if (newCompletedTricks.length === 13) {
+        // 13 圈打完，計分結算
+        const currentRound = roomData.gameRound ?? 0;
+        const vuln = getVulnerability(currentRound);
+        // 判斷莊家是否有身家（NS vs EW）
+        const declarerIdx = order.indexOf(contract.declarerUid);
+        const isDeclarerNS = declarerIdx === 0 || declarerIdx === 2;
+        const isDeclarerVulnerable = isDeclarerNS ? vuln.nsVulnerable : vuln.ewVulnerable;
+
+        const scoreResult = calculateBridgeScore({
+          level: contract.level,
+          suit: contract.suit,
+          doubleState: contract.doubleState,
+          tricksMade: newDeclarerTricks,
+          isDeclarerVulnerable,
+        });
+
+        const bridgeScore: BridgeScoreState = {
+          isDeclarerVulnerable,
+          result: scoreResult,
+        };
+
+        // 建立 roundScores（橋牌計分：莊家方 vs 防守方，以總分紀錄）
+        const roundScores: Record<string, number> = {};
+        order.forEach(uid => { roundScores[uid] = 0; });
+
+        if (scoreResult.isContractMade) {
+          // 進攻方得分
+          roundScores[contract.declarerUid] = scoreResult.declarerTotalScore;
+          const dummyUid = getPartnerUid(contract.declarerUid, order);
+          if (dummyUid) roundScores[dummyUid] = scoreResult.declarerTotalScore;
+        } else {
+          // 防守方得分（倒牌罰分歸防守方）
+          contract.defenderUids.forEach(uid => {
+            roundScores[uid] = scoreResult.defenderTotalScore;
+          });
+        }
+
+        // 累加積分（橋牌按得分累加到 points），同時檢查是否有人達到目標結束積分
+        let isAnyPlayerReachedTarget = false;
+        const target = roomData.targetPoints || 1000;
+        
+        order.forEach(uid => {
+          const currentPoints = roomData.players[uid]?.points ?? 0;
+          const earnedPoints = roundScores[uid] ?? 0;
+          const nextPoints = currentPoints + earnedPoints;
+          updates[`players.${uid}.points`] = nextPoints;
+          
+          if (nextPoints >= target) {
+            isAnyPlayerReachedTarget = true;
+          }
+        });
+
+        updates.bridgePlaying = {
+          currentTrick: [],
+          completedTricks: newCompletedTricks,
+          currentLeaderUid: winnerUid,
+          dummyCardsPublic: true,
+          declarerTeamTricks: newDeclarerTricks,
+          defenderTeamTricks: newDefenderTricks,
+        } as BridgePlayingState;
+        updates.bridgeScore = bridgeScore;
+        updates.roundScores = roundScores;
+        updates.winnerUid = scoreResult.isContractMade ? contract.declarerUid : contract.defenderUids[0];
+        updates.turnUid = null;
+        // 身家輪替：下一局 gameRound + 1
+        updates.gameRound = currentRound + 1;
+
+        if (isAnyPlayerReachedTarget) {
+          updates.status = 'gameOver';
+        } else {
+          updates.status = 'finished';
+        }
+      } else {
+        // 還有更多圈，贏家引牌
+        updates.bridgePlaying = {
+          currentTrick: [],
+          completedTricks: newCompletedTricks,
+          currentLeaderUid: winnerUid,
+          dummyCardsPublic: true,
+          declarerTeamTricks: newDeclarerTricks,
+          defenderTeamTricks: newDefenderTricks,
+        } as BridgePlayingState;
+        updates.turnUid = winnerUid;
+      }
+    }
+
+    transaction.update(roomRef, updates);
+  });
+};
+
+/**
+ * 重置橋牌房間回到等待狀態（保留積分，清除橋牌專屬狀態）
+ */
+export const resetBridgeRound = async (roomId: string): Promise<void> => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  await updateDoc(roomRef, {
+    status: 'waiting',
+    turnUid: null,
+    lastPlayedHand: null,
+    lastPlayedUid: null,
+    passCount: 0,
+    winnerUid: null,
+    finishedOrder: [],
+    roundScores: {},
+    bridgeBidding: null,
+    bridgePlaying: null,
+    bridgeScore: null,
+    updatedAt: serverTimestamp(),
+    expiresAt: getRoomExpirationTimestamp(),
   });
 };
 
