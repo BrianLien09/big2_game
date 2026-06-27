@@ -2,13 +2,15 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 
+// 為了安全起見，不直接在程式碼中硬編碼 API 金鑰與相關敏感資訊。
+// 這裡使用 Next.js 的 NEXT_PUBLIC_ 環境變數，這些變數已設定於本地 .env 及 GitHub Repository Secrets 中。
 const firebaseConfig = {
-  apiKey: "AIzaSyA7bpGYbm-78o3rIax1OcbUXB-TLJ2xBgs",
-  authDomain: "big2-a5c7e.firebaseapp.com",
-  projectId: "big2-a5c7e",
-  storageBucket: "big2-a5c7e.firebasestorage.app",
-  messagingSenderId: "83144824900",
-  appId: "1:83144824900:web:0f855f7302a58bcb3c0411"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
 const app = getApps().length > 0 
