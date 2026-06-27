@@ -307,6 +307,8 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
 }) => {
   const [submitting, setSubmitting] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  // 手機端莊家模式：頁簺切換（'mine' | 'dummy'）
+  const [activeTab, setActiveTab] = useState<'mine' | 'dummy'>('mine');
 
   const biddingState = room.bridgeBidding!;
   const playingState = room.bridgePlaying!;
@@ -318,12 +320,23 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
   const isDummyTurn = currentTurnUid === contract.dummyUid;
   // 莊家可以代打夢家
   const iAmDeclarer = uid === contract.declarerUid;
-  const isMyActualTurn = currentTurnUid === uid || (isDummyTurn && iAmDeclarer);
+  // 🚨 修正：當輪到夢家回合時，只有莊家可以代出；夢家玩家本人絕對不能自己出牌
+  const isMyActualTurn = (currentTurnUid === uid && !isDummyTurn) || (isDummyTurn && iAmDeclarer);
 
-  // 當前交接時自動重置選取卡牌
+  // 當前交接時自動重置選取卡牌，並在手機莊家模式下自動切換 Tab
   React.useEffect(() => {
     setSelectedCardId(null);
   }, [currentTurnUid]);
+
+  // 手機莊家模式：輪到夢家回合時自動切換到夢家頁簺（提醒莊家代出）
+  React.useEffect(() => {
+    if (!isMobile) return;
+    if (isDummyTurn) {
+      setActiveTab('dummy');
+    } else {
+      setActiveTab('mine');
+    }
+  }, [isDummyTurn, isMobile]);
 
   // 我的相對位置 index（決定桌面佈局）
   const myIdx = order.indexOf(uid);
@@ -576,6 +589,12 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
             top: 50%;
             transform: translateY(-50%);
           }
+          .opponent-top {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+          }
           .opponent-name {
             width: 115px;
             height: 42px;
@@ -767,6 +786,12 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
             right: 16px;
             top: 50%;
             transform: translateY(-50%);
+          }
+          .opponent-top {
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
           }
           .opponent-name {
             width: 100px;
@@ -961,6 +986,12 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
             top: 12px;
             transform: none;
           }
+          .opponent-top {
+            position: absolute;
+            left: 50%;
+            top: 12px;
+            transform: translateX(-50%);
+          }
           .opponent-name {
             width: auto;
             max-width: 110px;
@@ -1011,50 +1042,174 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
         \n`
       }} />
       {/* 頂部列：離開按鈕與頂部合約 */}
-      <div className="game-header">
-        <button
-          onClick={onLeave}
-          className="leave-button comic-btn"
-        >
-          🚪 離開
-        </button>
-
-        {/* 中間合約資訊 */}
+      <div className="game-header" style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+        overflow: "hidden",
+        boxSizing: "border-box",
+        position: "relative", // 🔑 提供子元素絕對定位的基底
+      }}>
+        {/* 1. 左側區塊：離開按鈕 + 合約資訊 + 莊家名稱 */}
         <div style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
-          fontWeight: 900,
-          fontSize: isMobile ? "0.9rem" : "1.2rem",
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: "0%",
+          minWidth: 0,
+          overflow: "hidden",
         }}>
-          <span className="comic-badge" style={{ backgroundColor: "#000", color: "#fff", padding: "2px 8px", borderRadius: 6 }}>
+          <button
+            onClick={onLeave}
+            className="leave-button comic-btn"
+            style={{ flexShrink: 0 }}
+          >
+            🚪 離開
+          </button>
+          
+          {/* 合約資訊 */}
+          <span className="comic-badge" style={{ backgroundColor: "#000", color: "#fff", padding: "2px 8px", borderRadius: 6, flexShrink: 0, fontSize: isMobile ? "0.78rem" : "0.95rem" }}>
             🃏 {contractToString(contract)}
           </span>
-          <span style={{ fontSize: isMobile ? "0.72rem" : "0.85rem", color: "#6b7280" }}>
+
+          {/* 莊家名稱 */}
+          <span style={{ fontSize: isMobile ? "0.72rem" : "0.85rem", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
             莊：{room.players[contract.declarerUid]?.nickname}
           </span>
         </div>
 
-        {/* 右側圈數資訊 */}
-        <div className="header-card-count" style={{
-          width: "auto",
-          height: "auto",
-          padding: isMobile ? "4px 8px" : "6px 14px",
-          fontSize: isMobile ? "0.85rem" : "1.1rem",
-          fontWeight: 900,
+        {/* 2. 中間區塊：對家玩家小卡 (絕對定位物理置中，不受左右寬度擠壓影響) */}
+        <div style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 10,
+          pointerEvents: "auto",
+        }}>
+          {room.players[posPlayers.top] && (
+            <div
+              key="header-dummy-card"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: "#fff",
+                border: "2px solid #000",
+                borderRadius: 8,
+                padding: "3px 8px",
+                boxShadow: "1.5px 1.5px 0 #000",
+                flexGrow: 0,
+                flexShrink: 0,
+                flexBasis: "auto",
+                fontSize: isMobile ? "0.75rem" : "0.85rem",
+                fontWeight: 900,
+                borderColor: currentTurnUid === posPlayers.top ? "#fbbf24" : "#000",
+                animation: currentTurnUid === posPlayers.top ? "turn-glow 1.5s infinite" : "none",
+              }}
+            >
+              <span style={{ fontSize: "0.8rem" }}>👑</span>
+              {room.players[posPlayers.top]?.avatarUrl ? (
+                <img
+                  src={getAssetPath(room.players[posPlayers.top]?.avatarUrl || "")}
+                  alt="avatar"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    border: "1.5px solid #000",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  border: "1.5px solid #000",
+                  background: "#f3f4f6",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: "0.6rem",
+                }}>
+                  {room.players[posPlayers.top]?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="truncate" style={{ maxWidth: isMobile ? 65 : 100 }}>
+                {room.players[posPlayers.top]?.nickname.replace("🤖 ", "")}
+              </span>
+              <span style={{ color: "#1d4ed8", fontSize: "0.72rem", background: "#eff6ff", padding: "1px 5px", borderRadius: 4, border: "1px solid #bfdbfe" }}>
+                {getPlayerTrickCount(posPlayers.top)} 圈
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* 3. 右側區塊：上圈贏家（醒目）+ 吃圈分數框 */}
+        <div style={{
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          color: "#1e293b",
-          border: "3px solid #000",
-          borderRadius: "10px",
-          boxShadow: "2px 2px 0 #000",
-          backgroundColor: "#fff",
+          justifyContent: "flex-end",
+          flexGrow: 1,
+          flexShrink: 0,
+          flexBasis: "0%",
+          minWidth: 0,
         }}>
-          <span style={{ color: "#1d4ed8" }}>進 {declTricks}</span>
-          <span style={{ color: "#94a3b8" }}>/</span>
-          <span style={{ color: "#dc2626" }}>防 {defTricks}</span>
-          <span style={{ color: "#475569", fontSize: "0.85rem", marginLeft: 4 }}>({totalDone}/13)</span>
+          {/* 上圈贏家醒目標籤 */}
+          {playingState.completedTricks.length > 0 && (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              background: "#fef3c7", // 醒目黃色背景
+              border: "2.5px solid #000",
+              borderRadius: "8px",
+              padding: isMobile ? "3px 6px" : "5px 10px",
+              fontSize: isMobile ? "0.68rem" : "0.8rem",
+              fontWeight: 900,
+              color: "#b45309",
+              boxShadow: "1.5px 1.5px 0 #000",
+              marginRight: isMobile ? 4 : 8,
+              flexShrink: 0,
+            }}>
+              <span>🏆 上圈：</span>
+              <strong style={{ color: "#000", whiteSpace: "nowrap" }}>
+                {room.players[playingState.completedTricks[playingState.completedTricks.length - 1].winnerUid]?.nickname.replace("🤖 ", "") || "?"}
+              </strong>
+            </div>
+          )}
+
+          {/* 右側圈數資訊 */}
+          <div
+            className="header-card-count"
+            key="header-score-card"
+            style={{
+              width: "auto",
+              height: "auto",
+              padding: isMobile ? "4px 6px" : "6px 12px",
+              fontSize: isMobile ? "0.78rem" : "1rem",
+              fontWeight: 900,
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? 4 : 6,
+              color: "#1e293b",
+              border: "3px solid #000",
+              borderRadius: "10px",
+              boxShadow: "2px 2px 0 #000",
+              backgroundColor: "#fff",
+              flexGrow: 0,
+              flexShrink: 0,
+              flexBasis: "auto",
+              whiteSpace: "nowrap",
+            }}>
+            <span style={{ color: "#1d4ed8" }}>進 {declTricks}</span>
+            <span style={{ color: "#94a3b8" }}>/</span>
+            <span style={{ color: "#dc2626" }}>防 {defTricks}</span>
+            <span style={{ color: "#475569", fontSize: "0.85rem", marginLeft: 4 }}>({totalDone}/13)</span>
+          </div>
         </div>
       </div>
 
@@ -1077,6 +1232,8 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
             </div>
           )}
         </div>
+
+
 
         {/* 中央出牌區 */}
         <div className="table-center" style={{
@@ -1179,18 +1336,7 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
             </div>
           </div>
 
-          {/* 最後贏家 */}
-          {playingState.completedTricks.length > 0 && (
-            <div style={{
-              fontSize: "0.65rem",
-              fontWeight: 800,
-              color: "rgba(0,0,0,0.5)",
-              marginTop: 6,
-              textAlign: "center",
-            }}>
-              上圈贏家：{room.players[playingState.completedTricks[playingState.completedTricks.length - 1].winnerUid]?.nickname || "?"}
-            </div>
-          )}
+
         </div>
 
         {/* 右側玩家 */}
@@ -1218,8 +1364,9 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
         style={{
           borderTopColor: isMyActualTurn ? "#fbbf24" : "#000",
           backgroundColor: isMyActualTurn ? "#fffbeb" : "#fff",
-          height: "auto", // 莊家雙欄手牌需要自適應高度
-          minHeight: isMobile ? 180 : 250,
+          height: "auto",
+          // 莊家雙欄時 grid 已讓出空間，minHeight 不需那麼大；非莊家維持原高度
+          minHeight: isMobile ? 180 : (iAmDeclarer && shouldShowDummyCards ? 220 : 250),
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-start",
@@ -1292,51 +1439,218 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
         {/* 手牌展示區域 */}
         <div style={{ flex: 1, overflowY: "auto", padding: "4px 10px" }}>
           {iAmDeclarer && shouldShowDummyCards ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* 夢家手牌欄 */}
-              <div style={{ background: "#fffbeb", border: "2px dashed #fbbf24", borderRadius: 12, padding: "2px 0" }}>
-                <div style={{ fontSize: "0.7rem", fontWeight: 900, color: "#d97706", textAlign: "center", marginBottom: 1 }}>
-                  👑 夢家手牌 (由你操作)
+            isMobile ? (
+              // 手機莊家模式： Tab 頁簺切換節省高度
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {/* Tab 切換列 */}
+                <div style={{
+                  display: "flex",
+                  borderBottom: "2px solid #000",
+                  marginBottom: 4,
+                  flexShrink: 0,
+                }}>
+                  <button
+                    onClick={() => setActiveTab('dummy')}
+                    style={{
+                      flex: 1,
+                      padding: "7px 4px",
+                      fontWeight: 900,
+                      fontSize: "0.78rem",
+                      border: "none",
+                      borderRight: "2px solid #000",
+                      borderBottom: activeTab === 'dummy' ? "3px solid #fbbf24" : "none",
+                      background: activeTab === 'dummy' ? "#fffbeb" : "#f3f4f6",
+                      color: activeTab === 'dummy' ? "#d97706" : "#6b7280",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 4,
+                      position: "relative",
+                    }}
+                  >
+                    {/* 夢家回合時采示鸞蹴點 */}
+                    {isDummyTurn && (
+                      <span style={{
+                        width: 7, height: 7,
+                        borderRadius: "50%",
+                        backgroundColor: "#fbbf24",
+                        display: "inline-block",
+                        animation: "turn-glow-dot 1s infinite",
+                      }} />
+                    )}
+                    👑 夢家牌
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('mine')}
+                    style={{
+                      flex: 1,
+                      padding: "7px 4px",
+                      fontWeight: 900,
+                      fontSize: "0.78rem",
+                      border: "none",
+                      borderBottom: activeTab === 'mine' ? "3px solid #3b82f6" : "none",
+                      background: activeTab === 'mine' ? "#eff6ff" : "#f3f4f6",
+                      color: activeTab === 'mine' ? "#2563eb" : "#6b7280",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 4,
+                    }}
+                  >
+                    {/* 自己回合時應示鸞蹴點 */}
+                    {!isDummyTurn && isMyActualTurn && (
+                      <span style={{
+                        width: 7, height: 7,
+                        borderRadius: "50%",
+                        backgroundColor: "#3b82f6",
+                        display: "inline-block",
+                      }} />
+                    )}
+                    👤 我的牌
+                  </button>
                 </div>
-                <HandDisplay
-                  cards={room.players[dummyUid]?.cards ?? []}
-                  playerUid={dummyUid}
-                  contract={contract}
-                  playing={playingState}
-                  myUid={uid}
-                  selectedCardId={selectedCardId}
-                  onSelectCard={(cardId) => {
-                    setSelectedCardId(selectedCardId === cardId ? null : cardId);
-                  }}
-                  isMobile={isMobile}
-                  isSubmitting={submitting}
-                  isTurn={currentTurnUid === dummyUid}
-                />
-              </div>
 
-              {/* 自己的手牌欄 */}
-              <div style={{ background: "#eff6ff", border: "2px dashed #3b82f6", borderRadius: 12, padding: "2px 0" }}>
-                <div style={{ fontSize: "0.7rem", fontWeight: 900, color: "#2563eb", textAlign: "center", marginBottom: 1 }}>
-                  👤 我的手牌
-                </div>
-                <HandDisplay
-                  cards={room.players[posPlayers.bottom]?.cards ?? []}
-                  playerUid={posPlayers.bottom}
-                  contract={contract}
-                  playing={playingState}
-                  myUid={uid}
-                  selectedCardId={selectedCardId}
-                  onSelectCard={(cardId) => {
-                    setSelectedCardId(selectedCardId === cardId ? null : cardId);
-                  }}
-                  isMobile={isMobile}
-                  isSubmitting={submitting}
-                  isTurn={currentTurnUid === posPlayers.bottom}
-                />
+                {/* Tab 內容 */}
+                {activeTab === 'dummy' ? (
+                  <HandDisplay
+                    cards={room.players[dummyUid]?.cards ?? []}
+                    playerUid={dummyUid}
+                    contract={contract}
+                    playing={playingState}
+                    myUid={uid}
+                    selectedCardId={selectedCardId}
+                    onSelectCard={(cardId) => {
+                      setSelectedCardId(selectedCardId === cardId ? null : cardId);
+                    }}
+                    isMobile={isMobile}
+                    isSubmitting={submitting}
+                    isTurn={currentTurnUid === dummyUid}
+                  />
+                ) : (
+                  <HandDisplay
+                    cards={room.players[posPlayers.bottom]?.cards ?? []}
+                    playerUid={posPlayers.bottom}
+                    contract={contract}
+                    playing={playingState}
+                    myUid={uid}
+                    selectedCardId={selectedCardId}
+                    onSelectCard={(cardId) => {
+                      setSelectedCardId(selectedCardId === cardId ? null : cardId);
+                    }}
+                    isMobile={isMobile}
+                    isSubmitting={submitting}
+                    isTurn={currentTurnUid === posPlayers.bottom}
+                  />
+                )}
               </div>
-            </div>
+            ) : (
+              // 桌機莊家模式：Tab 頁籤切換（避免雙欄撑大底部面板擠掉出牌桌）
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {/* Tab 切換列 */}
+                <div style={{
+                  display: "flex",
+                  borderBottom: "2px solid #000",
+                  marginBottom: 6,
+                  flexShrink: 0,
+                }}>
+                  <button
+                    onClick={() => setActiveTab('dummy')}
+                    style={{
+                      flex: 1,
+                      padding: "6px 4px",
+                      fontWeight: 900,
+                      fontSize: "0.82rem",
+                      border: "none",
+                      borderRight: "2px solid #000",
+                      borderBottom: activeTab === 'dummy' ? "3px solid #fbbf24" : "none",
+                      background: activeTab === 'dummy' ? "#fffbeb" : "#f3f4f6",
+                      color: activeTab === 'dummy' ? "#d97706" : "#6b7280",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {isDummyTurn && (
+                      <span style={{
+                        width: 8, height: 8,
+                        borderRadius: "50%",
+                        backgroundColor: "#fbbf24",
+                        display: "inline-block",
+                        animation: "turn-glow-dot 1s infinite",
+                      }} />
+                    )}
+                    👑 夢家手牌 (由你操作)
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('mine')}
+                    style={{
+                      flex: 1,
+                      padding: "6px 4px",
+                      fontWeight: 900,
+                      fontSize: "0.82rem",
+                      border: "none",
+                      borderBottom: activeTab === 'mine' ? "3px solid #3b82f6" : "none",
+                      background: activeTab === 'mine' ? "#eff6ff" : "#f3f4f6",
+                      color: activeTab === 'mine' ? "#2563eb" : "#6b7280",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {!isDummyTurn && isMyActualTurn && (
+                      <span style={{
+                        width: 8, height: 8,
+                        borderRadius: "50%",
+                        backgroundColor: "#3b82f6",
+                        display: "inline-block",
+                      }} />
+                    )}
+                    👤 我的手牌
+                  </button>
+                </div>
+
+                {/* Tab 內容 */}
+                {activeTab === 'dummy' ? (
+                  <HandDisplay
+                    cards={room.players[dummyUid]?.cards ?? []}
+                    playerUid={dummyUid}
+                    contract={contract}
+                    playing={playingState}
+                    myUid={uid}
+                    selectedCardId={selectedCardId}
+                    onSelectCard={(cardId) => {
+                      setSelectedCardId(selectedCardId === cardId ? null : cardId);
+                    }}
+                    isMobile={isMobile}
+                    isSubmitting={submitting}
+                    isTurn={currentTurnUid === dummyUid}
+                  />
+                ) : (
+                  <HandDisplay
+                    cards={room.players[posPlayers.bottom]?.cards ?? []}
+                    playerUid={posPlayers.bottom}
+                    contract={contract}
+                    playing={playingState}
+                    myUid={uid}
+                    selectedCardId={selectedCardId}
+                    onSelectCard={(cardId) => {
+                      setSelectedCardId(selectedCardId === cardId ? null : cardId);
+                    }}
+                    isMobile={isMobile}
+                    isSubmitting={submitting}
+                    isTurn={currentTurnUid === posPlayers.bottom}
+                  />
+                )}
+              </div>
+            )
           ) : (
-            /* 非莊家，或尚未攤牌，只顯示自己手牌 */
+            /* 非莊家，或尚未攗牌，只顯示自己手牌 */
             <HandDisplay
               cards={room.players[posPlayers.bottom]?.cards ?? []}
               playerUid={posPlayers.bottom}

@@ -1070,17 +1070,27 @@ export const executeBotTurn = async (
       if (roomData.bridgePlaying) {
         const playingState = roomData.bridgePlaying;
         const currentTurnUid = roomData.turnUid;
+        const contract = roomData.bridgeBidding!.finalContract!;
 
-        if (currentTurnUid !== botUid) {
+        // 判定此 Bot 是否需要在此回合行動 (自己回合，或是此 Bot 作為莊家要代打夢家回合)
+        const isBotTurn = currentTurnUid === botUid;
+        const isBotDeclarerActingForDummy = currentTurnUid === contract.dummyUid && contract.declarerUid === botUid;
+
+        if (!isBotTurn && !isBotDeclarerActingForDummy) {
           return 'skipped';
         }
 
-        const contract = roomData.bridgeBidding!.finalContract!;
-
-        // 🚨 若 Bot 是夢家，且莊家是真人玩家，則 Bot 跳過出牌（交由真人莊家手動代打）
+        // 🚨 若此 Bot 是夢家，且莊家是真人玩家，則此 Bot 不會自主出牌（交由真人莊家手動代打）
         const isDummy = botUid === contract.dummyUid;
         const declarerPlayer = roomData.players[contract.declarerUid];
         if (isDummy && declarerPlayer && !declarerPlayer.isBot) {
+          return 'skipped';
+        }
+
+        // 確定出牌者與手牌擁有者 (Bot 正常出牌則為 botUid，代打夢家則為夢家 dummyUid)
+        const actingUid = currentTurnUid!;
+        const actingPlayer = roomData.players[actingUid];
+        if (!actingPlayer || !actingPlayer.cards || actingPlayer.cards.length === 0) {
           return 'skipped';
         }
 
@@ -1088,22 +1098,22 @@ export const executeBotTurn = async (
         const leadCard = currentTrick.length > 0 ? currentTrick[0].card : null;
         const trumpSuit = getTrumpSuit(contract.suit);
 
-        // 選擇要打出的牌
-        let playedCard = selectBridgeCardPlay(botPlayer.cards, leadCard, trumpSuit);
+        // 選擇要打出的牌 (從 actingPlayer 的手牌挑選)
+        let playedCard = selectBridgeCardPlay(actingPlayer.cards, leadCard, trumpSuit);
 
         // 驗證跟花色
-        const validation = validateBridgePlay(playedCard, botPlayer.cards, leadCard ? leadCard.suit : null);
+        const validation = validateBridgePlay(playedCard, actingPlayer.cards, leadCard ? leadCard.suit : null);
         if (!validation.valid) {
-          const playable = botPlayer.cards.filter(c => validateBridgePlay(c, botPlayer.cards, leadCard ? leadCard.suit : null).valid);
-          playedCard = playable.length > 0 ? playable[0] : botPlayer.cards[0];
+          const playable = actingPlayer.cards.filter(c => validateBridgePlay(c, actingPlayer.cards, leadCard ? leadCard.suit : null).valid);
+          playedCard = playable.length > 0 ? playable[0] : actingPlayer.cards[0];
         }
 
         // 實施出牌
-        const newTrick: TrickCard[] = [...currentTrick, { uid: botUid, card: playedCard }];
-        const newHand = botPlayer.cards.filter(c => c.id !== playedCard.id);
+        const newTrick: TrickCard[] = [...currentTrick, { uid: actingUid, card: playedCard }];
+        const newHand = actingPlayer.cards.filter(c => c.id !== playedCard.id);
 
         const updates: Record<string, unknown> = {
-          [`players.${botUid}.cards`]: newHand,
+          [`players.${actingUid}.cards`]: newHand,
           updatedAt: serverTimestamp(),
           expiresAt: getRoomExpirationTimestamp(),
         };
@@ -1114,7 +1124,7 @@ export const executeBotTurn = async (
         }
 
         if (newTrick.length < 4) {
-          const currentIdx = order.indexOf(botUid);
+          const currentIdx = order.indexOf(actingUid);
           const nextUid = order[(currentIdx + 1) % 4];
           updates['bridgePlaying.currentTrick'] = newTrick;
           updates.turnUid = nextUid;
@@ -1201,6 +1211,8 @@ export const executeBotTurn = async (
             }
           } else {
             // 還沒打完，贏家引牌
+            // 🔑 若贏家是夢家，turnUid 改設為莊家（由莊家代出夢家引牌），避免 Bot 夢家被跳過而當機
+            const effectiveTurnUid = winnerUid === contract.dummyUid ? contract.declarerUid : winnerUid;
             updates.bridgePlaying = {
               currentTrick: [],
               completedTricks: newCompletedTricks,
@@ -1209,7 +1221,7 @@ export const executeBotTurn = async (
               declarerTeamTricks: newDeclarerTricks,
               defenderTeamTricks: newDefenderTricks,
             } as BridgePlayingState;
-            updates.turnUid = winnerUid;
+            updates.turnUid = effectiveTurnUid;
           }
         }
 
@@ -1599,6 +1611,8 @@ export const submitBridgeCard = async (
         }
       } else {
         // 還有更多圈，贏家引牌
+        // 🔑 若贏家是夢家，turnUid 改設為莊家（由莊家代出夢家引牌），避免夢家回合無人出牌而當機
+        const effectiveTurnUid = winnerUid === contract.dummyUid ? contract.declarerUid : winnerUid;
         updates.bridgePlaying = {
           currentTrick: [],
           completedTricks: newCompletedTricks,
@@ -1607,7 +1621,7 @@ export const submitBridgeCard = async (
           declarerTeamTricks: newDeclarerTricks,
           defenderTeamTricks: newDefenderTricks,
         } as BridgePlayingState;
-        updates.turnUid = winnerUid;
+        updates.turnUid = effectiveTurnUid;
       }
     }
 

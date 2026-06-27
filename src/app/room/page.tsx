@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
@@ -573,16 +573,37 @@ function RoomContent() {
   const currentMeIsBot = currentMe?.isBot ?? false;
   const roomStatus = room?.status;
   const roomTurnUid = room?.turnUid;
-  const isCurrentPlayerBot = room?.turnUid && room?.players[room.turnUid] ? room.players[room.turnUid].isBot : false;
+
+  // 🔑 計算此時該執行哪個 Bot 的回合 (含正常 Bot 回合，以及 Bot 莊家代出夢家牌的回合)
+  const expectedBotUidToExecute = useMemo(() => {
+    if (!roomTurnUid || !room) return null;
+    
+    // 正常回合：當前出牌者是 Bot
+    const isBot = room.players[roomTurnUid]?.isBot ?? false;
+    if (isBot) return roomTurnUid;
+    
+    // 橋牌夢家回合：當前是夢家回合，且莊家是 Bot，由莊家代出
+    if (room.gameMode === "BRIDGE" && room.bridgeBidding?.finalContract) {
+      const contract = room.bridgeBidding.finalContract;
+      if (roomTurnUid === contract.dummyUid) {
+        const declarer = room.players[contract.declarerUid];
+        if (declarer && declarer.isBot) {
+          return contract.declarerUid;
+        }
+      }
+    }
+    
+    return null;
+  }, [roomTurnUid, room]);
 
   // 執行人機回合 (所有在線真人玩家均可驅動，依靠 Firestore Transaction 的冪等性與預約時間差確保只執行一次)
   useEffect(() => {
     if (!uid || !hasCurrentMe) return;
     if (roomStatus !== "playing") return;
     if (currentMeIsBot === true) return;
-    if (!roomTurnUid || !isCurrentPlayerBot) return;
+    if (!expectedBotUidToExecute) return;
 
-    const expectedBotUid = roomTurnUid;
+    const expectedBotUid = expectedBotUidToExecute;
     let cancelled = false;
     let timerId: number | null = null;
 
@@ -629,7 +650,7 @@ function RoomContent() {
     uid,
     roomStatus,
     roomTurnUid,
-    isCurrentPlayerBot,
+    expectedBotUidToExecute,
     currentMeIsBot,
     hasCurrentMe
   ]);
