@@ -176,16 +176,26 @@ export default function Home() {
       backgroundSize: "30px 30px",
     }}>
       <div className="comic-panel comic-panel--halftone w-full max-w-md relative z-10" style={{ padding: "32px" }}>
-        <h1 className="text-4xl font-black mb-4 flex items-center gap-3">
-          歡迎來到 <span className="bg-[#fbbf24] px-2 py-1 border-[3px] border-black rounded-lg transform -rotate-2 inline-block">大老二</span>
+        <h1 className="text-4xl font-black mb-2 flex items-center gap-3 flex-wrap">
+          <span className="bg-[#fbbf24] px-3 py-1 border-[3px] border-black rounded-lg transform -rotate-2 inline-block">CardDuel</span>
         </h1>
+        <p style={{ fontWeight: 700, color: "#6b7280", fontSize: "0.85rem", marginBottom: "24px", letterSpacing: "0.02em" }}>
+          線上多人紙牌對戰平台
+        </p>
 
         {/* 階段一：未登入，要求 Google 登入 */}
         {!currentUser ? (
           <div>
-            <p className="text-gray-600 font-bold mb-8 text-sm leading-relaxed">
-              為了確保穩定的連線與多人對局體驗，開始遊戲前請先以 Google 帳號進行綁定。
-            </p>
+            <div style={{ marginBottom: "20px" }}>
+              <p className="text-gray-600 font-bold mb-4 text-sm leading-relaxed">
+                支援大老二、十三支、橋牌三種紙牌遊戲，開局就上手。以 Google 帳號登入，即可跨裝置與朋友即時對戰。
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "4px" }}>
+                <span style={{ background: "#fef9c3", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃏 大老二</span>
+                <span style={{ background: "#dcfce7", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃍 十三支</span>
+                <span style={{ background: "#dbeafe", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🌈 橋牌</span>
+              </div>
+            </div>
 
             {errorMsg && (
               <div style={{
@@ -229,7 +239,7 @@ export default function Home() {
           <form onSubmit={handleNicknameSubmit} style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             <div>
               <p className="text-gray-600 font-bold mb-4 text-sm">
-                登入成功！請幫自己設定一個遊戲暱稱吧，其他玩家在對局內會看到此名稱。
+                登入成功！請幫自己設定一個遊戲暱稱，對局內其他玩家會看到此名稱。
               </p>
               <div className="flex items-center gap-2 mb-6 p-2 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg">
                 <div className="w-8 h-8 rounded-full border-2 border-black overflow-hidden flex-shrink-0 bg-white">

@@ -26,13 +26,13 @@ const isProd = process.env.NODE_ENV === 'production';
 const basePath = isProd ? '/big2_game' : '';
 
 export const metadata: Metadata = {
-  title: "線上大老二遊戲",
-  description: "支援手機與電腦的線上大老二對戰平台",
+  title: "CardDuel — 線上多人紙牌對戰平台",
+  description: "支援大老二、十三支、橋牌三種紙牌遊戲，即時多人對戰、跨裝置支援。",
   manifest: `${basePath}/manifest.json?v=2`, // 加上版本號以打破 manifest 快取
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "大老二",
+    title: "CardDuel",
   },
   icons: {
     icon: `${basePath}/icons/icon-192x192.png?v=2`, // 網頁分頁圖標 (Favicon)，加 v=2 打破快取
