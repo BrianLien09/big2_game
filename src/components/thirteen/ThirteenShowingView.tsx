@@ -331,8 +331,8 @@ export default function ThirteenShowingView({
         key={key}
         className="comic-panel" 
         style={{
-          width: isMobile ? "38px" : "52px",
-          height: isMobile ? "56px" : "76px",
+          width: isMobile ? "42px" : "52px",
+          height: isMobile ? "62px" : "76px",
           background: "#b87e6b", // 暖棕大地色背面
           border: "2px solid #000",
           borderRadius: "5px",
@@ -345,7 +345,7 @@ export default function ThirteenShowingView({
           fontWeight: 900,
           boxShadow: "1px 1.5px 0px #000",
           boxSizing: "border-box",
-          marginLeft: index > 0 ? (isMobile ? "-22px" : "-28px") : "0px",
+          marginLeft: index > 0 ? (isMobile ? "-26px" : "-28px") : "0px",
           zIndex: index
         }}
       >
@@ -677,7 +677,7 @@ export default function ThirteenShowingView({
                             zIndex: i
                           }}
                         >
-                          <PlayingCard card={card} size="small" />
+                          <PlayingCard card={card} size={isMobile ? "mobile-bucket" : "small"} />
                         </div>
                       ))
                     ) : (
@@ -763,7 +763,7 @@ export default function ThirteenShowingView({
                             zIndex: i
                           }}
                         >
-                          <PlayingCard card={card} size="small" />
+                          <PlayingCard card={card} size={isMobile ? "mobile-bucket" : "small"} />
                         </div>
                       ))
                     ) : (
@@ -849,7 +849,7 @@ export default function ThirteenShowingView({
                             zIndex: i
                           }}
                         >
-                          <PlayingCard card={card} size="small" />
+                          <PlayingCard card={card} size={isMobile ? "mobile-bucket" : "small"} />
                         </div>
                       ))
                     ) : (
