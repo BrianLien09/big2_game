@@ -18,7 +18,7 @@ export default function Lobby() {
   const [joinRoomId, setJoinRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [targetPoints, setTargetPoints] = useState<number>(15);
-  const [gameMode, setGameMode] = useState<'BIG2' | 'BRIDGE'>('BIG2');
+  const [gameMode, setGameMode] = useState<'BIG2' | 'BRIDGE' | 'THIRTEEN'>('BIG2');
 
   // Firebase 使用者與載入狀態
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -102,7 +102,8 @@ export default function Lobby() {
     e.preventDefault();
     await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-    const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的${gameMode === 'BRIDGE' ? '橋牌' : '大老二'}對局`);
+    const roomTypeLabel = gameMode === 'BRIDGE' ? '橋牌' : gameMode === 'THIRTEEN' ? '十三支' : '大老二';
+    const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的${roomTypeLabel}對局`);
     router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}&gameMode=${gameMode}`);
   };
 
@@ -314,8 +315,11 @@ export default function Lobby() {
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>遊戲模式</label>
                 <div style={{ display: "flex", gap: "12px" }}>
-                  {(["BIG2", "BRIDGE"] as const).map((mode) => {
+                  {(["BIG2", "THIRTEEN", "BRIDGE"] as const).map((mode) => {
                     const isSelected = gameMode === mode;
+                    const modeBg = mode === 'BRIDGE' ? "#3b82f6" : mode === 'THIRTEEN' ? "#b87e6b" : "#fbbf24";
+                    const modeColor = mode === 'BRIDGE' || mode === 'THIRTEEN' ? "#fff" : "#000";
+                    const modeBorder = mode === 'BRIDGE' ? "#2563eb" : mode === 'THIRTEEN' ? "#a66a58" : "#000";
                     return (
                       <button
                         key={mode}
@@ -329,9 +333,9 @@ export default function Lobby() {
                           flex: 1,
                           padding: "12px 8px",
                           fontSize: "0.95rem",
-                          background: isSelected ? (mode === 'BRIDGE' ? "#3b82f6" : "#fbbf24") : "#fff",
-                          color: isSelected ? (mode === 'BRIDGE' ? "#fff" : "#000") : "#6b7280",
-                          border: `3px solid ${isSelected ? (mode === 'BRIDGE' ? "#2563eb" : "#000") : "#e5e7eb"}`,
+                          background: isSelected ? modeBg : "#fff",
+                          color: isSelected ? modeColor : "#6b7280",
+                          border: `3px solid ${isSelected ? modeBorder : "#e5e7eb"}`,
                           borderRadius: "12px",
                           boxShadow: isSelected ? "2px 2px 0px #000" : "none",
                           fontWeight: 900,
@@ -339,7 +343,7 @@ export default function Lobby() {
                           transition: "all 0.15s ease",
                         }}
                       >
-                        {mode === 'BIG2' ? '🂡 大老二' : '🃏 橋牌'}
+                        {mode === 'BIG2' ? '🂡 大老二' : mode === 'THIRTEEN' ? '🃎 十三支' : '🃏 橋牌'}
                       </button>
                     );
                   })}
@@ -357,6 +361,21 @@ export default function Lobby() {
                   }}>
                     ℹ️ 橋牌需要恰好 <strong>4 位真人玩家</strong>，不支援人機。<br />
                     包含叫牌→打牌→計分三個完整階段。
+                  </div>
+                )}
+                {gameMode === 'THIRTEEN' && (
+                  <div style={{
+                    background: "#ecfdf5",
+                    border: "2px solid #a7f3d0",
+                    borderRadius: "10px",
+                    padding: "10px 12px",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#047857",
+                    lineHeight: 1.5,
+                  }}>
+                    ℹ️ 十三支固定為 <strong>4 位玩家</strong>。若人數不足，開始時會自動加入電腦人機補滿。<br />
+                    每人 13 張牌，分前中後三墩且後墩 ≥ 中墩 ≥ 前墩，否則為倒水。
                   </div>
                 )}
               </div>

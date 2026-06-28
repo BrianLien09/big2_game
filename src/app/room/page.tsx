@@ -6,13 +6,16 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability } from "@/lib/roomService";
+import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, getCardName } from "@/lib/big2Logic";
+import { evaluateThirteenHand, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
 import BridgeBiddingView from "@/components/bridge/BridgeBiddingView";
 import BridgePlayingView from "@/components/bridge/BridgePlayingView";
+import ThirteenPlayingView from "@/components/thirteen/ThirteenPlayingView";
+import ThirteenShowingView from "@/components/thirteen/ThirteenShowingView";
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false);
@@ -437,7 +440,7 @@ function RoomContent() {
           if (err.message === "房間不存在") {
             const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
             const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
-            const gameModeParam = (searchParams.get("gameMode") === 'BRIDGE' ? 'BRIDGE' : 'BIG2') as 'BIG2' | 'BRIDGE';
+            const gameModeParam = (searchParams.get("gameMode") === 'BRIDGE' ? 'BRIDGE' : searchParams.get("gameMode") === 'THIRTEEN' ? 'THIRTEEN' : 'BIG2') as GameMode;
             try {
               await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, gameModeParam);
               isCreator = true;
@@ -709,6 +712,8 @@ function RoomContent() {
           return;
         }
         await startBridgeGame(roomId);
+      } else if (room.gameMode === 'THIRTEEN') {
+        await startThirteenGame(roomId);
       } else {
         await startGame(roomId);
       }
@@ -1226,7 +1231,7 @@ function RoomContent() {
   }
 
   // ---- 整場遊戲結束畫面 (Game Over) ----
-  if (room.status === "gameOver") {
+  if (room.status === "gameOver" && room.gameMode !== "THIRTEEN") {
     const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15);
     const reachedPlayers = Object.values(room.players).filter(p => (p.points ?? 0) >= target);
     const sortedPlayers = [...Object.values(room.players)].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
@@ -1374,7 +1379,7 @@ function RoomContent() {
   }
 
   // ---- 結束畫面 ----
-  if (room.status === "finished") {
+  if (room.status === "finished" && room.gameMode !== "THIRTEEN") {
     const isWinner = room.winnerUid === uid;
     return (
       <div key="finished-view" style={{ 
@@ -1547,7 +1552,9 @@ function RoomContent() {
                <button className="comic-btn" style={{ background: "#fbbf24" }} onClick={async () => {
                  if (!db) return;
                  try {
-                   if (room.gameMode === 'BRIDGE') {
+                    if (room.gameMode === 'THIRTEEN') {
+                      await resetThirteenRound(roomId);
+                    } else if (room.gameMode === 'BRIDGE') {
                      await resetBridgeRound(roomId);
                    } else {
                      await updateDoc(doc(db, "rooms", roomId), {
@@ -1594,6 +1601,34 @@ function RoomContent() {
   }
 
   // ---- 遊戲畫面 ----
+  // ── 十三支模式分路 ──────────────────────────────────────
+  if (room.gameMode === 'THIRTEEN') {
+    if (room.thirteenState && room.thirteenState.status === 'showing') {
+      return (
+        <ThirteenShowingView
+          room={room}
+          uid={uid}
+          roomId={roomId}
+          isMobile={isMobile}
+          onLeave={handleLeaveRoom}
+          resetThirteenRound={resetThirteenRound}
+        />
+      );
+    }
+    if (room.thirteenState && room.thirteenState.status === 'arranging') {
+      return (
+        <ThirteenPlayingView
+          room={room}
+          uid={uid}
+          roomId={roomId}
+          isMobile={isMobile}
+          onLeave={handleLeaveRoom}
+          confirmThirteenArrangement={confirmThirteenArrangement}
+        />
+      );
+    }
+  }
+
   // ── 橋牌模式分路 ──────────────────────────────────────
   if (room.gameMode === 'BRIDGE') {
     // 叫牌階段
