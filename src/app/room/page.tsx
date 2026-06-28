@@ -989,32 +989,34 @@ function RoomContent() {
             background: "#fff", borderBottom: "3px solid #000",
             boxShadow: "0 2px 0 #00000015",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1, overflow: "hidden" }}>
               <div style={{
                 width: 40, height: 40, flexShrink: 0,
                 background: "#e5e7eb", border: "2px solid #000",
                 borderRadius: 10, display: "flex", alignItems: "center",
                 justifyContent: "center", fontSize: 20, boxShadow: "2px 2px 0 #000",
               }}>🎮</div>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: "0.95rem", lineHeight: 1.2 }}>{room.name || "大老二對局"}</div>
+              <div style={{ minWidth: 0, overflow: "hidden" }}>
+                <div style={{ fontWeight: 900, fontSize: "0.95rem", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{room.name || "大老二對局"}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#6b7280" }}>房間 ID</span>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#6b7280", flexShrink: 0 }}>房間 ID</span>
                   <span style={{ fontSize: "1rem", fontWeight: 900, letterSpacing: 2, color: "#111" }}>{roomId}</span>
                 </div>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                <div style={{ background: "#f3f4f6", border: "2px solid #000", borderRadius: 999, padding: "2px 10px", fontWeight: 700, fontSize: "0.72rem", boxShadow: "1px 1px 0 #000" }}>
+                <div style={{ background: "#f3f4f6", border: "2px solid #000", borderRadius: 999, padding: "2px 10px", fontWeight: 700, fontSize: "0.72rem", boxShadow: "1px 1px 0 #000", whiteSpace: "nowrap", minWidth: 72, textAlign: "center" }}>
                   {room.playerOrder.length}/4 玩家
                 </div>
-                <div style={{ background: "#dcfce7", border: "2px solid #000", borderRadius: 999, padding: "2px 10px", fontWeight: 700, fontSize: "0.72rem", boxShadow: "1px 1px 0 #000" }}>
+                <div style={{ background: "#dcfce7", border: "2px solid #000", borderRadius: 999, padding: "2px 10px", fontWeight: 700, fontSize: "0.72rem", boxShadow: "1px 1px 0 #000", whiteSpace: "nowrap", minWidth: 72, textAlign: "center" }}>
                   {room.playerOrder.filter(pUid => room.players[pUid].isReady).length}/{room.playerOrder.length} 已準備
                 </div>
               </div>
-              <button className="comic-btn" style={{ padding: "6px 12px", fontSize: "0.8rem", background: "#fff", color: "#6b7280" }} onClick={handleLeaveRoom}>✕ 退出</button>
+              <button className="comic-btn" style={{ padding: "6px 12px", fontSize: "0.8rem", background: "#fff", color: "#6b7280", flexShrink: 0, whiteSpace: "nowrap" }} onClick={handleLeaveRoom}>✕ 退出</button>
             </div>
+
           </div>
 
           {/* 複製按鈕列 */}
