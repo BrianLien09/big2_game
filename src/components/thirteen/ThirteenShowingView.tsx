@@ -23,6 +23,7 @@ export default function ThirteenShowingView({
   resetThirteenRound
 }: ThirteenShowingViewProps) {
   const [loading, setLoading] = useState(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [compareStep, setCompareStep] = useState<number>(0); // 0: 準備開牌, 1: 比前墩, 2: 比中墩, 3: 比後墩與結算
   const me = room.players[uid];
   const thirteenState = room.thirteenState;
@@ -149,10 +150,15 @@ export default function ThirteenShowingView({
     }
   };
 
-  // 重新整局
-  const handleRestartWholeGame = async () => {
+  // 重新整局的點擊處理（打開自定義確認對話框）
+  const handleRestartWholeGameClick = () => {
     if (loading) return;
-    if (!window.confirm("確定要重設整場積分嗎？")) return;
+    setShowRestartConfirm(true);
+  };
+
+  // 確定要重置整場遊戲時的執行函數
+  const handleConfirmRestartWholeGame = async () => {
+    setShowRestartConfirm(false);
     setLoading(true);
     try {
       await restartWholeGame(roomId);
@@ -1031,7 +1037,7 @@ export default function ThirteenShowingView({
                   ) : (
                     <button 
                       className="comic-btn" 
-                      onClick={handleRestartWholeGame}
+                      onClick={handleRestartWholeGameClick}
                       disabled={loading}
                       style={{ background: "#ef4444", color: "#fff", padding: "8px 28px", fontWeight: 900, fontSize: "0.85rem" }}
                     >
@@ -1067,6 +1073,53 @@ export default function ThirteenShowingView({
         )}
       </div>
     )}
-  </div>
-);
+    {showRestartConfirm && (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div style={{
+            background: "#fff",
+            border: "4px solid #000",
+            borderRadius: 24,
+            boxShadow: "6px 6px 0 #000",
+            width: "100%",
+            maxWidth: 400,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            position: "relative",
+          }} className="animate-in fade-in zoom-in duration-200">
+            <div style={{ padding: "1.5rem 1.5rem 1rem", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid #000" }}>
+              <h2 className="text-xl font-black">重設整場遊戲</h2>
+              <button 
+                onClick={() => setShowRestartConfirm(false)}
+                className="w-10 h-10 flex items-center justify-center border-[3px] border-black rounded-full font-black text-xl bg-white hover:bg-gray-100 shadow-[2px_2px_0px_#000]"
+              >✕</button>
+            </div>
+            
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+              <p style={{ fontWeight: 800, color: "#374151", fontSize: "1.02rem", textAlign: "center" }}>
+                確定要重設整場積分嗎？所有玩家的分數將歸零。
+              </p>
+              
+              <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+                <button 
+                  className="comic-btn" 
+                  style={{ background: "#ef4444", color: "#fff", padding: "8px 24px" }}
+                  onClick={handleConfirmRestartWholeGame}
+                >
+                  確定重設
+                </button>
+                <button 
+                  className="comic-btn" 
+                  style={{ background: "#e5e7eb", color: "#000", padding: "8px 24px" }}
+                  onClick={() => setShowRestartConfirm(false)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

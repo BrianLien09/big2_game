@@ -564,12 +564,26 @@ function RoomContent() {
     if (status === "finished" && prevStatusForSound.current !== "finished") {
       // 從 playing → finished：單局結束
       playRoundOverSound();
-    } else if (status === "gameOver" && prevStatusForSound.current !== "gameOver") {
-      // 從 finished/playing → gameOver：整局結束，恭喜第一名
+    } else if (status === "gameOver" && prevStatusForSound.current !== "gameOver" && room?.gameMode !== "THIRTEEN") {
+      // 從 finished/playing → gameOver：整局結束，恭喜第一名 (僅限非十三支模式)
       playGameOverSound();
     }
     prevStatusForSound.current = status;
-  }, [room?.status]);
+  }, [room?.status, room?.gameMode]);
+
+  // 監聽十三支整場遊戲結束排行榜的顯示以播放歡呼音效
+  const prevThirteenShowLeaderboard = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (room?.gameMode === "THIRTEEN" && room?.status === "gameOver") {
+      const isLeaderboardShowing = room.thirteenState?.showLeaderboard ?? false;
+      if (isLeaderboardShowing && prevThirteenShowLeaderboard.current === false) {
+        playGameOverSound();
+      }
+      prevThirteenShowLeaderboard.current = isLeaderboardShowing;
+    } else {
+      prevThirteenShowLeaderboard.current = room?.thirteenState?.showLeaderboard ?? false;
+    }
+  }, [room?.status, room?.gameMode, room?.thirteenState?.showLeaderboard]);
 
   const currentMe = uid && room?.players[uid] ? room.players[uid] : null;
   const hasCurrentMe = !!currentMe;
@@ -1233,7 +1247,8 @@ function RoomContent() {
   }
 
   // ---- 整場遊戲結束畫面 (Game Over) ----
-  if (room.status === "gameOver" && room.gameMode !== "THIRTEEN") {
+  const isThirteenGameOverShowLeaderboard = room.gameMode === "THIRTEEN" && (room.thirteenState?.showLeaderboard ?? false);
+  if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard)) {
     const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15);
     const reachedPlayers = Object.values(room.players).filter(p => (p.points ?? 0) >= target);
     const sortedPlayers = [...Object.values(room.players)].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));

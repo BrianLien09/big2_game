@@ -1304,6 +1304,9 @@ export const restartWholeGame = async (roomId: string) => {
       passCount: 0,
       finishedOrder: [],
       roundScores: {},
+      thirteenState: null,
+      bridgeBidding: null,
+      bridgePlaying: null,
       updatedAt: serverTimestamp(),
       expiresAt: getRoomExpirationTimestamp()
     };
