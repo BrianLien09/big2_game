@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 
 interface CardProps {
   card: CardType;
-  size?: 'mobile' | 'tablet' | 'desktop' | 'small' | 'medium' | 'large' | 'mobile-hand';
+  size?: 'mobile' | 'tablet' | 'desktop' | 'small' | 'medium' | 'large' | 'mobile-hand' | 'mobile-bucket';
   selected?: boolean;
   onClick?: () => void;
   className?: string;
@@ -37,6 +37,7 @@ const sizeClasses = {
   tablet: 'w-[64px] h-[92px] border-[4px] border-[#111] rounded-[12px] shadow-[3px_4px_0_#111]',
   mobile: 'w-[62px] h-[92px] border-[4px] border-[#111] rounded-[12px] shadow-[3px_4px_0_#111]',
   'mobile-hand': 'w-[76px] h-[112px] border-[4px] border-[#111] rounded-[14px] shadow-[3px_4px_0_#111]',
+  'mobile-bucket': 'w-[54px] h-[76px] border-[3px] border-[#111] rounded-[10px] shadow-[2px_2px_0_#111]',
 };
 
 const topCornerPos = {
@@ -44,6 +45,7 @@ const topCornerPos = {
   tablet: 'top-[6px] left-[6px] gap-[0px]',
   mobile: 'top-[6px] left-[6px] gap-[0px]',
   'mobile-hand': 'top-[7px] left-[7px] gap-[0px]',
+  'mobile-bucket': 'top-[4px] left-[4px] gap-[0px]',
 };
 
 const rankSizes = {
@@ -51,6 +53,7 @@ const rankSizes = {
   tablet: 'text-[18px]',
   mobile: 'text-[18px]',
   'mobile-hand': 'text-[21px]',
+  'mobile-bucket': 'text-[14px]',
 };
 
 const smallSuitSize = {
@@ -58,6 +61,7 @@ const smallSuitSize = {
   tablet: 'text-[12px]',
   mobile: 'text-[12px]',
   'mobile-hand': 'text-[14px]',
+  'mobile-bucket': 'text-[10px]',
 };
 
 const largeSuitSize = {
@@ -65,6 +69,7 @@ const largeSuitSize = {
   tablet: 'text-[28px] bottom-[4px] right-[6px]',
   mobile: 'text-[26px] bottom-[4px] right-[6px]',
   'mobile-hand': 'text-[30px] bottom-[5px] right-[7px]',
+  'mobile-bucket': 'text-[20px] bottom-[2px] right-[4px]',
 };
 
 export const PlayingCard: React.FC<CardProps> = ({ 
