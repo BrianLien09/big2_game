@@ -532,6 +532,22 @@ export default function Lobby() {
               >
                 🃏 橋牌規則與計分
               </button>
+              <button
+                className="comic-btn"
+                style={{
+                  background: "#10b981",
+                  color: "#fff",
+                  padding: "14px 0",
+                  fontSize: "1.05rem",
+                  border: "3px solid #059669",
+                }}
+                onClick={() => {
+                  setShowTutorialModal(false);
+                  router.push('/thirteen-tutorial');
+                }}
+              >
+                🃎 十三支規則與實操
+              </button>
             </div>
             <button
               onClick={() => setShowTutorialModal(false)}
