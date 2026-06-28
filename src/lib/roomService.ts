@@ -1881,17 +1881,28 @@ export const confirmThirteenArrangement = async (
 
       const scores = calculateScores(playersArrangement, roomData.playerOrder);
 
-      // 十三支的積分加分機制直接跟大老二一樣：第一名+3，第二名+2，第三名+1，第四名+0
-      const sortedUids = [...roomData.playerOrder].sort((a, b) => (scores[b] || 0) - (scores[a] || 0));
+      // 十三支的積分加分機制：
+      // 依據有多少玩家的淨分（scores）嚴格大於該玩家，來公平判定其名次（處理並列同分）：
+      // - 0 個玩家比我大 => 第一名 (+3)
+      // - 1 個玩家比我大 => 第二名 (+2)
+      // - 2 個玩家比我大 => 第三名 (+1)
+      // - 3 個玩家比我大 => 第四名 (+0)
       const thirteenRoundPoints: Record<string, number> = {};
-      sortedUids.forEach((pUid, index) => {
+      roomData.playerOrder.forEach(pUid => {
+        const myScore = scores[pUid] || 0;
+        const higherPlayersCount = roomData.playerOrder.filter(otherUid => 
+          otherUid !== pUid && (scores[otherUid] || 0) > myScore
+        ).length;
+
         let pointsToAdd = 0;
-        if (index === 0) pointsToAdd = 3;
-        else if (index === 1) pointsToAdd = 2;
-        else if (index === 2) pointsToAdd = 1;
+        if (higherPlayersCount === 0) pointsToAdd = 3;
+        else if (higherPlayersCount === 1) pointsToAdd = 2;
+        else if (higherPlayersCount === 2) pointsToAdd = 1;
         else pointsToAdd = 0;
+
         thirteenRoundPoints[pUid] = pointsToAdd;
       });
+
 
       // 累加 points 並檢查是否達標結束
       const target = roomData.targetPoints || 15;
