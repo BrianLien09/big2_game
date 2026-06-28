@@ -90,7 +90,7 @@ export default function Lobby() {
       await logoutWithGoogle();
       localStorage.removeItem("big2_nickname");
       setNickname("");
-      addToast("您已成功登出！歡迎下次再來挑戰大老二。", "info");
+      addToast("您已成功登出！歡迎下次再來 CardDuel 挑戰。", "info");
       router.replace("/");
     } catch (error) {
       console.error("Logout failed:", error);
@@ -175,10 +175,10 @@ export default function Lobby() {
 
       <div className="text-center z-10 mb-12">
         <h1 className="text-6xl md:text-8xl font-black tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>
-          BIG<span className="text-[#dc2626]">2</span>
+          Card<span className="text-[#dc2626]">Duel</span>
         </h1>
         <p className="text-sm md:text-base font-bold tracking-widest text-gray-600" style={{ marginBottom: "40px" }}>
-          在線大老二・多人實時對戰・經典撲克挑戰
+          🃏 大老二  ·  🃍 十三支  ·  🌈 橋牌  ·  即時多人對戰
         </p>
 
         {/* 快速重連橫幅 */}
