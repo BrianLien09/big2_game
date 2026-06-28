@@ -23,7 +23,7 @@ export default function ThirteenShowingView({
   resetThirteenRound
 }: ThirteenShowingViewProps) {
   const [loading, setLoading] = useState(false);
-  const [compareStep, setCompareStep] = useState<number>(0); // 0: 準備開牌, 1: 比前墩, 2: 比中墩, 3: 比後墩, 4: 比牌結束 (結算)
+  const [compareStep, setCompareStep] = useState<number>(0); // 0: 準備開牌, 1: 比前墩, 2: 比中墩, 3: 比後墩與結算
   const me = room.players[uid];
   const thirteenState = room.thirteenState;
   const scores = thirteenState?.scores || room.roundScores || {};
@@ -188,7 +188,9 @@ export default function ThirteenShowingView({
 
       const comp = compareThirteenHands(eval1, eval2);
       const nickname = room.players[otherUid]?.nickname || "人機";
-      const shortNickname = nickname.length > 8 ? nickname.substring(0, 8) + ".." : nickname;
+      const cleanName = nickname.replace("🤖 ", "");
+      const maxLen = isMobile ? 3 : 8;
+      const shortNickname = cleanName.length > maxLen ? cleanName.substring(0, maxLen) + ".." : cleanName;
       if (comp > 0) {
         details.push(`贏 ${shortNickname}`);
         netScore += 1;
@@ -200,7 +202,8 @@ export default function ThirteenShowingView({
       }
     });
 
-    return { details: details.join(" | "), netScore };
+    const separator = isMobile ? "/" : " | ";
+    return { details: details.join(separator), netScore };
   };
 
   // 實時計算本局是否有打槍發生 (前端計算)
@@ -359,8 +362,7 @@ export default function ThirteenShowingView({
       case 0: return "🃟 準備開牌，點選按鈕開始比牌";
       case 1: return "❶ 前墩比拼：比較前三張牌！";
       case 2: return "❷ 中墩比拼：比較中五張牌！";
-      case 3: return "❸ 後墩比拼：比較後五張牌！";
-      case 4: return "🏆 比牌完畢，正在結算分數！";
+      case 3: return "🏆 比牌完畢，正在結算分數！";
       default: return "";
     }
   };
@@ -437,15 +439,15 @@ export default function ThirteenShowingView({
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <span style={{
-              background: compareStep === 4 ? "#10b981" : "#fbbf24",
-              color: compareStep === 4 ? "#fff" : "#000",
+              background: compareStep === 3 ? "#10b981" : "#fbbf24",
+              color: compareStep === 3 ? "#fff" : "#000",
               padding: "2px 6px",
               borderRadius: "5px",
               fontWeight: 900,
               fontSize: "0.75rem",
               border: "2px solid #000"
             }}>
-              步驟 {compareStep}/4
+              步驟 {compareStep}/3
             </span>
             <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>
               {getStepDescription()}
@@ -453,7 +455,7 @@ export default function ThirteenShowingView({
           </div>
 
           <div style={{ display: "flex", gap: "6px" }}>
-            {compareStep < 4 && (
+            {compareStep < 3 && (
               <button 
                 className="comic-btn" 
                 style={{ 
@@ -467,12 +469,12 @@ export default function ThirteenShowingView({
                 {compareStep === 0 ? "🏁 開始比牌" : "👉 下一階段比牌"}
               </button>
             )}
-            {compareStep < 4 && (
-              <button className="comic-btn" style={{ padding: "3px 8px", fontSize: "0.75rem", background: "#e2e8f0" }} onClick={() => setCompareStep(4)}>
+            {compareStep < 3 && (
+              <button className="comic-btn" style={{ padding: "3px 8px", fontSize: "0.75rem", background: "#e2e8f0" }} onClick={() => setCompareStep(3)}>
                 跳過動畫
               </button>
             )}
-            {compareStep === 4 && (
+            {compareStep === 3 && (
               <button className="comic-btn" style={{ padding: "3px 8px", fontSize: "0.75rem", background: "#f1f5f9" }} onClick={() => setCompareStep(0)}>
                 重新觀看
               </button>
@@ -594,7 +596,7 @@ export default function ThirteenShowingView({
 
           const isMe = pUid === uid;
           const playerScore = scores[pUid] ?? 0;
-          const displayPoints = compareStep === 4 
+          const displayPoints = compareStep === 3 
             ? (player.points ?? 0) 
             : (player.points ?? 0) - playerScore; // 動畫未完前顯示原本分數，播完再加分
 
@@ -981,8 +983,8 @@ export default function ThirteenShowingView({
       </div>
     )}
 
-    {/* 房主控制按鈕：動畫播完 (compareStep === 4) 才浮現 */}
-    {compareStep === 4 && (
+    {/* 房主控制按鈕：動畫播完 (compareStep === 3) 才浮現 */}
+    {compareStep === 3 && (
       <div className="comic-panel" style={{
         width: "100%",
         maxWidth: "1200px",
