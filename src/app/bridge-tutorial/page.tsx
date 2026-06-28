@@ -1412,9 +1412,6 @@ export default function BridgeTutorialPage() {
             <h1 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 900, lineHeight: 1 }}>
               🃏 橋牌規則教學
             </h1>
-            <p style={{ margin: 0, fontSize: "0.72rem", color: "#6b7280", fontWeight: 700 }}>
-              Contract Bridge — 規則、計分與情境演練
-            </p>
           </div>
           <button
             onClick={() => router.back()}

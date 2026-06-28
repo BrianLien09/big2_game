@@ -58,7 +58,7 @@ function IntroTab() {
           十三支最大的魅力在於「運籌帷幄的排兵佈陣」——有時拿到一手爛牌，但若能巧妙分配，利用「前墩放小對子偷點」或「後墩大牌防打槍」的策略，反而能從大牌玩家手中搶下分數！
         </p>
         <InfoBox type="tip">
-          在本遊戲系統中，十三支模式支援<strong>一鍵自動理牌</strong>功能，就算是不會排牌的新手，也能在 Bot 輔助下排出最佳守備陣型！
+          在本遊戲系統中，十三支模式支援<strong>一鍵理牌</strong>功能，能自動將您未分配的手牌按點數大小進行排序整理，讓您手動理牌更加直觀清晰！
         </InfoBox>
       </Section>
     </div>
@@ -243,12 +243,12 @@ function PracticeTab() {
         </ul>
       </Section>
 
-      <Section title="🪄 一鍵自動理牌 (AI 演算法)" emoji="🤖">
+      <Section title="🧹 一鍵理牌功能" emoji="🪄">
         <p style={pStyle}>
-          如果您是剛接觸十三支的新手，或是手牌混亂不知道怎麼分墩比較好，可以使用內建的<strong>一鍵自動理牌</strong>功能！
+          當您覺得手中的未分配手牌順序雜亂時，可以使用內建的<strong>一鍵理牌</strong>按鈕：
         </p>
         <div style={{ ...rowCard, background: "#f0fdf4", borderColor: "#86efac", marginTop: 10 }}>
-          💡 <strong>高效暴力搜尋 (JIT 優化)</strong>：自動理牌 Bot 會在 30 毫秒之內，對 13 張牌的 72,072 種分牌可能性進行搜尋，剔除所有不合法的「倒水組合」，並評估出牌實力最強的最佳分墩組合，直接幫您排好牌！
+          💡 <strong>自動按點數排序</strong>：一鍵理牌功能會立即將您未分配的撲克牌，按照十三支的點數大小（A 最大、2 最小）進行排序，讓您能一眼看清手牌結構，方便手動點選分墩！
         </div>
       </Section>
     </div>
@@ -373,9 +373,6 @@ export default function ThirteenTutorialPage() {
             <h1 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 900, lineHeight: 1 }}>
               🥞 十三支規則教學
             </h1>
-            <p style={{ margin: 0, fontSize: "0.72rem", color: "#6b7280", fontWeight: 700 }}>
-              Chinese Poker — 規則、牌型與計分機制
-            </p>
           </div>
           <button
             onClick={() => router.back()}
