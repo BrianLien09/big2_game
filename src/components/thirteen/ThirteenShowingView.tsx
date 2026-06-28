@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { RoomState, restartWholeGame, showThirteenLeaderboard } from "@/lib/roomService";
+import { RoomState, restartWholeGame, showThirteenLeaderboard, getAssetPath } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
 import { evaluateThirteenHand, THIRTEEN_HAND_LABELS, compareThirteenHands } from "@/lib/thirteenLogic";
 
@@ -145,7 +145,7 @@ export default function ThirteenShowingView({
     } catch (e) {
       console.error("重置下一局失敗:", e);
     } finally {
-      setLoading(true); // 保持為 true 避免重複按
+      setLoading(false); // 重置完成後解除卡死，避免按鈕永遠顯示「準備中...」
     }
   };
 
@@ -527,7 +527,7 @@ export default function ThirteenShowingView({
                     <span style={{ fontSize: isMobile ? "1.2rem" : "1.5rem", fontWeight: 900 }}>{medal}</span>
                     {player.avatarUrl && (
                       <img 
-                        src={player.avatarUrl} 
+                        src={getAssetPath(player.avatarUrl)} 
                         alt="avatar" 
                         style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid #000" }} 
                       />
@@ -622,7 +622,7 @@ export default function ThirteenShowingView({
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   {player.avatarUrl && (
                     <img 
-                      src={player.avatarUrl} 
+                      src={getAssetPath(player.avatarUrl)} 
                       alt={player.nickname} 
                       style={{ width: "24px", height: "24px", borderRadius: "50%", border: "1.5px solid #000" }} 
                     />
