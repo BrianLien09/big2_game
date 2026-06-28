@@ -209,11 +209,18 @@ const BridgeBiddingView: React.FC<BridgeBiddingViewProps> = ({ room, uid, onBid,
           </div>
         )}
         <div style={{ flexShrink: 0, borderTop: "3px solid #000", background: "#fff", padding: "6px 0", paddingBottom: "calc(6px + env(safe-area-inset-bottom))" }}>
-          <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "#6b7280", paddingLeft: 10, marginBottom: 3 }}>我的手牌（{myCards.length} 張）</div>
-          <div style={{ display: "flex", flexWrap: "nowrap", overflowX: "auto", padding: "4px 10px 4px" }}>
+          <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#6b7280", paddingLeft: 12, marginBottom: 4 }}>我的手牌（{myCards.length} 張）</div>
+          <div style={{ display: "flex", flexWrap: "nowrap", overflowX: "auto", padding: "4px 12px 8px", minWidth: 0, width: "100%" }}>
             {myCards.map((card, idx) => (
-              <div key={card.id} style={{ flexShrink: 0, marginLeft: idx === 0 ? 0 : -14 }}>
-                <PlayingCard card={card} size="mobile" isPlayable={false} style={{ cursor: "default" }} />
+              /*
+                設定 zIndex: idx 與 position: "relative" 以確保右側卡片在層級上位於左側上方，
+                防止左上角的型別/點數及花色被遮擋，解決手機端重疊 bug。
+                此外，配合 mobile-hand 寬度 76px，將負邊距 marginLeft 調整為 -32，
+                不僅畫面更緊湊，也符合其他遊玩畫面的尺寸設計。
+              */
+              <div key={card.id} style={{ flexShrink: 0, marginLeft: idx === 0 ? 0 : -32, zIndex: idx, position: "relative" }}>
+                {/* 叫牌階段將手牌設為彩色 (isPlayable={true})，方便玩家識別花色進行叫牌 */}
+                <PlayingCard card={card} size="mobile-hand" isPlayable={true} style={{ cursor: "default" }} />
               </div>
             ))}
           </div>
@@ -288,7 +295,8 @@ const BridgeBiddingView: React.FC<BridgeBiddingViewProps> = ({ room, uid, onBid,
         <div style={{ fontWeight: 900, fontSize: "0.85rem", marginBottom: 8, color: "#374151" }}>我的手牌（{myCards.length} 張）</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, background: "#fff", border: "3px solid #000", borderRadius: 14, boxShadow: "3px 3px 0 #000", padding: "14px" }}>
           {myCards.map((card) => (
-            <PlayingCard key={card.id} card={card} size="tablet" isPlayable={false} style={{ cursor: "default" }} />
+            /* 叫牌階段電腦端手牌同樣改為彩色 (isPlayable={true}) */
+            <PlayingCard key={card.id} card={card} size="tablet" isPlayable={true} style={{ cursor: "default" }} />
           ))}
         </div>
       </div>

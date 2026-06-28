@@ -1,4 +1,5 @@
 import { Card, PlayedHand, evaluateHand, compareSingleCard, canPlay, getFourOfAKindRank } from './big2Logic';
+import { BidLevel } from './bridgeLogic';
 
 export type EvaluatedHand = PlayedHand;
 
@@ -449,14 +450,14 @@ export const selectBridgeBid = (
       if (lvl >= 4 && hcp < 16) {
         return { type: "PASS" };
       }
-      return { type: 'contract', level: lvl as any, suit: botFavoredSuit };
+      return { type: 'contract', level: lvl as BidLevel, suit: botFavoredSuit };
     }
     // 試試同線位更高的花色 (或者 NT)
     if (isBidHigher(lvl, 'NT', lastContract.level, lastContract.suit)) {
       if (lvl >= 4 && hcp < 16) {
         return { type: "PASS" };
       }
-      return { type: 'contract', level: lvl as any, suit: 'NT' };
+      return { type: 'contract', level: lvl as BidLevel, suit: 'NT' };
     }
   }
 

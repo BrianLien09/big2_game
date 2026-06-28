@@ -325,17 +325,21 @@ const BridgePlayingView: React.FC<BridgePlayingViewProps> = ({
 
   // 當前交接時自動重置選取卡牌，並在手機莊家模式下自動切換 Tab
   React.useEffect(() => {
-    setSelectedCardId(null);
+    Promise.resolve().then(() => {
+      setSelectedCardId(null);
+    });
   }, [currentTurnUid]);
 
   // 手機莊家模式：輪到夢家回合時自動切換到夢家頁簺（提醒莊家代出）
   React.useEffect(() => {
     if (!isMobile) return;
-    if (isDummyTurn) {
-      setActiveTab('dummy');
-    } else {
-      setActiveTab('mine');
-    }
+    Promise.resolve().then(() => {
+      if (isDummyTurn) {
+        setActiveTab('dummy');
+      } else {
+        setActiveTab('mine');
+      }
+    });
   }, [isDummyTurn, isMobile]);
 
   // 我的相對位置 index（決定桌面佈局）

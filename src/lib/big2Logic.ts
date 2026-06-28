@@ -1,5 +1,5 @@
 // 遊戲模式（大老二 / 橋牌），供 roomService 切換邏輯使用
-export type GameMode = 'BIG2' | 'BRIDGE';
+export type GameMode = 'BIG2' | 'BRIDGE' | 'THIRTEEN';
 
 // 定義撲克牌花色與點數
 export type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs'; // 黑桃, 紅心, 方塊, 梅花

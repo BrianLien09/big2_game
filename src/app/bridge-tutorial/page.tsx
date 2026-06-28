@@ -597,7 +597,7 @@ function PracticeTab() {
   const mockCard = (id: string, suit: Card["suit"], rank: string): Card => ({
     id,
     suit,
-    rank: rank as any,
+    rank: rank as Card["rank"],
   });
 
   // 初始化第四關的牌局
