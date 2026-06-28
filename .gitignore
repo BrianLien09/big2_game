@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local custom / system configs & analyses
+AGENTS.md
+CLAUDE.md
+firebase_limit_analysis.md
+
