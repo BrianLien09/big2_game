@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { RoomState, restartWholeGame, showThirteenLeaderboard } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
 import { evaluateThirteenHand, THIRTEEN_HAND_LABELS, compareThirteenHands } from "@/lib/thirteenLogic";
@@ -114,15 +114,7 @@ export default function ThirteenShowingView({
     })
     .sort((a, b) => b.totalPoints - a.totalPoints);
 
-  // 比牌動畫定時器
-  useEffect(() => {
-    if (compareStep < 4) {
-      const timer = setTimeout(() => {
-        setCompareStep(prev => prev + 1);
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [compareStep]);
+  // 比牌動畫定時器已改為手動按鈕控制，不進行自動播步
 
   // 進入結算排行榜
   const handleShowLeaderboard = async () => {
@@ -357,7 +349,7 @@ export default function ThirteenShowingView({
   // 指示條與導航標題
   const getStepDescription = () => {
     switch (compareStep) {
-      case 0: return "🃟 正在蓋牌至桌面，準備開牌...";
+      case 0: return "🃟 準備開牌，點選按鈕開始比牌";
       case 1: return "❶ 前墩比拼：比較前三張牌！";
       case 2: return "❷ 中墩比拼：比較中五張牌！";
       case 3: return "❸ 後墩比拼：比較後五張牌！";
@@ -454,6 +446,20 @@ export default function ThirteenShowingView({
           </div>
 
           <div style={{ display: "flex", gap: "6px" }}>
+            {compareStep < 4 && (
+              <button 
+                className="comic-btn" 
+                style={{ 
+                  padding: "3px 12px", 
+                  fontSize: "0.75rem", 
+                  background: "#fbbf24",
+                  fontWeight: 900
+                }} 
+                onClick={() => setCompareStep(prev => prev + 1)}
+              >
+                {compareStep === 0 ? "🏁 開始比牌" : "👉 下一階段比牌"}
+              </button>
+            )}
             {compareStep < 4 && (
               <button className="comic-btn" style={{ padding: "3px 8px", fontSize: "0.75rem", background: "#e2e8f0" }} onClick={() => setCompareStep(4)}>
                 跳過動畫
