@@ -45,12 +45,12 @@ export default function ThirteenShowingView({
         const arr2 = thirteenState?.players[p2];
         if (!arr1 || !arr2 || !arr1.front || !arr2.front) continue;
 
-        const f1 = evaluateThirteenHand(arr1.front, true);
-        const f2 = evaluateThirteenHand(arr2.front, true);
-        const m1 = evaluateThirteenHand(arr1.middle, true);
-        const m2 = evaluateThirteenHand(arr2.middle, true);
-        const b1 = evaluateThirteenHand(arr1.back, true);
-        const b2 = evaluateThirteenHand(arr2.back, true);
+        const f1 = evaluateThirteenHand(arr1.front);
+        const f2 = evaluateThirteenHand(arr2.front);
+        const m1 = evaluateThirteenHand(arr1.middle);
+        const m2 = evaluateThirteenHand(arr2.middle);
+        const b1 = evaluateThirteenHand(arr1.back);
+        const b2 = evaluateThirteenHand(arr2.back);
 
         let u1Wins = 0;
         let u2Wins = 0;
@@ -592,9 +592,9 @@ export default function ThirteenShowingView({
             : (player.points ?? 0) - playerScore; // 動畫未完前顯示原本分數，播完再加分
 
           // 評估牌型
-          const fEval = pThirteen.front?.length ? evaluateThirteenHand(pThirteen.front, true) : null;
-          const mEval = pThirteen.middle?.length ? evaluateThirteenHand(pThirteen.middle, true) : null;
-          const bEval = pThirteen.back?.length ? evaluateThirteenHand(pThirteen.back, true) : null;
+          const fEval = pThirteen.front?.length ? evaluateThirteenHand(pThirteen.front) : null;
+          const mEval = pThirteen.middle?.length ? evaluateThirteenHand(pThirteen.middle) : null;
+          const bEval = pThirteen.back?.length ? evaluateThirteenHand(pThirteen.back) : null;
 
           return (
             <div 
