@@ -189,7 +189,7 @@ export default function ThirteenShowingView({
       const comp = compareThirteenHands(eval1, eval2);
       const nickname = room.players[otherUid]?.nickname || "人機";
       const cleanName = nickname.replace("🤖 ", "");
-      const maxLen = isMobile ? 3 : 8;
+      const maxLen = isMobile ? 4 : 8;
       const shortNickname = cleanName.length > maxLen ? cleanName.substring(0, maxLen) + ".." : cleanName;
       if (comp > 0) {
         details.push(`贏 ${shortNickname}`);
@@ -202,8 +202,14 @@ export default function ThirteenShowingView({
       }
     });
 
-    const separator = isMobile ? "/" : " | ";
-    return { details: details.join(separator), netScore };
+    if (isMobile) {
+      // 手機端：前兩個玩家放第一行，第三個玩家換行放第二行
+      const line1 = details.slice(0, 2).join(" / ");
+      const line2 = details[2] || "";
+      return { details: `${line1}\n${line2}`, netScore };
+    } else {
+      return { details: details.join(" | "), netScore };
+    }
   };
 
   // 實時計算本局是否有打槍發生 (前端計算)
@@ -782,8 +788,8 @@ export default function ThirteenShowingView({
                       (() => {
                         const info = getDuntonDetail(pUid, 'front');
                         return (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                            <div style={{ fontSize: "0.75rem", color: "#1e293b", fontWeight: 800, lineHeight: 1.35 }}>
+                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <div style={{ fontSize: "0.75rem", color: "#1e293b", fontWeight: 800, lineHeight: 1.35, whiteSpace: "pre-line" }}>
                               ⚔️ {info.details}
                             </div>
                             <div style={{ 
@@ -869,7 +875,7 @@ export default function ThirteenShowingView({
                         const info = getDuntonDetail(pUid, 'middle');
                         return (
                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                            <div style={{ fontSize: "0.75rem", color: "#1e293b", fontWeight: 800, lineHeight: 1.35 }}>
+                            <div style={{ fontSize: "0.75rem", color: "#1e293b", fontWeight: 800, lineHeight: 1.35, whiteSpace: "pre-line" }}>
                               ⚔️ {info.details}
                             </div>
                             <div style={{ 
@@ -955,7 +961,7 @@ export default function ThirteenShowingView({
                         const info = getDuntonDetail(pUid, 'back');
                         return (
                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                            <div style={{ fontSize: "0.75rem", color: "#1e293b", fontWeight: 800, lineHeight: 1.35 }}>
+                            <div style={{ fontSize: "0.75rem", color: "#1e293b", fontWeight: 800, lineHeight: 1.35, whiteSpace: "pre-line" }}>
                               ⚔️ {info.details}
                             </div>
                             <div style={{ 
