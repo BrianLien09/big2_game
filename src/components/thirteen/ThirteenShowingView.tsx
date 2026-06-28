@@ -94,13 +94,15 @@ export default function ThirteenShowingView({
     return roundScores;
   };
 
-  const stepScoresFinal = getAccumulatedScoresForStep(4);
+
+
 
   const sortedPlayers = room.playerOrder
     .map(pUid => {
       const p = room.players[pUid];
-      const addedScore = scores[pUid] ?? 0;
-      const rawNetScore = stepScoresFinal[pUid] ?? 0;
+      const addedScore = scores[pUid] ?? 0; // 本局積分 (0~3)
+      // 直接讀取後端算好的零和淨分，避免前端重算產生誤差
+      const rawNetScore = thirteenState?.netScores?.[pUid] ?? 0;
       const totalPoints = p?.points ?? 0;
       return {
         uid: pUid,
@@ -166,7 +168,7 @@ export default function ThirteenShowingView({
 
     const card1 = dunType === 'front' ? arr1.front : dunType === 'middle' ? arr1.middle : arr1.back;
     if (!card1 || card1.length === 0) return { details: "", netScore: 0 };
-    const eval1 = evaluateThirteenHand(card1, true);
+    const eval1 = evaluateThirteenHand(card1);
 
     let netScore = 0;
 
@@ -177,7 +179,7 @@ export default function ThirteenShowingView({
 
       const card2 = dunType === 'front' ? arr2.front : dunType === 'middle' ? arr2.middle : arr2.back;
       if (!card2 || card2.length === 0) return;
-      const eval2 = evaluateThirteenHand(card2, true);
+      const eval2 = evaluateThirteenHand(card2);
 
       const comp = compareThirteenHands(eval1, eval2);
       const nickname = room.players[otherUid]?.nickname || "人機";
@@ -204,12 +206,12 @@ export default function ThirteenShowingView({
       return { p1Wins: 0, p2Wins: 0, isP1Gun: false, isP2Gun: false };
     }
 
-    const f1 = evaluateThirteenHand(arr1.front, true);
-    const f2 = evaluateThirteenHand(arr2.front, true);
-    const m1 = evaluateThirteenHand(arr1.middle, true);
-    const m2 = evaluateThirteenHand(arr2.middle, true);
-    const b1 = evaluateThirteenHand(arr1.back, true);
-    const b2 = evaluateThirteenHand(arr2.back, true);
+    const f1 = evaluateThirteenHand(arr1.front);
+    const f2 = evaluateThirteenHand(arr2.front);
+    const m1 = evaluateThirteenHand(arr1.middle);
+    const m2 = evaluateThirteenHand(arr2.middle);
+    const b1 = evaluateThirteenHand(arr1.back);
+    const b2 = evaluateThirteenHand(arr2.back);
 
     let p1W = 0;
     let p2W = 0;

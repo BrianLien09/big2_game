@@ -98,7 +98,8 @@ export interface ThirteenPlayerState {
 export interface ThirteenState {
   status: 'arranging' | 'showing';
   players: Record<string, ThirteenPlayerState>;
-  scores?: Record<string, number>;
+  scores?: Record<string, number>; // 本局積分 (0~3)
+  netScores?: Record<string, number>; // 零和淨分（比牌得失分，用於前端顯示）
   settledOnce?: boolean;
   showLeaderboard?: boolean;
 }
@@ -1909,7 +1910,8 @@ export const confirmThirteenArrangement = async (
       const nextThirteenState: ThirteenState = {
         status: 'showing',
         players: nextPlayersState,
-        scores: thirteenRoundPoints,
+        scores: thirteenRoundPoints,    // 本局積分 (0~3)
+        netScores: scores,               // 零和淨分（calculateScores 的原始計算結果）
         settledOnce: true
       };
 
