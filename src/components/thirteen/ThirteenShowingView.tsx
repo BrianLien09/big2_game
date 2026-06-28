@@ -504,18 +504,20 @@ export default function ThirteenShowingView({
                   key={player.uid} 
                   style={{
                     display: "flex",
-                    alignItems: "center",
+                    flexDirection: isMobile ? "column" : "row",
+                    alignItems: isMobile ? "stretch" : "center",
                     justifyContent: "space-between",
-                    padding: "14px 18px",
+                    padding: isMobile ? "10px 14px" : "14px 18px",
                     background: player.isMe ? "#fef9c3" : "#f8fafc",
                     border: "3px solid #000",
                     borderRadius: "12px",
                     boxShadow: "3px 3px 0px #000",
                     transition: "transform 0.15s ease",
+                    gap: isMobile ? "10px" : "16px"
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <span style={{ fontSize: "1.5rem", fontWeight: 900 }}>{medal}</span>
+                    <span style={{ fontSize: isMobile ? "1.2rem" : "1.5rem", fontWeight: 900 }}>{medal}</span>
                     {player.avatarUrl && (
                       <img 
                         src={player.avatarUrl} 
@@ -523,30 +525,43 @@ export default function ThirteenShowingView({
                         style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid #000" }} 
                       />
                     )}
-                    <span style={{ fontWeight: 900, fontSize: "1.05rem", color: "#111" }}>
+                    <span style={{ fontWeight: 900, fontSize: isMobile ? "0.95rem" : "1.05rem", color: "#111" }}>
                       {player.nickname} {player.isMe ? "(我)" : ""}
                     </span>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                    <div style={{ textAlign: "right" }}>
-                      <span style={{ fontSize: "0.8rem", color: "#6b7280", fontWeight: 800 }}>最終淨分：</span>
-                      <span style={{ fontWeight: 900, color: rawScoreColor, fontSize: "1.05rem" }}>
+                  {isMobile && <div style={{ borderTop: "1px dashed #cbd5e1", width: "100%" }} />}
+
+                  <div style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: isMobile ? "space-between" : "flex-end", 
+                    gap: isMobile ? "8px" : "16px",
+                    width: isMobile ? "100%" : "auto"
+                  }}>
+                    <div style={{ textAlign: isMobile ? "center" : "right", flex: isMobile ? 1 : "initial" }}>
+                      <span style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 800, display: isMobile ? "block" : "inline" }}>最終淨分：</span>
+                      <span style={{ fontWeight: 900, color: rawScoreColor, fontSize: isMobile ? "0.95rem" : "1.05rem" }}>
                         {rawScoreVal >= 0 ? `+${rawScoreVal}` : rawScoreVal}
                       </span>
                     </div>
-                    <div style={{ borderLeft: "1px dashed #cbd5e1", height: "20px" }} />
-                    <div style={{ textAlign: "right" }}>
-                      <span style={{ fontSize: "0.8rem", color: "#6b7280", fontWeight: 800 }}>本局積分：</span>
-                      <span style={{ fontWeight: 900, color: addedScoreColor, fontSize: "1.05rem" }}>
-                        {addedScoreVal >= 0 ? `+${addedScoreVal}` : addedScoreVal} 分
+
+                    {!isMobile && <div style={{ borderLeft: "1px dashed #cbd5e1", height: "20px" }} />}
+
+                    <div style={{ textAlign: isMobile ? "center" : "right", flex: isMobile ? 1 : "initial" }}>
+                      <span style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 800, display: isMobile ? "block" : "inline" }}>本局積分：</span>
+                      <span style={{ fontWeight: 900, color: addedScoreColor, fontSize: isMobile ? "0.95rem" : "1.05rem" }}>
+                        {addedScoreVal >= 0 ? `+${addedScoreVal}` : addedScoreVal}{isMobile ? "" : " 分"}
                       </span>
                     </div>
-                    <div style={{ borderLeft: "2px solid #000", height: "24px" }} />
-                    <div style={{ textAlign: "right", minWidth: "80px" }}>
-                      <span style={{ fontSize: "0.8rem", color: "#6b7280", fontWeight: 800 }}>累計總分：</span>
-                      <span style={{ fontWeight: 900, color: "#1e293b", fontSize: "1.1rem" }}>
-                        {player.totalPoints} 分
+
+                    {!isMobile && <div style={{ borderLeft: "2px solid #000", height: "24px" }} />}
+                    {isMobile && <div style={{ borderLeft: "1px dashed #cbd5e1", height: "20px" }} />}
+
+                    <div style={{ textAlign: isMobile ? "center" : "right", flex: isMobile ? 1 : "initial" }}>
+                      <span style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 800, display: isMobile ? "block" : "inline" }}>累計總分：</span>
+                      <span style={{ fontWeight: 900, color: "#1e293b", fontSize: isMobile ? "0.95rem" : "1.1rem" }}>
+                        {player.totalPoints}{isMobile ? "" : " 分"}
                       </span>
                     </div>
                   </div>
