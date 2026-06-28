@@ -40,6 +40,8 @@ export default function ThirteenPlayingView({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [showTips, setShowTips] = useState(false); // 牌型提示下拉面板
+
 
   // 初始化手牌：若 Firebase 裡已有此玩家的 cards
   useEffect(() => {
@@ -234,7 +236,7 @@ export default function ThirteenPlayingView({
             房號: {roomId} | 目標: {room.targetPoints || 15} 分
           </span>
         </div>
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
           {!myThirteenState?.isConfirmed && (
             <button 
               className="comic-btn" 
@@ -251,6 +253,96 @@ export default function ThirteenPlayingView({
               🔄 中墩 ⇄ 後墩 互調
             </button>
           )}
+
+          {/* 💡 牌型 Tips 按鈕 */}
+          <div style={{ position: "relative" }}>
+            <button
+              className="comic-btn"
+              style={{
+                background: showTips ? "#fbbf24" : "#fff",
+                color: "#000",
+                padding: "4px 10px",
+                fontSize: "0.75rem",
+                fontWeight: 900,
+                border: "2px solid #000"
+              }}
+              onClick={() => setShowTips(prev => !prev)}
+            >
+              💡 牌型
+            </button>
+
+            {showTips && (
+              <>
+                {/* 點擊背景遮罩關閉 */}
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 998 }}
+                  onClick={() => setShowTips(false)}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "calc(100% + 8px)",
+                    zIndex: 999,
+                    background: "#fff",
+                    border: "3px solid #000",
+                    borderRadius: "12px",
+                    boxShadow: "4px 4px 0 #000",
+                    padding: "14px 16px",
+                    width: isMobile ? "min(92vw, 320px)" : "300px",
+                    fontSize: "0.8rem"
+                  }}
+                >
+                  <div style={{ fontWeight: 900, fontSize: "0.88rem", marginBottom: "10px", borderBottom: "2px dashed #000", paddingBottom: "6px" }}>
+                    🃏 十三支 牌型大小
+                  </div>
+
+                  {/* 5 張牌型（中墩、後墩） */}
+                  <div style={{ fontWeight: 800, color: "#6b7280", fontSize: "0.7rem", marginBottom: "6px" }}>中墩 / 後墩（5 張）</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px", marginBottom: "12px" }}>
+                    {[
+                      { rank: 1, label: "同花順", desc: "5 張連續且同花色", color: "#7c3aed" },
+                      { rank: 2, label: "鐵支",   desc: "4 張相同點數",     color: "#dc2626" },
+                      { rank: 3, label: "葫蘆",   desc: "三條 + 一對",      color: "#d97706" },
+                      { rank: 4, label: "同花",   desc: "5 張同花色（非順）", color: "#059669" },
+                      { rank: 5, label: "順子",   desc: "5 張連續（非同花）", color: "#2563eb" },
+                      { rank: 6, label: "兩對",   desc: "兩組相同點數",     color: "#475569" },
+                      { rank: 7, label: "一對",   desc: "一組相同點數",     color: "#475569" },
+                      { rank: 8, label: "散牌",   desc: "以最大張點數比較", color: "#9ca3af" },
+                    ].map(({ rank, label, desc, color }) => (
+                      <div key={rank} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ width: "18px", fontWeight: 900, color: "#9ca3af", fontSize: "0.68rem", flexShrink: 0 }}>#{rank}</span>
+                        <span style={{ width: "40px", fontWeight: 900, color, flexShrink: 0 }}>{label}</span>
+                        <span style={{ color: "#6b7280", fontSize: "0.7rem" }}>{desc}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 3 張牌型（前墩） */}
+                  <div style={{ fontWeight: 800, color: "#6b7280", fontSize: "0.7rem", marginBottom: "6px" }}>前墩（3 張）</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px", marginBottom: "12px" }}>
+                    {[
+                      { rank: 1, label: "三條",   desc: "3 張相同點數",   color: "#dc2626" },
+                      { rank: 2, label: "一對",   desc: "一組相同點數",   color: "#475569" },
+                      { rank: 3, label: "散牌",   desc: "以最大張點數比", color: "#9ca3af" },
+                    ].map(({ rank, label, desc, color }) => (
+                      <div key={rank} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ width: "18px", fontWeight: 900, color: "#9ca3af", fontSize: "0.68rem", flexShrink: 0 }}>#{rank}</span>
+                        <span style={{ width: "40px", fontWeight: 900, color, flexShrink: 0 }}>{label}</span>
+                        <span style={{ color: "#6b7280", fontSize: "0.7rem" }}>{desc}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 提醒 */}
+                  <div style={{ background: "#fef9c3", border: "1.5px solid #fbbf24", borderRadius: "8px", padding: "6px 10px", fontSize: "0.7rem", fontWeight: 700, color: "#92400e" }}>
+                    ⚠️ 合法要求：後墩 ≥ 中墩 ≥ 前墩，不可倒水！
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           <button 
             className="comic-btn" 
             style={{ 
