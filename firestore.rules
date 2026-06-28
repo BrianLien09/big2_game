@@ -357,6 +357,63 @@ service cloud.firestore {
            );
        }
 
+      // 6. 房主重置下一局（finished/gameOver → waiting）
+      // 允許房主將所有玩家的 isReady、cards、isPassed 重置，並清空遊戲狀態欄位
+      function isHostResetRound() {
+        let myUid = request.auth.uid;
+        let oldStatus = resource.data.status;
+        let newStatus = request.resource.data.status;
+        return isSignedIn()
+          && oldHasPlayers()
+          && myUid in resource.data.players
+          && resource.data.players[myUid].isHost == true
+          && resource.data.players[myUid].isBot == false
+          && (oldStatus == 'finished' || oldStatus == 'gameOver')
+          && newStatus == 'waiting'
+          // playerOrder 不變
+          && request.resource.data.playerOrder == resource.data.playerOrder
+          && request.resource.data.players.keys().toSet() == resource.data.players.keys().toSet()
+          // 允許修改的頂層欄位
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'players', 'status', 'winnerUid', 'lastPlayedHand', 'lastPlayedUid',
+               'turnUid', 'passCount', 'finishedOrder', 'roundScores',
+               'thirteenState', 'bridgeBidding', 'bridgePlaying', 'bridgeScore',
+               'updatedAt', 'expiresAt'
+             ]);
+      }
+
+      /* 已登入使用者可讀取房間，以便用房號加入 */
+      allow read: if isSignedIn();
+
+      /* 建立房間：必須登入，且初始必須有必要的結構 */
+      allow create: if isSignedIn()
+        && 'players' in request.resource.data
+        && 'playerOrder' in request.resource.data
+        && 'status' in request.resource.data
+        && 'createdAt' in request.resource.data
+        && 'updatedAt' in request.resource.data
+        && 'expiresAt' in request.resource.data
+        && request.resource.data.status == "waiting"
+        && request.resource.data.players.keys().size() == 1
+        && request.resource.data.players.keys().hasOnly([request.auth.uid])
+        && request.resource.data.playerOrder == [request.auth.uid]
+        && request.resource.data.players[request.auth.uid].isHost == true
+        && request.resource.data.players[request.auth.uid].isBot == false
+        && (!('uid' in request.resource.data.players[request.auth.uid]) || request.resource.data.players[request.auth.uid].uid == request.auth.uid)
+        && hasValidPlayerStructure(request.resource.data.players, request.resource.data.playerOrder)
+        && validateSingleRealHost(request.resource.data.players, request.resource.data.playerOrder);
+
+      /* 更新房間 */
+      allow update: if (
+        isJoiningSelf()
+        || isLeavingSelf()
+        || isHostLeavingAndTransferring()
+        || isHostBotManagement()
+        || isValidGameUpdate()
+        || isHostResetRound()
+      )
+      && hasNoBotHost(request.resource.data.players, request.resource.data.playerOrder);
+
       // 刪除房間條件：除了自己之外，所有其餘玩家都必須為 Bot
       function isLastRealPlayer() {
         let order = resource.data.playerOrder;
@@ -400,16 +457,6 @@ service cloud.firestore {
         && (!('uid' in request.resource.data.players[request.auth.uid]) || request.resource.data.players[request.auth.uid].uid == request.auth.uid)
         && hasValidPlayerStructure(request.resource.data.players, request.resource.data.playerOrder)
         && validateSingleRealHost(request.resource.data.players, request.resource.data.playerOrder);
-
-      /* 更新房間 */
-      allow update: if (
-        isJoiningSelf()
-        || isLeavingSelf()
-        || isHostLeavingAndTransferring()
-        || isHostBotManagement()
-        || isValidGameUpdate()
-      )
-      && hasNoBotHost(request.resource.data.players, request.resource.data.playerOrder);
 
       /* 刪除房間 */
       allow delete: if isSignedIn() && (
