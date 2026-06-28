@@ -603,6 +603,38 @@ export default function ThirteenShowingView({
           const mEval = pThirteen.middle?.length ? evaluateThirteenHand(pThirteen.middle) : null;
           const bEval = pThirteen.back?.length ? evaluateThirteenHand(pThirteen.back) : null;
 
+          // 本局得分氣泡 JSX
+          const scoreBubble = (
+            <div className="comic-btn" style={{
+              padding: "4px 10px",
+              fontSize: "0.72rem",
+              background: (() => {
+                const finalNetScore = stepScores[pUid] ?? 0;
+                if (compareStep === 0) return "#e5e7eb";
+                return finalNetScore > 0 ? "#10b981" : finalNetScore < 0 ? "#ef4444" : "#e5e7eb";
+              })(),
+              color: (() => {
+                const finalNetScore = stepScores[pUid] ?? 0;
+                if (compareStep === 0 || finalNetScore === 0) return "#000";
+                return "#fff";
+              })(),
+              fontWeight: 900,
+              transform: "rotate(-0.5deg)",
+              cursor: "default",
+              whiteSpace: "nowrap",
+              flexShrink: 0
+            }}>
+              {(() => {
+                if (compareStep === 0) return "準備開牌";
+                const stepScore = stepScores[pUid] ?? 0;
+                if (compareStep === 1) return `前墩: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
+                if (compareStep === 2) return `前+中: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
+                if (compareStep === 3) return `最終淨分: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
+                return `最終淨分: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
+              })()}
+            </div>
+          );
+
           return (
             <div 
               key={pUid} 
@@ -617,58 +649,63 @@ export default function ThirteenShowingView({
                 boxShadow: isMe ? "3px 3px 0px #000" : "1.5px 1.5px 0px #000"
               }}
             >
-              {/* 暱稱與積分顯示 */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {player.avatarUrl && (
-                    <img 
-                      src={getAssetPath(player.avatarUrl)} 
-                      alt={player.nickname} 
-                      style={{ width: "24px", height: "24px", borderRadius: "50%", border: "1.5px solid #000" }} 
-                    />
-                  )}
-                  <span style={{ fontWeight: 900, fontSize: "0.85rem" }}>
-                    {player.nickname} {isMe && "(我)"}
-                  </span>
-                  <span style={{
-                    fontSize: "0.7rem",
-                    fontWeight: 700,
-                    color: "#6b7280"
-                  }}>
-                    總分: {displayPoints}
-                  </span>
-                </div>
-
-                {/* 顯示打槍或被打槍懲罰/獎勵標籤 */}
-                {getGunshotStatusLabel(pUid)}
-
-                {/* 本局得分氣泡 */}
-                <div className="comic-btn" style={{
-                  padding: "4px 10px",
-                  fontSize: "0.75rem",
-                  background: (() => {
-                    const finalNetScore = stepScores[pUid] ?? 0;
-                    if (compareStep === 0) return "#e5e7eb";
-                    return finalNetScore > 0 ? "#10b981" : finalNetScore < 0 ? "#ef4444" : "#e5e7eb";
-                  })(),
-                  color: (() => {
-                    const finalNetScore = stepScores[pUid] ?? 0;
-                    if (compareStep === 0 || finalNetScore === 0) return "#000";
-                    return "#fff";
-                  })(),
-                  fontWeight: 900,
-                  transform: "rotate(-0.5deg)",
-                  cursor: "default"
+              {/* 暱稱與積分顯示 Header */}
+              <div style={{ 
+                display: "flex", 
+                flexDirection: isMobile ? "column" : "row", 
+                alignItems: isMobile ? "stretch" : "center", 
+                justifyContent: "space-between",
+                gap: isMobile ? "6px" : "0"
+              }}>
+                {/* 第一行：頭像、暱稱、總分，與得分氣泡 (手機端) */}
+                <div style={{ 
+                  display: "flex", 
+                  justifyContent: "space-between", 
+                  alignItems: "center",
+                  width: isMobile ? "100%" : "auto",
+                  gap: "8px"
                 }}>
-                  {(() => {
-                    if (compareStep === 0) return "準備開牌";
-                    const stepScore = stepScores[pUid] ?? 0;
-                    if (compareStep === 1) return `前墩: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
-                    if (compareStep === 2) return `前+中: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
-                    if (compareStep === 3) return `最終淨分: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
-                    return `最終淨分: ${stepScore >= 0 ? `+${stepScore}` : stepScore}`;
-                  })()}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1, overflow: "hidden" }}>
+                    {player.avatarUrl && (
+                      <img 
+                        src={getAssetPath(player.avatarUrl)} 
+                        alt={player.nickname} 
+                        style={{ width: "24px", height: "24px", borderRadius: "50%", border: "1.5px solid #000", flexShrink: 0 }} 
+                      />
+                    )}
+                    <span style={{ fontWeight: 900, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {player.nickname} {isMe && "(我)"}
+                    </span>
+                    <span style={{
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      color: "#6b7280",
+                      flexShrink: 0
+                    }}>
+                      總分: {displayPoints}
+                    </span>
+                  </div>
+
+                  {/* 手機端將本局得分氣泡放在第一行右側 */}
+                  {isMobile && scoreBubble}
                 </div>
+
+                {/* 顯示打槍或被打槍標籤 (手機端會獨自佔用第二行) */}
+                {getGunshotStatusLabel(pUid) && (
+                  <div style={{ 
+                    display: "flex", 
+                    justifyContent: isMobile ? "flex-start" : "center",
+                    alignItems: "center",
+                    width: isMobile ? "100%" : "auto",
+                    marginTop: isMobile ? "2px" : "0",
+                    overflowX: "auto"
+                  }}>
+                    {getGunshotStatusLabel(pUid)}
+                  </div>
+                )}
+
+                {/* 桌機端將本局得分氣泡放在最右側 */}
+                {!isMobile && scoreBubble}
               </div>
 
               {/* 三墩牌垂直堆疊：對局資訊放在手牌右側，垂直空間最大化收縮 */}

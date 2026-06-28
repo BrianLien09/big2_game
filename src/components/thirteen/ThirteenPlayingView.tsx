@@ -223,7 +223,7 @@ export default function ThirteenPlayingView({
       <div className="comic-panel" style={{
         width: "100%",
         maxWidth: "960px",
-        padding: "12px 18px",
+        padding: isMobile ? "10px 12px" : "12px 18px",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -250,7 +250,7 @@ export default function ThirteenPlayingView({
               }} 
               onClick={handleSwapMiddleAndBack}
             >
-              🔄 中墩 ⇄ 後墩 互調
+              {isMobile ? "🔄 互調" : "🔄 中墩 ⇄ 後墩 互調"}
             </button>
           )}
 
