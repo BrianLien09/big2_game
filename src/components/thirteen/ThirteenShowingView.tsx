@@ -97,12 +97,17 @@ export default function ThirteenShowingView({
 
 
 
+  // 若後端已存有 netScores 則優先使用，否則 fallback 到前端重算（舊局相容）
+  const stepScoresFinal = getAccumulatedScoresForStep(4);
+
   const sortedPlayers = room.playerOrder
     .map(pUid => {
       const p = room.players[pUid];
       const addedScore = scores[pUid] ?? 0; // 本局積分 (0~3)
-      // 直接讀取後端算好的零和淨分，避免前端重算產生誤差
-      const rawNetScore = thirteenState?.netScores?.[pUid] ?? 0;
+      // 後端已存入 netScores 則直接讀取；舊局資料則 fallback 到前端重算
+      const rawNetScore = thirteenState?.netScores
+        ? (thirteenState.netScores[pUid] ?? 0)
+        : (stepScoresFinal[pUid] ?? 0);
       const totalPoints = p?.points ?? 0;
       return {
         uid: pUid,
