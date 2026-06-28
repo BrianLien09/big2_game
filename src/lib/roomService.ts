@@ -26,6 +26,12 @@ import {
   getPartnerUid,
   BRIDGE_TO_SUIT,
 } from './bridgeLogic';
+import {
+  autoArrangeThirteen,
+  calculateScores,
+  isArrangementValid
+} from './thirteenLogic';
+
 
 // 供外部使用，重新匯出 bridgeLogic 型別（避免 UI 元件需要雙重 import）
 export type { GameMode, BridgeBiddingState, BridgePlayingState, BridgeScoreState, Bid, FinalContract, BridgeSuit, BidLevel, DoubleState, VulnerabilityInfo, BridgeScoreResult, CompletedTrick, TrickCard } from './bridgeLogic';
@@ -77,6 +83,24 @@ export interface RoomState {
   bridgeBidding?: BridgeBiddingState;   // 叫牌階段狀態
   bridgePlaying?: BridgePlayingState;   // 打牌階段狀態
   bridgeScore?: BridgeScoreState;       // 計分結果
+  // ─── 十三支專屬欄位 ───
+  thirteenState?: ThirteenState;
+}
+
+export interface ThirteenPlayerState {
+  cards: Card[];
+  front: Card[];
+  middle: Card[];
+  back: Card[];
+  isConfirmed: boolean;
+}
+
+export interface ThirteenState {
+  status: 'arranging' | 'showing';
+  players: Record<string, ThirteenPlayerState>;
+  scores?: Record<string, number>;
+  settledOnce?: boolean;
+  showLeaderboard?: boolean;
 }
 
 
@@ -1651,4 +1675,337 @@ export const resetBridgeRound = async (roomId: string): Promise<void> => {
     expiresAt: getRoomExpirationTimestamp(),
   });
 };
+
+/**
+ * 開始十三支遊戲：固定 4 人，不足自動補齊 Bot，分牌並初始化 thirteenState (同時直接確認 Bot 的牌)
+ */
+export const startThirteenGame = async (roomId: string): Promise<void> => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error('房間不存在');
+
+    const roomData = roomSnap.data() as RoomState;
+    const order = [...roomData.playerOrder];
+    const players = { ...roomData.players };
+
+    // 如果人數不足 4 人，補足 Bot
+    if (order.length < 4) {
+      const botNames = ["呆萌水豚", "天才水豚", "大老二水豚", "墨鏡水豚", "溫泉水豚", "橘子水豚", "紳士水豚"];
+      const existingNames = Object.values(players).map(p => p.nickname);
+
+      while (order.length < 4) {
+        const availableNames = botNames.filter(name => !existingNames.includes(`🤖 ${name}`));
+        const selectedName = availableNames.length > 0
+          ? availableNames[Math.floor(Math.random() * availableNames.length)]
+          : `水豚人機 ${Math.floor(Math.random() * 100)}`;
+        const chosenName = `🤖 ${selectedName}`;
+        existingNames.push(chosenName);
+
+        let botUid;
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+          botUid = `bot_${crypto.randomUUID()}`;
+        } else {
+          botUid = `bot_${Date.now()}_${Math.floor(Math.random() * 1000000).toString(36)}`;
+        }
+
+        const cleanName = chosenName.replace("🤖 ", "");
+        const avatarUrl = BOT_AVATARS[cleanName] || "/images/avatars/capybara_cute.png";
+
+        players[botUid] = {
+          uid: botUid,
+          nickname: chosenName,
+          isReady: true,
+          cards: [],
+          isHost: false,
+          isPassed: false,
+          wins: 0,
+          points: 0,
+          avatarUrl,
+          isBot: true
+        };
+        order.push(botUid);
+      }
+    } else if (order.length > 4) {
+      throw new Error('十三支只能恰好 4 人遊玩');
+    }
+
+    // 發牌：每人 13 張
+    const deck = shuffleDeck(createDeck());
+    const thirteenStatePlayers: Record<string, ThirteenPlayerState> = {};
+
+    for (let i = 0; i < 4; i++) {
+      const uid = order[i];
+      const hand = deck.slice(i * 13, (i + 1) * 13);
+      const sortedHand = sortCards(hand);
+
+      players[uid].cards = sortedHand;
+      players[uid].isPassed = false;
+
+      if (players[uid].isBot) {
+        // Bot：自動生成合法的 3、5、5 分法，且 isConfirmed 直接設為 true
+        const botArrange = autoArrangeThirteen(hand);
+        thirteenStatePlayers[uid] = {
+          cards: sortedHand,
+          front: botArrange.front,
+          middle: botArrange.middle,
+          back: botArrange.back,
+          isConfirmed: true
+        };
+      } else {
+        // 真人玩家
+        thirteenStatePlayers[uid] = {
+          cards: sortedHand,
+          front: [],
+          middle: [],
+          back: [],
+          isConfirmed: false
+        };
+      }
+    }
+
+    const roundPlayerSnapshots: Record<string, { nickname: string; avatarUrl: string; isBot: boolean }> = {};
+    order.forEach(pUid => {
+      const p = players[pUid];
+      if (p) {
+        roundPlayerSnapshots[pUid] = {
+          nickname: p.nickname,
+          avatarUrl: p.avatarUrl || '',
+          isBot: p.isBot
+        };
+      }
+    });
+
+    const thirteenState: ThirteenState = {
+      status: 'arranging',
+      players: thirteenStatePlayers
+    };
+
+    transaction.update(roomRef, {
+      players,
+      playerOrder: order,
+      status: 'playing',
+      turnUid: null,
+      lastPlayedHand: null,
+      lastPlayedUid: null,
+      passCount: 0,
+      winnerUid: null,
+      firstPlayRequiredCardId: null,
+      finishedOrder: [],
+      roundScores: {},
+      roundParticipants: order,
+      roundPlayerSnapshots,
+      thirteenState,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp()
+    });
+  });
+};
+
+/**
+ * 真人玩家確認十三支排牌。使用 Transaction 確保防重、防倒水、零和結算
+ */
+export const confirmThirteenArrangement = async (
+  roomId: string,
+  uid: string,
+  front: Card[],
+  middle: Card[],
+  back: Card[]
+): Promise<void> => {
+  if (!db) throw new Error('Firebase DB not initialized');
+  const roomRef = doc(db, 'rooms', roomId);
+
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) throw new Error('房間不存在');
+
+    const roomData = roomSnap.data() as RoomState;
+    if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
+    if (!roomData.thirteenState || roomData.thirteenState.status !== 'arranging') {
+      throw new Error('目前非十三支排牌階段');
+    }
+
+    const thirteenState = roomData.thirteenState;
+    const playerArr = thirteenState.players[uid];
+    if (!playerArr) throw new Error('玩家未參與此十三支對局');
+
+    // 1. 防重複確認
+    if (playerArr.isConfirmed) {
+      return; // 已確認，直接返回避免重複操作
+    }
+
+    // 2. 倒水與手牌數量驗證
+    const totalCount = front.length + middle.length + back.length;
+    if (totalCount !== 13) {
+      throw new Error(`手牌分配數量不正確 (目前 ${totalCount} 張，應為 13 張)`);
+    }
+
+    const validation = isArrangementValid(front, middle, back);
+    if (!validation.valid) {
+      throw new Error(validation.reason || '不合法的排法（倒水）');
+    }
+
+    // 3. 更新玩家排牌
+    const nextPlayersState = { ...thirteenState.players };
+    nextPlayersState[uid] = {
+      ...playerArr,
+      front,
+      middle,
+      back,
+      isConfirmed: true
+    };
+
+    // 4. 判斷是否全員皆已確認
+    const allConfirmed = Object.values(nextPlayersState).every(p => p.isConfirmed);
+
+    const updates: Record<string, unknown> = {};
+
+    if (allConfirmed) {
+      // 防止重複結算
+      if (thirteenState.settledOnce) {
+        return;
+      }
+
+      // 計算本局得分
+      const playersArrangement: Record<string, { front: Card[]; middle: Card[]; back: Card[] }> = {};
+      Object.keys(nextPlayersState).forEach(pUid => {
+        playersArrangement[pUid] = {
+          front: nextPlayersState[pUid].front,
+          middle: nextPlayersState[pUid].middle,
+          back: nextPlayersState[pUid].back
+        };
+      });
+
+      const scores = calculateScores(playersArrangement, roomData.playerOrder);
+
+      // 十三支的積分加分機制直接跟大老二一樣：第一名+3，第二名+2，第三名+1，第四名+0
+      const sortedUids = [...roomData.playerOrder].sort((a, b) => (scores[b] || 0) - (scores[a] || 0));
+      const thirteenRoundPoints: Record<string, number> = {};
+      sortedUids.forEach((pUid, index) => {
+        let pointsToAdd = 0;
+        if (index === 0) pointsToAdd = 3;
+        else if (index === 1) pointsToAdd = 2;
+        else if (index === 2) pointsToAdd = 1;
+        else pointsToAdd = 0;
+        thirteenRoundPoints[pUid] = pointsToAdd;
+      });
+
+      // 累加 points 並檢查是否達標結束
+      const target = roomData.targetPoints || 15;
+      let isAnyPlayerReachedTarget = false;
+
+      Object.keys(thirteenRoundPoints).forEach(pUid => {
+        const currentPoints = roomData.players[pUid]?.points ?? 0;
+        const nextPoints = currentPoints + thirteenRoundPoints[pUid];
+        updates[`players.${pUid}.points`] = nextPoints;
+
+        if (nextPoints >= target) {
+          isAnyPlayerReachedTarget = true;
+        }
+      });
+
+      const nextThirteenState: ThirteenState = {
+        status: 'showing',
+        players: nextPlayersState,
+        scores: thirteenRoundPoints,
+        settledOnce: true
+      };
+
+      updates.thirteenState = nextThirteenState;
+      updates.roundScores = thirteenRoundPoints;
+
+      if (isAnyPlayerReachedTarget) {
+        updates.status = 'gameOver';
+        // 尋找累計 points 最高的玩家作為最終贏家，避免 UI 顯示 undefined
+        let maxPoints = -9999;
+        let finalWinnerUid = roomData.playerOrder[0];
+        roomData.playerOrder.forEach(pUid => {
+          const currentPoints = roomData.players[pUid]?.points ?? 0;
+          const nextPoints = currentPoints + thirteenRoundPoints[pUid];
+          if (nextPoints > maxPoints) {
+            maxPoints = nextPoints;
+            finalWinnerUid = pUid;
+          }
+        });
+        updates.winnerUid = finalWinnerUid;
+      } else {
+        updates.status = 'finished';
+        updates.winnerUid = null;
+      }
+    } else {
+      // 僅更新此玩家的確認狀態
+      updates.thirteenState = {
+        ...thirteenState,
+        players: nextPlayersState
+      };
+    }
+
+    updates.updatedAt = serverTimestamp();
+    updates.expiresAt = getRoomExpirationTimestamp();
+
+    transaction.update(roomRef, updates);
+  });
+};
+
+/**
+ * 重置十三支房間回到等待狀態（保留積分，清除十三支專屬狀態，將玩家設為未準備，除房主外）
+ */
+export const resetThirteenRound = async (roomId: string): Promise<void> => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+
+  await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    if (!roomSnap.exists()) return;
+    const roomData = roomSnap.data() as RoomState;
+
+    const updates: Record<string, unknown> = {
+      status: 'waiting',
+      winnerUid: null,
+      lastPlayedHand: null,
+      lastPlayedUid: null,
+      turnUid: null,
+      passCount: 0,
+      finishedOrder: [],
+      roundScores: {},
+      thirteenState: null,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp()
+    };
+
+    // 重置玩家狀態，房主與 Bot 預設 Ready，真人則設為未 Ready
+    Object.keys(roomData.players).forEach(uid => {
+      const p = roomData.players[uid];
+      const isHost = p.isHost;
+      const isBot = p.isBot;
+      updates[`players.${uid}.isReady`] = isHost || isBot;
+      updates[`players.${uid}.cards`] = [];
+      updates[`players.${uid}.isPassed`] = false;
+    });
+
+    transaction.update(roomRef, updates);
+  });
+};
+
+/**
+ * 設定十三支顯示排行榜狀態為 true
+ */
+export const showThirteenLeaderboard = async (roomId: string): Promise<void> => {
+  if (!db) return;
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnap = await getDoc(roomRef);
+  if (!roomSnap.exists()) return;
+  const roomData = roomSnap.data() as RoomState;
+  
+  if (roomData.thirteenState) {
+    await updateDoc(roomRef, {
+      'thirteenState.showLeaderboard': true,
+      updatedAt: serverTimestamp(),
+      expiresAt: getRoomExpirationTimestamp()
+    });
+  }
+};
+
 

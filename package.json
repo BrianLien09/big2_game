@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:rules": "npx tsx scratch/test_firestore_rules.ts"
+    "test:rules": "npx tsx scratch/test_firestore_rules.ts",
+    "test": "npx tsx scratch/test_thirteen.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
