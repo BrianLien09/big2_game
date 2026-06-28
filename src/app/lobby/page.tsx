@@ -348,36 +348,6 @@ export default function Lobby() {
                     );
                   })}
                 </div>
-                {gameMode === 'BRIDGE' && (
-                  <div style={{
-                    background: "#eff6ff",
-                    border: "2px solid #93c5fd",
-                    borderRadius: "10px",
-                    padding: "10px 12px",
-                    fontSize: "0.78rem",
-                    fontWeight: 700,
-                    color: "#1d4ed8",
-                    lineHeight: 1.5,
-                  }}>
-                    ℹ️ 橋牌需要恰好 <strong>4 位真人玩家</strong>，不支援人機。<br />
-                    包含叫牌→打牌→計分三個完整階段。
-                  </div>
-                )}
-                {gameMode === 'THIRTEEN' && (
-                  <div style={{
-                    background: "#ecfdf5",
-                    border: "2px solid #a7f3d0",
-                    borderRadius: "10px",
-                    padding: "10px 12px",
-                    fontSize: "0.78rem",
-                    fontWeight: 700,
-                    color: "#047857",
-                    lineHeight: 1.5,
-                  }}>
-                    ℹ️ 十三支固定為 <strong>4 位玩家</strong>。若人數不足，開始時會自動加入電腦人機補滿。<br />
-                    每人 13 張牌，分前中後三墩且後墩 ≥ 中墩 ≥ 前墩，否則為倒水。
-                  </div>
-                )}
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
