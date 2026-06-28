@@ -370,8 +370,8 @@ export default function ThirteenPlayingView({
               )}
             </div>
             
-            <div style={{ display: "flex", gap: isMobile ? "0px" : "10px", flexWrap: isMobile ? "nowrap" : "wrap", minHeight: isMobile ? "76px" : "92px", alignItems: "center" }}>
-              {front.map((card, idx) => (
+            <div style={{ display: "flex", gap: isMobile ? "4px" : "10px", flexWrap: isMobile ? "nowrap" : "wrap", minHeight: isMobile ? "76px" : "92px", alignItems: "center" }}>
+              {front.map(card => (
                 <div 
                   key={card.id}
                   onClick={(e) => {
@@ -380,12 +380,7 @@ export default function ThirteenPlayingView({
                       handleRemoveFromRow(card, "front");
                     }
                   }}
-                  style={{ 
-                    cursor: "pointer",
-                    marginLeft: idx > 0 ? (isMobile ? "-20px" : "0px") : "0px",
-                    zIndex: idx,
-                    position: "relative"
-                  }}
+                  style={{ cursor: "pointer" }}
                 >
                   <PlayingCard 
                     card={card} 
@@ -410,8 +405,7 @@ export default function ThirteenPlayingView({
                     cursor: "pointer",
                     color: "#94a3b8",
                     fontWeight: 900,
-                    fontSize: isMobile ? "1.2rem" : "1.5rem",
-                    marginLeft: front.length > 0 && isMobile ? "6px" : "0px"
+                    fontSize: isMobile ? "1.2rem" : "1.5rem"
                   }}
                 >
                   +
@@ -456,8 +450,8 @@ export default function ThirteenPlayingView({
               )}
             </div>
 
-            <div style={{ display: "flex", gap: isMobile ? "0px" : "10px", flexWrap: isMobile ? "nowrap" : "wrap", minHeight: isMobile ? "76px" : "92px", alignItems: "center" }}>
-              {middle.map((card, idx) => (
+            <div style={{ display: "flex", gap: isMobile ? "4px" : "10px", flexWrap: isMobile ? "nowrap" : "wrap", minHeight: isMobile ? "76px" : "92px", alignItems: "center" }}>
+              {middle.map(card => (
                 <div 
                   key={card.id}
                   onClick={(e) => {
@@ -466,12 +460,7 @@ export default function ThirteenPlayingView({
                       handleRemoveFromRow(card, "middle");
                     }
                   }}
-                  style={{ 
-                    cursor: "pointer",
-                    marginLeft: idx > 0 ? (isMobile ? "-20px" : "0px") : "0px",
-                    zIndex: idx,
-                    position: "relative"
-                  }}
+                  style={{ cursor: "pointer" }}
                 >
                   <PlayingCard 
                     card={card} 
@@ -496,8 +485,7 @@ export default function ThirteenPlayingView({
                     cursor: "pointer",
                     color: "#94a3b8",
                     fontWeight: 900,
-                    fontSize: isMobile ? "1.2rem" : "1.5rem",
-                    marginLeft: middle.length > 0 && isMobile ? "6px" : "0px"
+                    fontSize: isMobile ? "1.2rem" : "1.5rem"
                   }}
                 >
                   +
@@ -542,8 +530,8 @@ export default function ThirteenPlayingView({
               )}
             </div>
 
-            <div style={{ display: "flex", gap: isMobile ? "0px" : "10px", flexWrap: isMobile ? "nowrap" : "wrap", minHeight: isMobile ? "76px" : "92px", alignItems: "center" }}>
-              {back.map((card, idx) => (
+            <div style={{ display: "flex", gap: isMobile ? "4px" : "10px", flexWrap: isMobile ? "nowrap" : "wrap", minHeight: isMobile ? "76px" : "92px", alignItems: "center" }}>
+              {back.map(card => (
                 <div 
                   key={card.id}
                   onClick={(e) => {
@@ -552,12 +540,7 @@ export default function ThirteenPlayingView({
                       handleRemoveFromRow(card, "back");
                     }
                   }}
-                  style={{ 
-                    cursor: "pointer",
-                    marginLeft: idx > 0 ? (isMobile ? "-20px" : "0px") : "0px",
-                    zIndex: idx,
-                    position: "relative"
-                  }}
+                  style={{ cursor: "pointer" }}
                 >
                   <PlayingCard 
                     card={card} 
@@ -582,8 +565,7 @@ export default function ThirteenPlayingView({
                     cursor: "pointer",
                     color: "#94a3b8",
                     fontWeight: 900,
-                    fontSize: isMobile ? "1.2rem" : "1.5rem",
-                    marginLeft: back.length > 0 && isMobile ? "6px" : "0px"
+                    fontSize: isMobile ? "1.2rem" : "1.5rem"
                   }}
                 >
                   +
