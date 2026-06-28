@@ -36,7 +36,7 @@ export default function ThirteenPlayingView({
   const [front, setFront] = useState<Card[]>([]);
   const [middle, setMiddle] = useState<Card[]>([]);
   const [back, setBack] = useState<Card[]>([]);
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [selectedCards, setSelectedCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -79,7 +79,7 @@ export default function ThirteenPlayingView({
     setMiddle(prev => sortThirteenCards(prev));
     setBack(prev => sortThirteenCards(prev));
     setUnassigned(prev => sortThirteenCards(prev));
-    setSelectedCard(null);
+    setSelectedCards([]);
     setErrorMsg("");
   };
 
@@ -90,7 +90,7 @@ export default function ThirteenPlayingView({
     setFront([]);
     setMiddle([]);
     setBack([]);
-    setSelectedCard(null);
+    setSelectedCards([]);
     setErrorMsg("");
   };
 
@@ -99,37 +99,57 @@ export default function ThirteenPlayingView({
     const temp = middle;
     setMiddle(back);
     setBack(temp);
-    setSelectedCard(null);
+    setSelectedCards([]);
     setErrorMsg("");
   };
 
   // 點選未分配卡牌
   const handleSelectCard = (card: Card) => {
-    if (selectedCard?.id === card.id) {
-      setSelectedCard(null);
+    if (selectedCards.some(c => c.id === card.id)) {
+      setSelectedCards(selectedCards.filter(c => c.id !== card.id));
     } else {
-      setSelectedCard(card);
+      setSelectedCards([...selectedCards, card]);
     }
   };
 
 
 
-  // 放牌至指定墩
+  // 放牌至指定墩 (支援多張放牌)
   const handleMoveToRow = (rowType: "front" | "middle" | "back") => {
-    if (!selectedCard) return;
-    const card = selectedCard;
+    if (selectedCards.length === 0) return;
 
-    if (rowType === "front" && front.length < 3) {
-      setFront([...front, card]);
-      setUnassigned(unassigned.filter(c => c.id !== card.id));
-    } else if (rowType === "middle" && middle.length < 5) {
-      setMiddle([...middle, card]);
-      setUnassigned(unassigned.filter(c => c.id !== card.id));
-    } else if (rowType === "back" && back.length < 5) {
-      setBack([...back, card]);
-      setUnassigned(unassigned.filter(c => c.id !== card.id));
+    let limit = 0;
+    let currentLength = 0;
+    if (rowType === "front") {
+      limit = 3;
+      currentLength = front.length;
+    } else if (rowType === "middle") {
+      limit = 5;
+      currentLength = middle.length;
+    } else if (rowType === "back") {
+      limit = 5;
+      currentLength = back.length;
     }
-    setSelectedCard(null);
+
+    const space = limit - currentLength;
+    if (space <= 0) return;
+
+    // 取出最多 space 張被選中的牌
+    const cardsToMove = selectedCards.slice(0, space);
+    const cardIdsToMove = new Set(cardsToMove.map(c => c.id));
+
+    if (rowType === "front") {
+      setFront([...front, ...cardsToMove]);
+    } else if (rowType === "middle") {
+      setMiddle([...middle, ...cardsToMove]);
+    } else if (rowType === "back") {
+      setBack([...back, ...cardsToMove]);
+    }
+
+    // 從手牌中扣除
+    setUnassigned(unassigned.filter(c => !cardIdsToMove.has(c.id)));
+    // 從選中狀態中扣除
+    setSelectedCards(selectedCards.filter(c => !cardIdsToMove.has(c.id)));
   };
 
   // 從墩中移回手牌
@@ -165,7 +185,7 @@ export default function ThirteenPlayingView({
       setBack([...back, card]);
       setUnassigned(unassigned.filter(c => c.id !== card.id));
     }
-    setSelectedCard(null);
+    setSelectedCards(prev => prev.filter(c => c.id !== card.id));
   };
 
   // 確認送出
@@ -320,7 +340,7 @@ export default function ThirteenPlayingView({
             onDragOver={(e) => e.preventDefault()} 
             onDrop={(e) => handleDrop(e, "front")}
             onClick={() => {
-              if (selectedCard && !myThirteenState?.isConfirmed) {
+              if (selectedCards.length > 0 && !myThirteenState?.isConfirmed) {
                 handleMoveToRow("front");
               }
             }}
@@ -332,7 +352,7 @@ export default function ThirteenPlayingView({
               gap: isMobile ? "4px" : "8px",
               minHeight: isMobile ? "68px" : "130px",
               width: "100%",
-              cursor: (selectedCard && !myThirteenState?.isConfirmed) ? "pointer" : "default"
+              cursor: (selectedCards.length > 0 && !myThirteenState?.isConfirmed) ? "pointer" : "default"
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -406,7 +426,7 @@ export default function ThirteenPlayingView({
             onDragOver={(e) => e.preventDefault()} 
             onDrop={(e) => handleDrop(e, "middle")}
             onClick={() => {
-              if (selectedCard && !myThirteenState?.isConfirmed) {
+              if (selectedCards.length > 0 && !myThirteenState?.isConfirmed) {
                 handleMoveToRow("middle");
               }
             }}
@@ -418,7 +438,7 @@ export default function ThirteenPlayingView({
               gap: isMobile ? "4px" : "8px",
               minHeight: isMobile ? "68px" : "130px",
               width: "100%",
-              cursor: (selectedCard && !myThirteenState?.isConfirmed) ? "pointer" : "default"
+              cursor: (selectedCards.length > 0 && !myThirteenState?.isConfirmed) ? "pointer" : "default"
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -492,7 +512,7 @@ export default function ThirteenPlayingView({
             onDragOver={(e) => e.preventDefault()} 
             onDrop={(e) => handleDrop(e, "back")}
             onClick={() => {
-              if (selectedCard && !myThirteenState?.isConfirmed) {
+              if (selectedCards.length > 0 && !myThirteenState?.isConfirmed) {
                 handleMoveToRow("back");
               }
             }}
@@ -504,7 +524,7 @@ export default function ThirteenPlayingView({
               gap: isMobile ? "4px" : "8px",
               minHeight: isMobile ? "68px" : "130px",
               width: "100%",
-              cursor: (selectedCard && !myThirteenState?.isConfirmed) ? "pointer" : "default"
+              cursor: (selectedCards.length > 0 && !myThirteenState?.isConfirmed) ? "pointer" : "default"
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -627,7 +647,7 @@ export default function ThirteenPlayingView({
                 alignItems: "center"
               }}>
                 {unassigned.map((card, idx) => {
-                  const isSel = selectedCard?.id === card.id;
+                  const isSel = selectedCards.some(c => c.id === card.id);
                   return (
                     <div 
                       key={card.id}
