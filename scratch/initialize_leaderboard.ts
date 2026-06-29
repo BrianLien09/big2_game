@@ -1,15 +1,34 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc } from 'firebase/firestore';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// 為了讓本地獨立腳本能正常執行，直接使用 Firebase 前端公開金鑰
+// 嘗試動態載入本地根目錄的 .env.local 檔案，防止金鑰進入代碼庫
+const envPath = path.join(__dirname, '../.env.local');
+const envConfig: Record<string, string> = {};
+
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  envContent.split(/\r?\n/).forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      const val = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+      envConfig[key.trim()] = val;
+    }
+  });
+}
+
 const firebaseConfig = {
-  apiKey: "AIzaSyA7bpGYbm-78o3rIax1OcbUXB-TLJ2xBgs",
-  authDomain: "big2-a5c7e.firebaseapp.com",
-  projectId: "big2-a5c7e",
-  storageBucket: "big2-a5c7e.firebasestorage.app",
-  messagingSenderId: "83144824900",
-  appId: "1:83144824900:web:0f855f7302a58bcb3c0411",
-  databaseURL: "https://big2-a5c7e-default-rtdb.asia-southeast1.firebasedatabase.app/"
+  apiKey: envConfig.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: envConfig.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: envConfig.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: envConfig.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: envConfig.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: envConfig.NEXT_PUBLIC_FIREBASE_APP_ID || process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  databaseURL: envConfig.NEXT_PUBLIC_FIREBASE_DATABASE_URL || 
+               process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || 
+               `https://${envConfig.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}-default-rtdb.asia-southeast1.firebasedatabase.app/`
 };
 
 const app = initializeApp(firebaseConfig);

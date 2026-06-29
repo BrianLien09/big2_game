@@ -14,6 +14,17 @@ $AUTO_UPLOAD = $true # 是否開啟自動上傳至 App Distribution
 $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 $env:ANDROID_HOME="C:\Users\brian\AppData\Local\Android\Sdk"
 
+# 載入 .env.local 中的環境變數並注入到當前 session (確保靜態打包時 Next.js 能讀取到金鑰)
+if (Test-Path ".env.local") {
+    Write-Host "正在從 .env.local 載入並注入環境變數..." -ForegroundColor Gray
+    Get-Content ".env.local" | Where-Object { $_ -match '=' -and -not $_.StartsWith('#') } | ForEach-Object {
+        $parts = $_ -split '=', 2
+        $key = $parts[0].Trim()
+        $val = $parts[1].Trim().Trim('"').Trim("'")
+        [System.Environment]::SetEnvironmentVariable($key, $val, "Process")
+    }
+}
+
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "🚀 開始更新 CardDuel APK..." -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan

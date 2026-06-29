@@ -10,13 +10,13 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 // 因此改為使用 || fallback 直接注入硬編碼值，確保 Capacitor APK 也能正確連線。
 // 注意：這些皆為 Firebase 前端公開金鑰，安全性由 Firebase Security Rules 負責保護。
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyA7bpGYbm-78o3rIax1OcbUXB-TLJ2xBgs",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "big2-a5c7e.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "big2-a5c7e",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "big2-a5c7e.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "83144824900",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:83144824900:web:0f855f7302a58bcb3c0411",
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "https://big2-a5c7e-default-rtdb.asia-southeast1.firebasedatabase.app/"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || `https://${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}-default-rtdb.asia-southeast1.firebasedatabase.app/`
 };
 
 const app = getApps().length > 0 
