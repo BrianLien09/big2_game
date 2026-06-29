@@ -19,7 +19,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#fbbf24", // 調整為遊戲主色調（黃色）
+  themeColor: "#ffffff", // 調整為背景色（白色）以避免行動端狀態欄呈現黃色
 };
 
 const isProd = process.env.NODE_ENV === 'production';

@@ -4,8 +4,8 @@
   "description": "支援手機與電腦的線上大老二對戰平台",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#f8f9fa",
-  "theme_color": "#fbbf24",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "orientation": "portrait-primary",
   "icons": [
     {
