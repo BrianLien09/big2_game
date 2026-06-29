@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === 'production';
+const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
 const repoName = 'big2_game'; // 您的 GitHub 倉庫名稱
-const basePath = isProd ? `/${repoName}` : '';
+const basePath = (isProd && !isCapacitor) ? `/${repoName}` : '';
 
 const nextConfig: NextConfig = {
   output: 'export', // 啟用靜態匯出，GitHub Pages 部署必須

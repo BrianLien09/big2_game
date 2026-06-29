@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CardDuel</string>
+    <string name="title_activity_main">CardDuel</string>
+    <string name="package_name">com.cardduel.game</string>
+    <string name="custom_url_scheme">com.cardduel.game</string>
+</resources>

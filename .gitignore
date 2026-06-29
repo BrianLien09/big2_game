@@ -45,3 +45,29 @@ AGENTS.md
 CLAUDE.md
 firebase_limit_analysis.md
 
+# ============================================
+# Android / Capacitor 相關忽略規則
+# ============================================
+
+# APK 編譯產物（每次 build 都會重新產生，不需進版控）
+*.apk
+*.aab
+
+# google-services.json 包含 Firebase 金鑰，屬敏感設定，各開發者應自行取得
+android/app/google-services.json
+
+# Android Gradle Wrapper 二進位（可由 gradlew 自動下載，不需追蹤）
+android/gradle/wrapper/gradle-wrapper.jar
+android/.gradle/
+
+# Android 編譯產物
+android/app/build/
+android/build/
+android/local.properties
+
+# Capacitor 產生的暫存設定檔
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# 系統暫存檔
+inst_user_settings.tmp

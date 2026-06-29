@@ -1,0 +1,16 @@
+{
+  "appId": "com.cardduel.game",
+  "appName": "CardDuel",
+  "webDir": "out",
+  "server": {
+    "androidScheme": "http"
+  },
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": [
+        "google.com"
+      ]
+    }
+  }
+}

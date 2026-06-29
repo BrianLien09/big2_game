@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, db, loginWithGoogle } from "@/lib/firebase";
+import { auth, db, loginWithGoogle, loginAnonymously } from "@/lib/firebase";
 import { ref, get, update } from "firebase/database";
 import { useGameStore } from "@/store/useGameStore";
 import CapybaraLoader from "@/components/CapybaraLoader";
@@ -23,6 +23,28 @@ export default function Home() {
   
   // 使用 useRef 紀錄「是否已執行過首次暱稱載入檢查」，以避免使用者在輸入暱稱時每打一個字就觸發 useEffect 重新查詢資料庫
   const hasCheckedRef = useRef(false);
+
+  // 捕獲全域 JS 錯誤與未處理的 Promise 拒絕，以便在手機畫面上直接 Debug
+  useEffect(() => {
+    const handleGlobalError = (event: ErrorEvent) => {
+      setErrorMsg(`全域錯誤: ${event.message} (${event.filename}:${event.lineno})`);
+      setAuthLoading(false);
+    };
+    const handlePromiseRejection = (event: PromiseRejectionEvent) => {
+      setErrorMsg(`未處理的 Promise 錯誤: ${event.reason}`);
+      setAuthLoading(false);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener("error", handleGlobalError);
+      window.addEventListener("unhandledrejection", handlePromiseRejection);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener("error", handleGlobalError);
+        window.removeEventListener("unhandledrejection", handlePromiseRejection);
+      }
+    };
+  }, []);
 
   // 監聽 Firebase 登入狀態
   useEffect(() => {
@@ -115,6 +137,23 @@ export default function Home() {
       console.error("Google login failed:", error);
       const err = error as Error;
       const msg = err.message || "登入失敗，請稍後再試。";
+      setErrorMsg(msg);
+      addToast(msg, "error");
+      setLoginProgress(false);
+    }
+  };
+
+  // 訪客測試登入處理
+  const handleGuestLogin = async () => {
+    setLoginProgress(true);
+    setErrorMsg("");
+    try {
+      await loginAnonymously();
+      // 成功登入後，onAuthStateChanged 會觸發，此處只需防呆
+    } catch (error) {
+      console.error("Guest login failed:", error);
+      const err = error as Error;
+      const msg = err.message || "訪客登入失敗，請確認是否啟用匿名登入功能。";
       setErrorMsg(msg);
       addToast(msg, "error");
       setLoginProgress(false);
@@ -218,20 +257,37 @@ export default function Home() {
                 <p className="text-center font-bold mt-2 text-sm text-gray-600">正在等待 Google 授權中...</p>
               </div>
             ) : (
-              <button
-                onClick={handleGoogleLogin}
-                className="comic-btn"
-                style={{
-                  width: "100%",
-                  fontSize: "1.1rem",
-                  padding: "16px 0",
-                  marginTop: "8px",
-                  background: "#fbbf24",
-                  fontWeight: 900
-                }}
-              >
-                Google 帳號快速登入
-              </button>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleGoogleLogin}
+                  className="comic-btn"
+                  style={{
+                    width: "100%",
+                    fontSize: "1.1rem",
+                    padding: "16px 0",
+                    marginTop: "8px",
+                    background: "#fbbf24",
+                    fontWeight: 900
+                  }}
+                >
+                  Google 帳號快速登入
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGuestLogin}
+                  className="comic-btn"
+                  style={{
+                    width: "100%",
+                    fontSize: "1.1rem",
+                    padding: "16px 0",
+                    background: "#5f7186",
+                    color: "#f0ece1",
+                    fontWeight: 900
+                  }}
+                >
+                  訪客快速測試登入 (行動版測試)
+                </button>
+              </div>
             )}
           </div>
         ) : (
