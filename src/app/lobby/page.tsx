@@ -688,36 +688,45 @@ export default function Lobby() {
                 </div>
 
                 {/* 排行榜列表 */}
-                {leaderboardData.map((entry, index) => {
-                  const isSelf = currentUser?.uid === entry.uid;
-                  const rankEmoji = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}`;
-                  return (
-                    <div
-                      key={entry.uid}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "40px 1fr 80px 80px",
-                        gap: 8,
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: isSelf ? "3px solid #7c3aed" : "2px solid #e5e7eb",
-                        background: isSelf ? "#f5f3ff" : index % 2 === 0 ? "#f9fafb" : "#fff",
-                        fontWeight: isSelf ? 900 : 700,
-                        alignItems: "center",
-                        boxShadow: isSelf ? "3px 3px 0 #7c3aed" : undefined,
-                      }}
-                    >
-                      <span style={{ fontSize: "1.1rem", textAlign: "center" }}>{rankEmoji}</span>
-                      <span style={{ fontSize: "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {entry.nickname}{isSelf && <span style={{ fontSize: "0.7rem", color: "#7c3aed", marginLeft: 4 }}>(我)</span>}
-                      </span>
-                      <span style={{ textAlign: "center", fontSize: "1rem", color: "#1d4ed8", fontWeight: 900 }}>{entry.totalPoints}</span>
-                      <span style={{ textAlign: "center", fontSize: "1rem", color: "#7c3aed", fontWeight: 900 }}>
-                        {entry.firstPlaceCount > 0 ? `${entry.firstPlaceCount}次` : "-"}
-                      </span>
-                    </div>
-                  );
-                })}
+                {(() => {
+                  let displayRank = 1;
+                  return leaderboardData.map((entry, index) => {
+                    // 同分並列：如果我的分數比前一個人低，我的排名才是目前的 index + 1
+                    if (index > 0 && entry.totalPoints < leaderboardData[index - 1].totalPoints) {
+                      displayRank = index + 1;
+                    }
+                    
+                    const isSelf = currentUser?.uid === entry.uid;
+                    const rankEmoji = displayRank === 1 ? "🥇" : displayRank === 2 ? "🥈" : displayRank === 3 ? "🥉" : `${displayRank}`;
+                    
+                    return (
+                      <div
+                        key={entry.uid}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "40px 1fr 80px 80px",
+                          gap: 8,
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: isSelf ? "3px solid #7c3aed" : "2px solid #e5e7eb",
+                          background: isSelf ? "#f5f3ff" : index % 2 === 0 ? "#f9fafb" : "#fff",
+                          fontWeight: isSelf ? 900 : 700,
+                          alignItems: "center",
+                          boxShadow: isSelf ? "3px 3px 0 #7c3aed" : undefined,
+                        }}
+                      >
+                        <span style={{ fontSize: "1.1rem", textAlign: "center" }}>{rankEmoji}</span>
+                        <span style={{ fontSize: "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {entry.nickname}{isSelf && <span style={{ fontSize: "0.7rem", color: "#7c3aed", marginLeft: 4 }}>(我)</span>}
+                        </span>
+                        <span style={{ textAlign: "center", fontSize: "1rem", color: "#1d4ed8", fontWeight: 900 }}>{entry.totalPoints}</span>
+                        <span style={{ textAlign: "center", fontSize: "1rem", color: "#7c3aed", fontWeight: 900 }}>
+                          {entry.firstPlaceCount > 0 ? `${entry.firstPlaceCount}次` : "-"}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>

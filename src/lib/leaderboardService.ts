@@ -92,6 +92,6 @@ export const fetchLeaderboard = async (): Promise<LeaderboardEntry[]> => {
         updatedAt: data.updatedAt ?? 0,
       } as LeaderboardEntry;
     })
-    // 防禦性過濾：確保只回傳真正有 totalPoints 的條目
-    .filter(entry => entry.totalPoints > 0);
+    // 防禦性過濾：確保只回傳有 totalPoints 欄位的條目
+    .filter(entry => entry.totalPoints !== undefined);
 };
