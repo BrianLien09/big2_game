@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useGameStore } from "@/store/useGameStore";
 import { auth, logoutWithGoogle, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { ref, get } from "firebase/database";
 import CapybaraLoader from "@/components/CapybaraLoader";
 import { cleanupExpiredRoomsIfNeeded, leaveRoom } from "@/lib/roomService";
 
@@ -57,9 +57,9 @@ export default function Lobby() {
         const savedRoomId = localStorage.getItem("last_joined_room_id");
         if (savedRoomId && db) {
           try {
-            const roomSnap = await getDoc(doc(db, "rooms", savedRoomId));
+            const roomSnap = await get(ref(db, `rooms/${savedRoomId}`));
             if (roomSnap.exists()) {
-              const roomData = roomSnap.data();
+              const roomData = roomSnap.val();
               const isPlayerInRoom = roomData.players && roomData.players[user.uid];
               const isRoomActive = roomData.status && roomData.status !== "gameOver";
               

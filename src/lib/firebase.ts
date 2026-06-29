@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 
 // 為了安全起見，不直接在程式碼中硬編碼 API 金鑰與相關敏感資訊。
@@ -10,14 +10,15 @@ const firebaseConfig = {
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "https://big2-a5c7e-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
 
 const app = getApps().length > 0 
   ? getApp() 
   : initializeApp(firebaseConfig);
 
-const db = app ? getFirestore(app) : null;
+const db = app ? getDatabase(app) : null;
 const auth = app ? getAuth(app) : null;
 
 export const loginWithGoogle = async () => {

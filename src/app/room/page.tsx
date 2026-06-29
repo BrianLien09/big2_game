@@ -8,7 +8,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
 import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { ref, update } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { Card, getCardName } from "@/lib/big2Logic";
 import { evaluateThirteenHand, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
@@ -1574,11 +1574,11 @@ function RoomContent() {
                     } else if (room.gameMode === 'BRIDGE') {
                      await resetBridgeRound(roomId);
                    } else {
-                     await updateDoc(doc(db, "rooms", roomId), {
+                      await update(ref(db, "rooms/" + roomId), {
                        status: "waiting", winnerUid: null,
                        lastPlayedHand: null, lastPlayedUid: null,
                        turnUid: null, passCount: 0,
-                       updatedAt: serverTimestamp(),
+                       updatedAt: Date.now(),
                        expiresAt: getRoomExpirationTimestamp()
                      });
                    }

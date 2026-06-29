@@ -227,9 +227,9 @@ const testRoomStateTransitions = () => {
       lastPlayedHand: null,
       lastPlayedUid: null,
       passCount: 0,
-      createdAt: null,
-      updatedAt: null,
-      expiresAt: null as unknown as Timestamp,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      expiresAt: Date.now(),
       winnerUid: null
     };
 

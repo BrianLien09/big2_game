@@ -36,35 +36,6 @@ function makePlayer(uid: string, cardCount: number, points = 0, isBot = false): 
   };
 }
 
-// Mock transaction recorder
-class MockTransaction {
-  updates: Record<string, any> = {};
-  
-  update(ref: any, data: Record<string, any>) {
-    Object.assign(this.updates, data);
-  }
-}
-
-// Helper to apply updates to roomData
-function applyUpdates(room: RoomState, updates: Record<string, any>): RoomState {
-  const nextRoom = JSON.parse(JSON.stringify(room)) as RoomState;
-  
-  Object.keys(updates).forEach(key => {
-    if (key.startsWith('players.')) {
-      const parts = key.split('.');
-      const uid = parts[1];
-      const field = parts[2];
-      if (nextRoom.players[uid]) {
-        (nextRoom.players[uid] as any)[field] = updates[key];
-      }
-    } else {
-      (nextRoom as any)[key] = updates[key];
-    }
-  });
-  
-  return nextRoom;
-}
-
 function runTests() {
   console.log("=== 開始大老二積分與排名系統單元測試 ===");
 
@@ -87,9 +58,9 @@ function runTests() {
     lastPlayedHand: null,
     lastPlayedUid: null,
     passCount: 0,
-    createdAt: {},
-    updatedAt: {},
-    expiresAt: null as any,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    expiresAt: Date.now(),
     winnerUid: null,
     finishedOrder: [],
     roundParticipants: ["A", "B", "C", "D"],
@@ -103,11 +74,10 @@ function runTests() {
   };
 
   // Step 1.1: A 出完手牌
-  let tx = new MockTransaction();
-  commitPlayerPlayTx(tx as any, {} as any, room, "A", [room.players.A.cards[0]]);
+  commitPlayerPlayTx(room, "A", [room.players.A.cards[0]]);
   
   // 驗證 A 應該完成出牌，且對局繼續，turn 轉交給 B
-  let updatedRoom = applyUpdates(room, tx.updates);
+  let updatedRoom = room;
   console.log("A 出完後 - status:", updatedRoom.status); // should be playing
   console.log("A 出完後 - finishedOrder:", updatedRoom.finishedOrder); // should be ['A']
   console.log("A 出完後 - turnUid:", updatedRoom.turnUid); // should be 'B'
@@ -117,21 +87,17 @@ function runTests() {
 
   // Step 1.2: B 出手牌並出完
   updatedRoom.players.B.cards = [updatedRoom.players.B.cards[0]]; // B 設為只剩 1 張
-  tx = new MockTransaction();
-  commitPlayerPlayTx(tx as any, {} as any, updatedRoom, "B", [updatedRoom.players.B.cards[0]]);
-  updatedRoom = applyUpdates(updatedRoom, tx.updates);
+  commitPlayerPlayTx(updatedRoom, "B", [updatedRoom.players.B.cards[0]]);
   console.log("B 出完後 - status:", updatedRoom.status); // should be playing
   console.log("B 出完後 - finishedOrder:", updatedRoom.finishedOrder); // should be ['A', 'B']
   console.log("B 出完後 - turnUid:", updatedRoom.turnUid); // should be 'C'
-  if (updatedRoom.status !== 'playing' || updatedRoom.turnUid !== 'C' || updatedRoom.finishedOrder?.length !== 2) {
+  if (updatedRoom.status !== 'playing' || (updatedRoom.turnUid as any) !== 'C' || updatedRoom.finishedOrder?.length !== 2) {
     throw new Error("Step 1.2 失敗");
   }
 
   // Step 1.3: C 出手牌並出完 -> 此時剩下 D，對局應該自動結束並結算
   updatedRoom.players.C.cards = [updatedRoom.players.C.cards[0]]; // C 設為只剩 1 張
-  tx = new MockTransaction();
-  commitPlayerPlayTx(tx as any, {} as any, updatedRoom, "C", [updatedRoom.players.C.cards[0]]);
-  updatedRoom = applyUpdates(updatedRoom, tx.updates);
+  commitPlayerPlayTx(updatedRoom, "C", [updatedRoom.players.C.cards[0]]);
   console.log("C 出完後 - status:", updatedRoom.status); // should be finished
   console.log("C 出完後 - finishedOrder:", updatedRoom.finishedOrder); // should be ['A', 'B', 'C', 'D']
   console.log("C 出完後 - turnUid:", updatedRoom.turnUid); // should be null
@@ -140,7 +106,7 @@ function runTests() {
   console.log("C 出完後 - B points:", updatedRoom.players.B.points); // should be 2
   console.log("C 出完後 - C points:", updatedRoom.players.C.points); // should be 1
   console.log("C 出完後 - D points:", updatedRoom.players.D.points); // should be 0
-  if (updatedRoom.status !== 'finished' || updatedRoom.roundScores?.A !== 3 || updatedRoom.roundScores?.B !== 2 || updatedRoom.roundScores?.C !== 1 || updatedRoom.roundScores?.D !== 0) {
+  if ((updatedRoom.status as any) !== 'finished' || updatedRoom.roundScores?.A !== 3 || updatedRoom.roundScores?.B !== 2 || updatedRoom.roundScores?.C !== 1 || updatedRoom.roundScores?.D !== 0) {
     throw new Error("Step 1.3 失敗");
   }
 
@@ -163,9 +129,9 @@ function runTests() {
     lastPlayedHand: null,
     lastPlayedUid: null,
     passCount: 0,
-    createdAt: {},
-    updatedAt: {},
-    expiresAt: null as any,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    expiresAt: Date.now(),
     winnerUid: null,
     finishedOrder: [],
     roundParticipants: ["A", "B", "C"],
@@ -177,12 +143,9 @@ function runTests() {
     roundScores: {}
   };
   
-  tx = new MockTransaction();
-  commitPlayerPlayTx(tx as any, {} as any, room3, "A", [room3.players.A.cards[0]]);
-  let updatedRoom3 = applyUpdates(room3, tx.updates);
-  tx = new MockTransaction();
-  commitPlayerPlayTx(tx as any, {} as any, updatedRoom3, "B", [updatedRoom3.players.B.cards[0]]);
-  updatedRoom3 = applyUpdates(updatedRoom3, tx.updates);
+  commitPlayerPlayTx(room3, "A", [room3.players.A.cards[0]]);
+  let updatedRoom3 = room3;
+  commitPlayerPlayTx(updatedRoom3, "B", [updatedRoom3.players.B.cards[0]]);
   
   console.log("三人局結算分數 - roundScores:", updatedRoom3.roundScores); // should be { A: 3, B: 2, C: 0 }
   if (updatedRoom3.roundScores?.A !== 3 || updatedRoom3.roundScores?.B !== 2 || updatedRoom3.roundScores?.C !== 0) {
@@ -203,9 +166,9 @@ function runTests() {
     lastPlayedHand: null,
     lastPlayedUid: null,
     passCount: 0,
-    createdAt: {},
-    updatedAt: {},
-    expiresAt: null as any,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    expiresAt: Date.now(),
     winnerUid: null,
     finishedOrder: [],
     roundParticipants: ["A", "B"],
@@ -216,9 +179,8 @@ function runTests() {
     roundScores: {}
   };
 
-  tx = new MockTransaction();
-  commitPlayerPlayTx(tx as any, {} as any, room2, "A", [room2.players.A.cards[0]]);
-  let updatedRoom2 = applyUpdates(room2, tx.updates);
+  commitPlayerPlayTx(room2, "A", [room2.players.A.cards[0]]);
+  let updatedRoom2 = room2;
   
   console.log("兩人局結算分數 - roundScores:", updatedRoom2.roundScores); // should be { A: 3, B: 0 }
   if (updatedRoom2.roundScores?.A !== 3 || updatedRoom2.roundScores?.B !== 0) {
@@ -244,29 +206,26 @@ function runTests() {
     lastPlayedHand: { type: "single", cards: makeCards(1), keyCard: makeCards(1)[0] },
     lastPlayedUid: "A",
     passCount: 0,
-    createdAt: {},
-    updatedAt: {},
-    expiresAt: null as any,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    expiresAt: Date.now(),
     winnerUid: null,
     finishedOrder: []
   };
 
   // B Pass -> turn goes to C
-  tx = new MockTransaction();
-  commitPlayerPassTx(tx as any, {} as any, passRoom, "B");
-  let updatedPassRoom = applyUpdates(passRoom, tx.updates);
+  commitPlayerPassTx(passRoom, "B");
+  let updatedPassRoom = passRoom;
   console.log("B Pass 後 - turnUid:", updatedPassRoom.turnUid); // should be 'C'
   if (updatedPassRoom.turnUid !== 'C') {
     throw new Error("B Pass 後 turn 錯誤");
   }
 
   // C Pass -> B, C 都 Pass 了，turn 應該回到 lastPlayedUid (A)，且重置 pass 狀態
-  tx = new MockTransaction();
-  commitPlayerPassTx(tx as any, {} as any, updatedPassRoom, "C");
-  updatedPassRoom = applyUpdates(updatedPassRoom, tx.updates);
+  commitPlayerPassTx(updatedPassRoom, "C");
   console.log("C Pass 後 - turnUid (應回到A):", updatedPassRoom.turnUid); // should be 'A'
   console.log("C Pass 後 - lastPlayedHand (應重置):", updatedPassRoom.lastPlayedHand); // should be null
-  if (updatedPassRoom.turnUid !== 'A' || updatedPassRoom.lastPlayedHand !== null) {
+  if ((updatedPassRoom.turnUid as any) !== 'A' || updatedPassRoom.lastPlayedHand !== null) {
     throw new Error("A 重新取得回合失敗");
   }
 
@@ -285,23 +244,20 @@ function runTests() {
     lastPlayedHand: { type: "single", cards: makeCards(1), keyCard: makeCards(1)[0] },
     lastPlayedUid: "A",
     passCount: 0,
-    createdAt: {},
-    updatedAt: {},
-    expiresAt: null as any,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    expiresAt: Date.now(),
     winnerUid: null,
     finishedOrder: ["A"]
   };
 
   // B Pass
-  tx = new MockTransaction();
-  commitPlayerPassTx(tx as any, {} as any, passRoom2, "B");
-  let updatedPassRoom2 = applyUpdates(passRoom2, tx.updates);
+  commitPlayerPassTx(passRoom2, "B");
+  let updatedPassRoom2 = passRoom2;
   console.log("A出完, B Pass 後 - turnUid:", updatedPassRoom2.turnUid); // should be 'C'
 
   // C Pass -> A 已完成，當 B, C 都 Pass 時，新一輪應該由 A 的下一位活躍玩家 (B) 開始！
-  tx = new MockTransaction();
-  commitPlayerPassTx(tx as any, {} as any, updatedPassRoom2, "C");
-  updatedPassRoom2 = applyUpdates(updatedPassRoom2, tx.updates);
+  commitPlayerPassTx(updatedPassRoom2, "C");
   console.log("A出完, C Pass 後 - turnUid (新一輪應由 B 開啟):", updatedPassRoom2.turnUid); // should be 'B'
   console.log("A出完, C Pass 後 - lastPlayedHand (應重置):", updatedPassRoom2.lastPlayedHand); // should be null
   if (updatedPassRoom2.turnUid !== 'B' || updatedPassRoom2.lastPlayedHand !== null) {
@@ -331,9 +287,9 @@ function runTests() {
     lastPlayedHand: null,
     lastPlayedUid: null,
     passCount: 0,
-    createdAt: {},
-    updatedAt: {},
-    expiresAt: null as any,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    expiresAt: Date.now(),
     winnerUid: null,
     finishedOrder: ["A"],
     roundParticipants: ["A", "B", "C", "D"], // 四人開局
@@ -347,9 +303,8 @@ function runTests() {
   };
 
   // C 出完手牌，觸發結算
-  tx = new MockTransaction();
-  commitPlayerPlayTx(tx as any, {} as any, exitRoom, "C", [exitRoom.players.C.cards[0]]);
-  let updatedExitRoom = applyUpdates(exitRoom, tx.updates);
+  commitPlayerPlayTx(exitRoom, "C", [exitRoom.players.C.cards[0]]);
+  let updatedExitRoom = exitRoom;
   
   // 最終排名計算：A(1st) -> C(2nd) -> D(在線未完成 3rd) -> B(離線未完成 4th)
   // 驗證最終 finishedOrder 順序
