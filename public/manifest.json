@@ -1,7 +1,7 @@
 {
-  "name": "線上大老二遊戲",
-  "short_name": "大老二",
-  "description": "支援手機與電腦的線上大老二對戰平台",
+  "name": "CardDuel — 線上紙牌對戰平台",
+  "short_name": "CardDuel",
+  "description": "支援大老二、十三支、橋牌的線上多人紙牌對戰平台",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
