@@ -57,10 +57,7 @@ if ($AUTO_UPLOAD -and $ANDROID_APP_ID) {
     Write-Host "==========================================" -ForegroundColor Cyan
     
     # 檢查是否有安裝 firebase-tools CLI
-    try {
-        $firebaseVersion = firebase --version
-        Write-Host "偵測到 Firebase CLI 版本: $firebaseVersion" -ForegroundColor Gray
-        
+    if (Get-Command firebase -ErrorAction SilentlyContinue) {
         # 取得當前時間做為發布說明的一部分
         $currentTime = Get-Date -Format "yyyy-MM-dd HH:mm"
         
@@ -68,7 +65,7 @@ if ($AUTO_UPLOAD -and $ANDROID_APP_ID) {
         firebase appdistribution:distribute CardDuel-debug.apk --app $ANDROID_APP_ID --release-notes "自動建置版號: $newCode ($currentTime)"
         
         Write-Host "`n🎉 上傳成功！測試人員將會收到最新的測試版本通知。" -ForegroundColor Cyan
-    } catch {
-        Write-Warning "上傳失敗。請確認本機是否有安裝 Firebase CLI (可執行 npm install -g firebase-tools)，且已執行 'firebase login' 登入帳號。"
+    } else {
+        Write-Warning "未偵測到 Firebase CLI，已跳過自動上傳。請確認本機是否有安裝 Firebase CLI (可執行 npm install -g firebase-tools)，且已執行 'firebase login' 登入帳號。"
     }
 }
