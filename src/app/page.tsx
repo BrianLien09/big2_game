@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, db, loginWithGoogle, loginAnonymously } from "@/lib/firebase";
+import { auth, db, loginWithGoogle, loginAnonymously, firestoreDb } from "@/lib/firebase";
 import { ref, get, update } from "firebase/database";
+import { doc, setDoc } from "firebase/firestore";
 import { useGameStore } from "@/store/useGameStore";
 import CapybaraLoader from "@/components/CapybaraLoader";
 
@@ -182,6 +183,17 @@ export default function Home() {
       } catch (error) {
         console.error("同步暱稱至 Realtime Database 失敗:", error);
         addToast("雲端同步暱稱失敗，但已儲存於本地。", "warning");
+      }
+    }
+
+    // 同步到 Firestore（供排行榜查詢使用）
+    // 使用 merge:true 確保不覆蓋既有的 totalPoints / firstPlaceCount 欄位
+    if (firestoreDb) {
+      try {
+        const firestoreUserRef = doc(firestoreDb, 'users', currentUser.uid);
+        await setDoc(firestoreUserRef, { nickname: finalName, updatedAt: Date.now() }, { merge: true });
+      } catch (error) {
+        console.error("同步暱稱至 Firestore 失敗:", error);
       }
     }
 

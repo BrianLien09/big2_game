@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
+import { getFirestore } from 'firebase/firestore';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, signInAnonymously, signInWithCredential } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
@@ -24,6 +25,8 @@ const app = getApps().length > 0
 
 const db = app ? getDatabase(app) : null;
 const auth = app ? getAuth(app) : null;
+// firestoreDb 用於跨局持久化資料（排行榜統計、玩家暱稱同步）
+const firestoreDb = app ? getFirestore(app) : null;
 
 export const loginWithGoogle = async () => {
   if (!auth) {
@@ -77,4 +80,4 @@ export const loginAnonymously = async () => {
   }
 };
 
-export { app, db, auth };
+export { app, db, auth, firestoreDb };

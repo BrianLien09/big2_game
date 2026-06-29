@@ -8,6 +8,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { ref, get } from "firebase/database";
 import CapybaraLoader from "@/components/CapybaraLoader";
 import { cleanupExpiredRoomsIfNeeded, leaveRoom } from "@/lib/roomService";
+import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/leaderboardService";
 
 export default function Lobby() {
   const router = useRouter();
@@ -27,6 +28,12 @@ export default function Lobby() {
   // 快速重連狀態
   const [reconnectRoomId, setReconnectRoomId] = useState<string | null>(null);
   const [reconnectRoomName, setReconnectRoomName] = useState<string | null>(null);
+
+  // 排行榜狀態
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [lastLeaderboardFetchTime, setLastLeaderboardFetchTime] = useState<number>(0);
 
   useEffect(() => {
     if (!auth) {
@@ -142,6 +149,7 @@ export default function Lobby() {
   }
 
   return (
+    <>
     <main className="page-shell flex flex-col items-center justify-center min-h-screen p-4 relative bg-[#f8f9fa]" style={{
       backgroundImage: "linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px)",
       backgroundSize: "30px 30px",
@@ -267,6 +275,34 @@ export default function Lobby() {
             className="comic-btn bg-white w-full sm:w-auto transform rotate-1"
           >
             了解規則
+          </button>
+
+          {/* 排行榜按鈕 */}
+          <button
+            onClick={async () => {
+              setShowLeaderboardModal(true);
+              
+              // ⏳ 快取防禦：如果 30 分鐘內已載入過，直接使用本地快取，避免浪費 Firestore 讀取額度
+              const now = Date.now();
+              if (leaderboardData.length > 0 && (now - lastLeaderboardFetchTime < 1800000)) {
+                return;
+              }
+
+              setLeaderboardLoading(true);
+              try {
+                const data = await fetchLeaderboard();
+                setLeaderboardData(data);
+                setLastLeaderboardFetchTime(now);
+              } catch (e) {
+                console.error('排行榜載入失敗:', e);
+              } finally {
+                setLeaderboardLoading(false);
+              }
+            }}
+            className="comic-btn w-full sm:w-auto"
+            style={{ background: "#7c3aed", color: "#fff", transform: "rotate(-0.5deg)" }}
+          >
+            🏆 排行榜
           </button>
         </div>
       </div>
@@ -568,5 +604,125 @@ export default function Lobby() {
         </div>
       )}
     </main>
+
+      {/* 排行榜 Modal */}
+      {showLeaderboardModal && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={() => setShowLeaderboardModal(false)}
+        >
+          <div
+            className="comic-panel"
+            style={{ width: "100%", maxWidth: 500, maxHeight: "85vh", overflowY: "auto", padding: "28px" }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 標題列 */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ fontSize: "1.6rem", fontWeight: 900 }}>🏆 全球排行榜</h2>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={async () => {
+                    setLeaderboardLoading(true);
+                    try {
+                      const data = await fetchLeaderboard();
+                      setLeaderboardData(data);
+                      setLastLeaderboardFetchTime(Date.now());
+                    } catch (e) {
+                      console.error('排行榜重新整理失敗:', e);
+                    } finally {
+                      setLeaderboardLoading(false);
+                    }
+                  }}
+                  className="comic-btn"
+                  style={{ padding: "6px 16px", fontSize: "0.85rem", background: "#f3f4f6" }}
+                  disabled={leaderboardLoading}
+                >
+                  整理
+                </button>
+                <button
+                  onClick={() => setShowLeaderboardModal(false)}
+                  className="comic-btn"
+                  style={{ padding: "6px 16px", fontSize: "0.85rem" }}
+                >
+                  關閉
+                </button>
+              </div>
+            </div>
+
+            <p style={{ fontSize: "0.8rem", color: "#6b7280", marginBottom: 16, fontWeight: 700 }}>
+              紀錄每位 Google 帳號玩家的累計總積分，以及整局第一名的奪冠次數。
+            </p>
+
+            {/* 載入中 */}
+            {leaderboardLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 0" }}>
+                <CapybaraLoader />
+                <p style={{ fontWeight: 700, color: "#6b7280", marginTop: 8 }}>載入排行榜中...</p>
+              </div>
+            ) : leaderboardData.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 0", color: "#9ca3af", fontWeight: 700 }}>
+                目前還沒有人完成整局遊戲，快來成為第一名！
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* 欄位標題 */}
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "40px 1fr 80px 80px",
+                  gap: 8,
+                  padding: "6px 12px",
+                  fontSize: "0.75rem",
+                  fontWeight: 900,
+                  color: "#6b7280",
+                  borderBottom: "2px solid #000",
+                }}>
+                  <span>排名</span>
+                  <span>暱稱</span>
+                  <span style={{ textAlign: "center" }}>總積分</span>
+                  <span style={{ textAlign: "center" }}>👑 冠軍</span>
+                </div>
+
+                {/* 排行榜列表 */}
+                {leaderboardData.map((entry, index) => {
+                  const isSelf = currentUser?.uid === entry.uid;
+                  const rankEmoji = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}`;
+                  return (
+                    <div
+                      key={entry.uid}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "40px 1fr 80px 80px",
+                        gap: 8,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: isSelf ? "3px solid #7c3aed" : "2px solid #e5e7eb",
+                        background: isSelf ? "#f5f3ff" : index % 2 === 0 ? "#f9fafb" : "#fff",
+                        fontWeight: isSelf ? 900 : 700,
+                        alignItems: "center",
+                        boxShadow: isSelf ? "3px 3px 0 #7c3aed" : undefined,
+                      }}
+                    >
+                      <span style={{ fontSize: "1.1rem", textAlign: "center" }}>{rankEmoji}</span>
+                      <span style={{ fontSize: "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {entry.nickname}{isSelf && <span style={{ fontSize: "0.7rem", color: "#7c3aed", marginLeft: 4 }}>(我)</span>}
+                      </span>
+                      <span style={{ textAlign: "center", fontSize: "1rem", color: "#1d4ed8", fontWeight: 900 }}>{entry.totalPoints}</span>
+                      <span style={{ textAlign: "center", fontSize: "1rem", color: "#7c3aed", fontWeight: 900 }}>
+                        {entry.firstPlaceCount > 0 ? `${entry.firstPlaceCount}次` : "-"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
