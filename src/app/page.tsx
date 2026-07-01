@@ -3,9 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, db, loginWithGoogle, loginAnonymously, firestoreDb } from "@/lib/firebase";
-import { ref, get, update } from "firebase/database";
-import { doc, setDoc } from "firebase/firestore";
+import { auth, loginWithGoogle, loginAnonymously, firestoreDb } from "@/lib/firebase";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { useGameStore } from "@/store/useGameStore";
 import CapybaraLoader from "@/components/CapybaraLoader";
 
@@ -83,15 +82,15 @@ export default function Home() {
           return;
         }
 
-        // 2. 若本地無暱稱，嘗試從 Realtime Database 雲端同步
-        if (db) {
+        // 2. 若本地無暱稱，嘗試從 Firestore 雲端同步
+        if (firestoreDb) {
           try {
             setAuthLoading(true); // 顯示水豚載入動畫，避免畫面閃爍
-            const userRef = ref(db, `users/${user.uid}`);
-            const userSnap = await get(userRef);
+            const userDocRef = doc(firestoreDb, "users", user.uid);
+            const userDocSnap = await getDoc(userDocRef);
             
-            if (userSnap.exists()) {
-              const userData = userSnap.val();
+            if (userDocSnap.exists()) {
+              const userData = userDocSnap.data();
               if (userData && userData.nickname) {
                 const cloudName = userData.nickname;
                 // 同步寫入本地
@@ -111,7 +110,7 @@ export default function Home() {
               }
             }
           } catch (error) {
-            console.error("嘗試從 Realtime Database 獲取暱稱失敗:", error);
+            console.error("嘗試從 Firestore 獲取暱稱失敗:", error);
             // 雲端撈取失敗時不中斷，交由下方流程讓使用者手動輸入
           }
         }
@@ -172,21 +171,7 @@ export default function Home() {
     localStorage.setItem("big2_nickname", finalName);
     setNickname(finalName);
 
-    // 同步到 Realtime Database
-    if (db) {
-      try {
-        const userRef = ref(db, `users/${currentUser.uid}`);
-        await update(userRef, {
-          nickname: finalName,
-          updatedAt: Date.now()
-        });
-      } catch (error) {
-        console.error("同步暱稱至 Realtime Database 失敗:", error);
-        addToast("雲端同步暱稱失敗，但已儲存於本地。", "warning");
-      }
-    }
-
-    // 同步到 Firestore（供排行榜查詢使用）
+    // 同步到 Firestore（供排行榜查詢使用與跨設備同步）
     // 使用 merge:true 確保不覆蓋既有的 totalPoints / firstPlaceCount 欄位
     if (firestoreDb) {
       try {
@@ -194,6 +179,7 @@ export default function Home() {
         await setDoc(firestoreUserRef, { nickname: finalName, updatedAt: Date.now() }, { merge: true });
       } catch (error) {
         console.error("同步暱稱至 Firestore 失敗:", error);
+        addToast("雲端同步暱稱失敗，但已儲存於本地。", "warning");
       }
     }
 

@@ -1980,6 +1980,8 @@ function RoomContent() {
             justify-content: space-between;
             max-width: 100%;
             box-sizing: border-box;
+            position: relative;
+            z-index: 5;
           }
           .self-avatar {
             width: 60px;
@@ -2020,7 +2022,7 @@ function RoomContent() {
             height: 148px;
             width: 100%;
             max-width: 980px;
-            margin: 0 auto;
+            margin: -32px auto 0;
           }
           .mobile-hand-scroll {
             display: none;
@@ -2028,7 +2030,7 @@ function RoomContent() {
           .hand-container-wrapper {
             width: 100%;
             max-width: 100%;
-            overflow: hidden;
+            overflow: visible;
             min-width: 0;
           }
           .desktop-tablet-hand .playing-card {
@@ -2254,6 +2256,8 @@ function RoomContent() {
             justify-content: space-between;
             max-width: 100%;
             box-sizing: border-box;
+            position: relative;
+            z-index: 5;
           }
           .self-avatar {
             width: 48px;
@@ -2294,7 +2298,7 @@ function RoomContent() {
             height: 100px;
             width: 100%;
             max-width: 720px;
-            margin: 0 auto;
+            margin: -20px auto 0;
           }
           .mobile-hand-scroll {
             display: none;
@@ -2302,7 +2306,7 @@ function RoomContent() {
           .hand-container-wrapper {
             width: 100%;
             max-width: 100%;
-            overflow: hidden;
+            overflow: visible;
             min-width: 0;
           }
           .desktop-tablet-hand .playing-card {
