@@ -114,15 +114,6 @@ function initOrResumeAudio(): void {
   }
 }
 
-function getCardRotateAngle(cardId: string): number {
-  let hash = 0;
-  for (let i = 0; i < cardId.length; i++) {
-    hash = cardId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const angle = (hash % 11) - 5; // -5 到 5 度之間
-  return angle;
-}
-
 function playCardSound(): void {
   if (typeof window === "undefined") return;
 
@@ -313,6 +304,52 @@ function playGameOverSound(): void {
     console.warn("播放整局結束音效失敗:", err);
   }
 }
+
+// 根據玩家位置（下、上、左、右）與是否為手機版，取得基準飛入座標
+const getAnimationCoords = (playerPos: 'bottom' | 'top' | 'left' | 'right', isMobile: boolean) => {
+  if (isMobile) {
+    switch (playerPos) {
+      case 'left': return { x: '-40vw', y: '-25vh' };
+      case 'right': return { x: '40vw', y: '-25vh' };
+      case 'top': return { x: '0', y: '-35vh' };
+      case 'bottom': return { x: '0', y: '35vh' };
+    }
+  } else {
+    switch (playerPos) {
+      case 'left': return { x: '-35vw', y: '0' };
+      case 'right': return { x: '35vw', y: '0' };
+      case 'top': return { x: '0', y: '-35vh' };
+      case 'bottom': return { x: '0', y: '35vh' };
+    }
+  }
+};
+
+// 根據卡牌 ID 計算獨特的初始抖動值與旋轉角度，建立多張牌飛出時的凌亂手感
+const getCardAnimationProperties = (cardId: string, playerPos: 'bottom' | 'top' | 'left' | 'right', isMobile: boolean) => {
+  const coords = getAnimationCoords(playerPos, isMobile);
+  
+  let hash = 0;
+  for (let i = 0; i < cardId.length; i++) {
+    hash = cardId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // 基礎角度：左飛入順時針偏轉、右飛入逆時針、上飛入大偏轉
+  const baseRotateNum = playerPos === 'left' ? -90 : playerPos === 'right' ? 90 : playerPos === 'top' ? 180 : 0;
+  const startRotateVal = baseRotateNum + (hash % 31) - 15; // 引入 -15 到 15 度隨機偏差
+  
+  // 微小座標抖動，防止同一次出的多張牌在空中完全重疊飛入
+  const jitterX = (hash % 21) - 10;
+  const jitterY = ((hash >> 2) % 21) - 10;
+  
+  const startX = coords.x === '0' ? `${jitterX}px` : `calc(${coords.x} + ${jitterX}px)`;
+  const startY = coords.y === '0' ? `${jitterY}px` : `calc(${coords.y} + ${jitterY}px)`;
+  
+  return {
+    startX,
+    startY,
+    startRotate: `${startRotateVal}deg`,
+  };
+};
 
 function RoomContent() {
   const router = useRouter();
@@ -1315,9 +1352,9 @@ function RoomContent() {
           }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "55px 1fr 85px" : "60px 1fr 100px",
+              gridTemplateColumns: isMobile ? "40px 1fr 70px" : "60px 1fr 100px",
               fontWeight: 900,
-              fontSize: isMobile ? "0.78rem" : "0.85rem",
+              fontSize: isMobile ? "0.74rem" : "0.85rem",
               background: "#f3f4f6",
               borderBottom: "3px solid #000",
               padding: isMobile ? "8px 10px" : "10px 12px",
@@ -1336,16 +1373,16 @@ function RoomContent() {
               return (
                 <div key={player.uid} style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "55px 1fr 85px" : "60px 1fr 100px",
+                  gridTemplateColumns: isMobile ? "40px 1fr 70px" : "60px 1fr 100px",
                   fontWeight: 800,
-                  fontSize: isMobile ? "0.78rem" : "0.85rem",
+                  fontSize: isMobile ? "0.74rem" : "0.85rem",
                   borderBottom: index === sortedPlayers.length - 1 ? "none" : "2px solid #000",
                   padding: isMobile ? "8px 10px" : "10px 12px",
                   textAlign: "left",
                   background: isWinner ? "#fef9c3" : "#fff",
                   alignItems: "center"
                 }}>
-                  <div style={{ fontSize: isMobile ? "0.95rem" : "1.1rem", fontWeight: 900 }}>{placementText}</div>
+                  <div style={{ fontSize: isMobile ? "0.85rem" : "1.1rem", fontWeight: 900 }}>{placementText}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                     {player.avatarUrl ? (
                       <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
@@ -1356,7 +1393,7 @@ function RoomContent() {
                     )}
                     <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
                   </div>
-                  <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.88rem" : "1rem" }}>
+                  <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.8rem" : "1rem" }}>
                     🪙 {player.points ?? 0}
                   </div>
                 </div>
@@ -1502,9 +1539,9 @@ function RoomContent() {
           }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "50px 1fr 65px 75px" : "60px 1fr 80px 80px",
+              gridTemplateColumns: isMobile ? "35px 1fr 52px 58px" : "60px 1fr 80px 80px",
               fontWeight: 900,
-              fontSize: isMobile ? "0.78rem" : "0.85rem",
+              fontSize: isMobile ? "0.72rem" : "0.85rem",
               background: "#f3f4f6",
               borderBottom: "3px solid #000",
               padding: isMobile ? "8px 10px" : "10px 12px",
@@ -1532,16 +1569,16 @@ function RoomContent() {
                 return (
                   <div key={pUid} style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "50px 1fr 65px 75px" : "60px 1fr 80px 80px",
+                    gridTemplateColumns: isMobile ? "35px 1fr 52px 58px" : "60px 1fr 80px 80px",
                     fontWeight: 800,
-                    fontSize: isMobile ? "0.78rem" : "0.85rem",
+                    fontSize: isMobile ? "0.72rem" : "0.85rem",
                     borderBottom: index === displayOrder.length - 1 ? "none" : "2px solid #000",
                     padding: isMobile ? "8px 10px" : "10px 12px",
                     textAlign: "left",
                     background: isMe ? "#fef9c3" : "#fff",
                     alignItems: "center"
                   }}>
-                    <div style={{ fontSize: "1.1rem", fontWeight: 900 }}>{placementText}</div>
+                    <div style={{ fontSize: isMobile ? "0.85rem" : "1.1rem", fontWeight: 900 }}>{placementText}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                       {player.avatarUrl ? (
                         <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
@@ -1552,10 +1589,10 @@ function RoomContent() {
                       )}
                       <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
                     </div>
-                    <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900 }}>
+                    <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900, fontSize: isMobile ? "0.75rem" : "inherit" }}>
                       {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
                     </div>
-                    <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900 }}>
+                    <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.75rem" : "inherit" }}>
                       🪙 {player.points ?? 0}
                     </div>
                   </div>
@@ -1726,16 +1763,16 @@ function RoomContent() {
           border-color: #fbbf24 !important;
         }
         .animate-card-appear {
-          animation: cardAppear 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+          animation: cardAppear 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.15) both;
         }
         @keyframes cardAppear {
           0% {
             opacity: 0;
-            transform: scale(1.6) translateY(-25px);
+            transform: translate3d(var(--card-start-x, 0px), var(--card-start-y, -25px), 0) scale(0.35) rotate(var(--card-start-rotate, -45deg)) rotateY(45deg);
           }
           100% {
             opacity: 1;
-            transform: scale(1) translateY(0);
+            transform: translate3d(0, 0, 0) scale(1) rotate(0deg) rotateY(0deg);
           }
         }
         /* ================= 桌面版 (Desktop: >= 901px) ================= */
@@ -2813,22 +2850,35 @@ function RoomContent() {
                 【{room.players[room.lastPlayedUid!]?.nickname}】 出牌
               </span>
               <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full" style={{ perspective: "600px" }}>
-                {room.lastPlayedHand.cards.map((card, idx) => {
-                  const angle = getCardRotateAngle(card.id);
-                  const uniqueKey = `${card.id}-${room.lastPlayedUid}-${room.lastPlayedHand?.keyCard?.id || ""}`;
-                  return (
-                    <div 
-                      key={uniqueKey} 
-                      className="animate-card-appear transform transition-transform hover:scale-105"
-                      style={{ 
-                        transform: `rotate(${angle}deg)`,
-                        animationDelay: `${idx * 55}ms`
-                      }}
-                    >
-                      <PlayingCard card={card} size={tableCardSize} className="playing-card" />
-                    </div>
-                  );
-                })}
+                {(() => {
+                  const lastPlayedPosition: 'bottom' | 'top' | 'left' | 'right' = 
+                    room.lastPlayedUid === uid
+                      ? 'bottom'
+                      : leftPlayer && room.lastPlayedUid === leftPlayer.uid
+                        ? 'left'
+                        : rightPlayer && room.lastPlayedUid === rightPlayer.uid
+                          ? 'right'
+                          : 'top';
+                  
+                  return room.lastPlayedHand.cards.map((card, idx) => {
+                    const animProps = getCardAnimationProperties(card.id, lastPlayedPosition, isMobile);
+                    const uniqueKey = `${card.id}-${room.lastPlayedUid}-${room.lastPlayedHand?.keyCard?.id || ""}`;
+                    return (
+                      <div 
+                        key={uniqueKey} 
+                        className="animate-card-appear transform transition-transform hover:scale-105"
+                        style={{ 
+                          '--card-start-x': animProps.startX,
+                          '--card-start-y': animProps.startY,
+                          '--card-start-rotate': animProps.startRotate,
+                          animationDelay: `${idx * 60}ms`
+                        } as React.CSSProperties}
+                      >
+                        <PlayingCard card={card} size={tableCardSize} className="playing-card" />
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           ) : (

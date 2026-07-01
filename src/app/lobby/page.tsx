@@ -35,6 +35,15 @@ export default function Lobby() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [lastLeaderboardFetchTime, setLastLeaderboardFetchTime] = useState<number>(0);
 
+  // 手機版偵測
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 640);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   useEffect(() => {
     if (!auth) {
       setTimeout(() => setLoading(false), 0);
@@ -673,10 +682,10 @@ export default function Lobby() {
                 {/* 欄位標題 */}
                 <div style={{
                   display: "grid",
-                  gridTemplateColumns: "40px 1fr 80px 80px",
-                  gap: 8,
+                  gridTemplateColumns: isMobile ? "32px 1fr 50px 50px" : "40px 1fr 80px 80px",
+                  gap: isMobile ? 4 : 8,
                   padding: "6px 12px",
-                  fontSize: "0.75rem",
+                  fontSize: isMobile ? "0.68rem" : "0.75rem",
                   fontWeight: 900,
                   color: "#6b7280",
                   borderBottom: "2px solid #000",
@@ -704,8 +713,8 @@ export default function Lobby() {
                         key={entry.uid}
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "40px 1fr 80px 80px",
-                          gap: 8,
+                          gridTemplateColumns: isMobile ? "32px 1fr 50px 50px" : "40px 1fr 80px 80px",
+                          gap: isMobile ? 4 : 8,
                           padding: "10px 12px",
                           borderRadius: 12,
                           border: isSelf ? "3px solid #7c3aed" : "2px solid #e5e7eb",
@@ -715,12 +724,12 @@ export default function Lobby() {
                           boxShadow: isSelf ? "3px 3px 0 #7c3aed" : undefined,
                         }}
                       >
-                        <span style={{ fontSize: "1.1rem", textAlign: "center" }}>{rankEmoji}</span>
-                        <span style={{ fontSize: "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span style={{ fontSize: isMobile ? "0.95rem" : "1.1rem", textAlign: "center" }}>{rankEmoji}</span>
+                        <span style={{ fontSize: isMobile ? "0.82rem" : "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {entry.nickname}{isSelf && <span style={{ fontSize: "0.7rem", color: "#7c3aed", marginLeft: 4 }}>(我)</span>}
                         </span>
-                        <span style={{ textAlign: "center", fontSize: "1rem", color: "#1d4ed8", fontWeight: 900 }}>{entry.totalPoints}</span>
-                        <span style={{ textAlign: "center", fontSize: "1rem", color: "#7c3aed", fontWeight: 900 }}>
+                        <span style={{ textAlign: "center", fontSize: isMobile ? "0.85rem" : "1rem", color: "#1d4ed8", fontWeight: 900 }}>{entry.totalPoints}</span>
+                        <span style={{ textAlign: "center", fontSize: isMobile ? "0.85rem" : "1rem", color: "#7c3aed", fontWeight: 900 }}>
                           {entry.firstPlaceCount > 0 ? `${entry.firstPlaceCount}次` : "-"}
                         </span>
                       </div>
