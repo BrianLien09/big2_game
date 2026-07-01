@@ -23,8 +23,7 @@ export const viewport: Viewport = {
 };
 
 const isProd = process.env.NODE_ENV === 'production';
-const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
-const basePath = (isProd && !isCapacitor) ? '/big2_game' : '';
+const basePath = isProd ? '/big2_game' : '';
 
 export const metadata: Metadata = {
   title: "CardDuel — 線上多人紙牌對戰平台",

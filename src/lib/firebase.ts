@@ -1,9 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, signInAnonymously, signInWithCredential } from 'firebase/auth';
-import { Capacitor } from '@capacitor/core';
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, signInAnonymously } from 'firebase/auth';
 
 // Firebase 前端公開金鑰（NEXT_PUBLIC_ 前綴的環境變數在靜態 APK 編譯時無 server 環境，
 // 會讀不到 .env.local 而導致初始化失敗並卡在連線狀態。
@@ -34,22 +32,10 @@ export const loginWithGoogle = async () => {
   }
   
   try {
-    if (Capacitor.isNativePlatform()) {
-      // 1. 原生平台：調起 Android 系統原生 Google 登入
-      const result = await FirebaseAuthentication.signInWithGoogle();
-      if (!result.credential || !result.credential.idToken) {
-        throw new Error("原生 Google 登入未返回有效憑證或 ID Token。");
-      }
-      // 2. 將原生憑證傳入 Firebase Web SDK 登入
-      const credential = GoogleAuthProvider.credential(result.credential.idToken);
-      const userCredential = await signInWithCredential(auth, credential);
-      return userCredential.user;
-    } else {
-      // 網頁平台：維持原本的 Popup 登入
-      const provider = new GoogleAuthProvider();
-      const userCredential = await signInWithPopup(auth, provider);
-      return userCredential.user;
-    }
+    // 網頁平台：維持原本的 Popup 登入
+    const provider = new GoogleAuthProvider();
+    const userCredential = await signInWithPopup(auth, provider);
+    return userCredential.user;
   } catch (error) {
     console.error("Error signing in with Google:", error);
     throw error;

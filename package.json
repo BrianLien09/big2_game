@@ -5,15 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:cap": "cross-env CAPACITOR_BUILD=true next build && npx cap sync",
     "start": "next start",
     "lint": "eslint",
     "test:rules": "npx tsx scratch/test_firestore_rules.ts",
     "test": "npx tsx scratch/test_thirteen.ts"
   },
   "dependencies": {
-    "@capacitor-firebase/authentication": "^8.3.0",
-    "@capacitor/core": "^8.4.1",
     "clsx": "^2.1.1",
     "firebase": "^12.15.0",
     "lucide-react": "^1.21.0",
@@ -24,15 +21,11 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@capacitor/android": "^8.4.1",
-    "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^8.4.1",
     "@firebase/rules-unit-testing": "^5.0.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "cross-env": "^10.1.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
