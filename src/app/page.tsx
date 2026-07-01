@@ -71,8 +71,13 @@ export default function Home() {
           addToast(`登入成功，歡迎回來 ${savedNickname}！`, "success");
           
           // 檢查是否有特定的導向房間 ID (Deep Link 流程)
+          const redirectSearch = sessionStorage.getItem("redirect_room_search");
           const redirectRoomId = sessionStorage.getItem("redirect_room_id");
-          if (redirectRoomId) {
+          if (redirectSearch) {
+            sessionStorage.removeItem("redirect_room_search");
+            sessionStorage.removeItem("redirect_room_id");
+            router.replace(`/room${redirectSearch}`);
+          } else if (redirectRoomId) {
             sessionStorage.removeItem("redirect_room_id");
             router.replace(`/room?id=${redirectRoomId}`);
           } else {
@@ -98,8 +103,13 @@ export default function Home() {
                 setNickname(cloudName);
                 addToast(`登入成功，已同步您的暱稱 ${cloudName}！`, "success");
                 
+                const redirectSearch = sessionStorage.getItem("redirect_room_search");
                 const redirectRoomId = sessionStorage.getItem("redirect_room_id");
-                if (redirectRoomId) {
+                if (redirectSearch) {
+                  sessionStorage.removeItem("redirect_room_search");
+                  sessionStorage.removeItem("redirect_room_id");
+                  router.replace(`/room${redirectSearch}`);
+                } else if (redirectRoomId) {
                   sessionStorage.removeItem("redirect_room_id");
                   router.replace(`/room?id=${redirectRoomId}`);
                 } else {
@@ -186,8 +196,13 @@ export default function Home() {
     addToast(`暱稱設定成功！歡迎 ${finalName} 進入遊戲。`, "success");
 
     // 檢查是否有暫存的房間 ID
+    const redirectSearch = sessionStorage.getItem("redirect_room_search");
     const redirectRoomId = sessionStorage.getItem("redirect_room_id");
-    if (redirectRoomId) {
+    if (redirectSearch) {
+      sessionStorage.removeItem("redirect_room_search");
+      sessionStorage.removeItem("redirect_room_id");
+      router.push(`/room${redirectSearch}`);
+    } else if (redirectRoomId) {
       sessionStorage.removeItem("redirect_room_id");
       router.push(`/room?id=${redirectRoomId}`);
     } else {

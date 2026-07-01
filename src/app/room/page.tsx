@@ -423,14 +423,24 @@ function RoomContent() {
     observer.observe(handContainerRef.current);
     return () => observer.disconnect();
   }, []);
-  const roomId = searchParams.get("id") || "";
+  const [roomId, setRoomId] = useState<string>("");
 
-  // 如果沒有 roomId，重定向回大廳
   useEffect(() => {
-    if (!roomId) {
-      router.replace("/lobby");
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const rId = params.get("id") || "";
+      if (rId) {
+        setRoomId(rId);
+      } else {
+        const nextId = searchParams.get("id");
+        if (!nextId) {
+          router.replace("/lobby");
+        } else {
+          setRoomId(nextId);
+        }
+      }
     }
-  }, [roomId, router]);
+  }, [searchParams, router]);
 
   // 用來避免重複彈出已加入/已創建房間的通知
   const hasNotifiedRef = useRef(false);
@@ -444,7 +454,10 @@ function RoomContent() {
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        // 未登入 Google，將當前 roomId 暫存在 sessionStorage 內，以便登入並取暱稱後自動跳轉回來
+        // 未登入 Google，將當前 roomId 與搜尋參數暫存在 sessionStorage 內，以便登入後自動跳轉回來
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("redirect_room_search", window.location.search);
+        }
         sessionStorage.setItem("redirect_room_id", roomId);
         router.replace("/");
         return;
@@ -453,6 +466,9 @@ function RoomContent() {
       // 已登入，但本地沒有暱稱，也必須先回首頁去設定暱稱
       const savedNickname = localStorage.getItem("big2_nickname");
       if (!savedNickname && !nickname) {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("redirect_room_search", window.location.search);
+        }
         sessionStorage.setItem("redirect_room_id", roomId);
         router.replace("/");
         return;
@@ -475,15 +491,23 @@ function RoomContent() {
         } catch (e) {
           const err = e as Error;
           if (err.message === "房間不存在") {
-            const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
-            const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
-            const gameModeParam = (searchParams.get("gameMode") === 'BRIDGE' ? 'BRIDGE' : searchParams.get("gameMode") === 'THIRTEEN' ? 'THIRTEEN' : 'BIG2') as GameMode;
-            try {
-              await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, gameModeParam);
-              isCreator = true;
-            } catch (createErr) {
-              const cErr = createErr as Error;
-              setError(cErr.message || "建立房間失敗");
+            // 只有帶有 gameMode 參數的建立者（房主）才允許在房間不存在時創建房間，防止普通玩家意外覆寫
+            const gameModeParam = searchParams.get("gameMode");
+            if (gameModeParam) {
+              const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
+              const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
+              const resolvedMode = (gameModeParam === 'BRIDGE' ? 'BRIDGE' : gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : 'BIG2') as GameMode;
+              try {
+                await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode);
+                isCreator = true;
+              } catch (createErr) {
+                const cErr = createErr as Error;
+                setError(cErr.message || "建立房間失敗");
+                return;
+              }
+            } else {
+              // 普通玩家，提示房間不存在，不允許自動創建
+              setError("房間不存在或已過期");
               return;
             }
           } else {
@@ -503,22 +527,22 @@ function RoomContent() {
       unsubscribe = subscribeToRoom(roomId, (roomData) => {
         if (roomData) {
           // 監聽是否有其他玩家新加入
-          if (prevPlayerOrder.current.length > 0) {
+          if (prevPlayerOrder.current.length > 0 && roomData.playerOrder) {
             const newUids = roomData.playerOrder.filter(
               (pUid) => !prevPlayerOrder.current.includes(pUid)
             );
             newUids.forEach((pUid) => {
               if (pUid !== user.uid) {
-                const playerNickname = roomData.players[pUid]?.nickname || "玩家";
+                const playerNickname = roomData.players?.[pUid]?.nickname || "玩家";
                 addToast(`玩家 【${playerNickname}】 已加入對局！`, "info");
               }
             });
           }
-          prevPlayerOrder.current = roomData.playerOrder;
+          prevPlayerOrder.current = roomData.playerOrder || [];
           setRoom(roomData);
 
           // 只要自己在房間內且對局未徹底結束，就紀錄房號以便斷線重連
-          if (user.uid && roomData.players[user.uid] && roomData.status !== "gameOver") {
+          if (user.uid && roomData.players?.[user.uid] && roomData.status !== "gameOver") {
             localStorage.setItem("last_joined_room_id", roomId);
           } else {
             localStorage.removeItem("last_joined_room_id");
@@ -622,7 +646,7 @@ function RoomContent() {
     }
   }, [room?.status, room?.gameMode, room?.thirteenState?.showLeaderboard]);
 
-  const currentMe = uid && room?.players[uid] ? room.players[uid] : null;
+   const currentMe = uid && room?.players?.[uid] ? room.players[uid] : null;
   const hasCurrentMe = !!currentMe;
   const currentMeIsBot = currentMe?.isBot ?? false;
   const roomStatus = room?.status;
@@ -633,14 +657,14 @@ function RoomContent() {
     if (!roomTurnUid || !room) return null;
     
     // 正常回合：當前出牌者是 Bot
-    const isBot = room.players[roomTurnUid]?.isBot ?? false;
+    const isBot = room.players?.[roomTurnUid]?.isBot ?? false;
     if (isBot) return roomTurnUid;
     
     // 橋牌夢家回合：當前是夢家回合，且莊家是 Bot，由莊家代出
     if (room.gameMode === "BRIDGE" && room.bridgeBidding?.finalContract) {
       const contract = room.bridgeBidding.finalContract;
       if (roomTurnUid === contract.dummyUid) {
-        const declarer = room.players[contract.declarerUid];
+        const declarer = room.players?.[contract.declarerUid];
         if (declarer && declarer.isBot) {
           return contract.declarerUid;
         }
@@ -711,7 +735,7 @@ function RoomContent() {
 
   // ---- 操作函數 ----
   const handleToggleReady = async () => {
-    if (!uid || !room?.players[uid]) return;
+    if (!uid || !room?.players?.[uid]) return;
     try {
       await toggleReady(roomId, uid, !room.players[uid].isReady);
     } catch (err) {
@@ -749,8 +773,8 @@ function RoomContent() {
   };
 
   const handleStart = async () => {
-    if (!uid || !room?.players[uid]?.isHost) return;
-    const allReady = Object.values(room.players).every(p => p.isReady);
+    if (!uid || !room?.players?.[uid]?.isHost) return;
+    const allReady = Object.values(room.players || {}).every(p => p.isReady);
     if (!allReady && room.playerOrder.length > 1) {
       addToast("還有玩家未準備，無法開始遊戲！", "warning");
       return;
@@ -812,6 +836,18 @@ function RoomContent() {
       console.error("複製失敗：", err);
       addToast("複製失敗，請手動複製", "error", 3000);
     }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (typeof window === "undefined" || !roomId || !uid) return;
+    const inviterName = room?.players[uid]?.nickname || "你的朋友";
+    const gameModeLabel = room?.gameMode === 'BRIDGE' ? '橋牌' : room?.gameMode === 'THIRTEEN' ? '十三支' : '大老二';
+    const inviteText = `【CardDuel 紙牌對戰】
+${inviterName} 邀請你加入 ${gameModeLabel} 房間！
+房間代碼：${roomId}
+點擊連結立即加入對局：
+${window.location.origin}${window.location.pathname}?id=${roomId}`;
+    copyToClipboard(inviteText, "link");
   };
 
   const handleToggleCard = (card: Card) => {
@@ -1075,7 +1111,7 @@ function RoomContent() {
             <button className="comic-btn room-copy-btn" style={{ flex: 1, background: copied === "id" ? "#dcfce7" : "#fff", fontSize: "0.85rem", padding: "8px 0" }} onClick={() => copyToClipboard(roomId, "id")}>
               {copied === "id" ? "✓ 已複製 ID" : "📋 複製 ID"}
             </button>
-            <button className="comic-btn room-copy-btn" style={{ flex: 1, background: copied === "link" ? "#dcfce7" : "#fff", fontSize: "0.85rem", padding: "8px 0" }} onClick={() => copyToClipboard(window.location.href, "link")}>
+            <button className="comic-btn room-copy-btn" style={{ flex: 1, background: copied === "link" ? "#dcfce7" : "#fff", fontSize: "0.85rem", padding: "8px 0" }} onClick={handleCopyInviteLink}>
               {copied === "link" ? "✓ 已複製" : "🔗 複製鏈接"}
             </button>
           </div>
@@ -1189,7 +1225,7 @@ function RoomContent() {
                     <button className="comic-btn" style={{ height: 48, background: "#fff", fontSize: "15px", fontWeight: 700, borderWidth: "3px", borderColor: "#111", borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", cursor: "pointer", padding: 0 }} onClick={() => copyToClipboard(roomId, "id")}>
                       {copied === "id" ? "✓ 已複製" : <><span style={{ color: "#69568f", fontSize: "15px" }}>📋</span> 複製房號</>}
                     </button>
-                    <button className="comic-btn" style={{ height: 48, background: "#fff", fontSize: "15px", fontWeight: 700, borderWidth: "3px", borderColor: "#111", borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", cursor: "pointer", padding: 0 }} onClick={() => copyToClipboard(window.location.href, "link")}>
+                    <button className="comic-btn" style={{ height: 48, background: "#fff", fontSize: "15px", fontWeight: 700, borderWidth: "3px", borderColor: "#111", borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", cursor: "pointer", padding: 0 }} onClick={handleCopyInviteLink}>
                       {copied === "link" ? "✓ 已複製" : <><span style={{ color: "#69568f", fontSize: "15px" }}>🔗</span> 複製連結</>}
                     </button>
                   </div>

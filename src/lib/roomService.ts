@@ -109,6 +109,7 @@ export function sanitizeRoomState(room: RoomState): RoomState {
   if (room) {
     if (!room.playerOrder) room.playerOrder = [];
     if (!room.finishedOrder) room.finishedOrder = [];
+    if (!room.players) room.players = {};
     if (room.players) {
       Object.keys(room.players).forEach(uid => {
         if (!room.players[uid].cards) {
