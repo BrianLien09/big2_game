@@ -112,7 +112,7 @@ export function sanitizeRoomState(room: RoomState): RoomState {
     if (!room.players) room.players = {};
     if (room.players) {
       Object.keys(room.players).forEach(uid => {
-        if (!room.players[uid].cards) {
+        if (room.players[uid] && !room.players[uid].cards) {
           room.players[uid].cards = [];
         }
       });
@@ -227,7 +227,7 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
   
   const result = await runTransaction(roomRef, (currentData) => {
     // 本地快取尚未就緒時，等待 RTDB 以伺服器值重試（不 abort）
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     
     const roomData = sanitizeRoomState(currentData as RoomState);
     
@@ -382,66 +382,66 @@ export const leaveRoom = async (roomId: string, uid: string) => {
   if (!db) return;
   const roomRef = ref(db, 'rooms/' + roomId);
 
-  // 先確認房間是否存在，避免 RTDB Transaction 在無本地快取時錯誤 abort
-  const existsSnap = await get(roomRef);
-  if (!existsSnap.exists()) return;
+  const snap = await get(roomRef);
+  if (!snap.exists()) return;
 
-  await runTransaction(roomRef, (currentData) => {
-    // 本地快取尚未就緒時，等待 RTDB 以伺服器值重試（不 abort）
-    if (currentData === null) return currentData;
+  const roomData = sanitizeRoomState(snap.val() as RoomState);
 
-    const roomData = sanitizeRoomState(currentData as RoomState);
-    if (!roomData.players || !roomData.players[uid]) {
-      // 玩家不在此房間內，直接結束
-      return roomData;
+  // 玩家不在此房間內，直接跳過
+  if (!roomData.players || !roomData.players[uid]) return;
+
+  delete roomData.players[uid];
+  roomData.playerOrder = (roomData.playerOrder || []).filter(id => id !== uid);
+
+  // 如果沒有真人玩家了，直接徹底刪除整個房間節點
+  const hasRealPlayers = roomData.playerOrder.some(id => roomData.players[id] && !roomData.players[id].isBot);
+  if (!hasRealPlayers) {
+    await set(roomRef, null);
+    return;
+  }
+
+  // 房主轉移：新房主只能從剩餘的真人玩家中選擇
+  const nextHostUid = roomData.playerOrder.find(id => roomData.players[id] && !roomData.players[id].isBot);
+
+  // 建立要寫入的 update patch（只更新必要的路徑，相對於 roomRef）
+  const updates: Record<string, unknown> = {
+    [`playerOrder`]: roomData.playerOrder,
+    [`updatedAt`]: Date.now(),
+    [`expiresAt`]: Date.now() + ROOM_EXPIRE_MS,
+    // 刪除退出者的玩家資料
+    [`players/${uid}`]: null,
+  };
+
+  // 更新剩餘玩家的 isHost 狀態
+  roomData.playerOrder.forEach((id) => {
+    if (roomData.players[id]) {
+      updates[`players/${id}/isHost`] = (id === nextHostUid);
     }
-
-    delete roomData.players[uid];
-    roomData.playerOrder = (roomData.playerOrder || []).filter(id => id !== uid);
-
-    // 如果沒有真人玩家了，直接徹底刪除房間 (回傳 null)
-    const hasRealPlayers = roomData.playerOrder.some(id => roomData.players[id] && !roomData.players[id].isBot);
-    if (!hasRealPlayers) {
-      return null;
-    }
-
-    // 房主轉移：新房主只能從剩餘的真人玩家中選擇
-    const nextHostUid = roomData.playerOrder.find(id => roomData.players[id] && !roomData.players[id].isBot);
-
-    // 確保其他玩家的 isHost 都是 false，只有選中的真人是房主
-    roomData.playerOrder.forEach((id) => {
-      if (roomData.players[id]) {
-        roomData.players[id].isHost = (id === nextHostUid);
-      }
-    });
-
-    roomData.updatedAt = Date.now();
-    roomData.expiresAt = Date.now() + ROOM_EXPIRE_MS;
-
-    // 處理遊戲進行中玩家退出的情況
-    if (roomData.status === 'playing') {
-      const currentFinishedOrder = roomData.finishedOrder || [];
-      const newFinishedOrder = [...currentFinishedOrder];
-
-      // 重新計算剩下的 active 玩家
-      const activeRemaining = getActivePlayerUids(roomData.playerOrder, roomData.players);
-
-      if (activeRemaining.length > 1) {
-        // 遊戲繼續
-        // 1. 如果目前 turnUid 是退出者，將回合交給下一位活躍的玩家
-        if (roomData.turnUid === uid) {
-          const nextUid = getNextActiveUid(roomData.playerOrder, roomData.players, uid);
-          roomData.turnUid = nextUid;
-        }
-      } else {
-        // 剩下一位或零位 active 玩家，立即結算
-        const finalFinishedOrder = getFinalFinishedOrder(roomData, newFinishedOrder, roomData.players);
-        buildRoundSettlementWithPlayers(roomData, finalFinishedOrder, roomData.players);
-      }
-    }
-
-    return roomData;
   });
+
+  // 處理遊戲進行中玩家退出的情況
+  if (roomData.status === 'playing') {
+    const currentFinishedOrder = roomData.finishedOrder || [];
+    const newFinishedOrder = [...currentFinishedOrder];
+    const activeRemaining = getActivePlayerUids(roomData.playerOrder, roomData.players);
+
+    if (activeRemaining.length > 1) {
+      // 遊戲繼續：如果目前 turnUid 是退出者，將回合交給下一位
+      if (roomData.turnUid === uid) {
+        const nextUid = getNextActiveUid(roomData.playerOrder, roomData.players, uid);
+        updates[`turnUid`] = nextUid;
+      }
+    } else {
+      // 剩下一位或零位 active 玩家，立即結算（需更新整個 roomData 後覆寫）
+      const finalFinishedOrder = getFinalFinishedOrder(roomData, newFinishedOrder, roomData.players);
+      buildRoundSettlementWithPlayers(roomData, finalFinishedOrder, roomData.players);
+      // 結算需要更新的欄位較多，改用 set 覆寫整個房間
+      await set(roomRef, roomData);
+      return;
+    }
+  }
+
+  await update(roomRef, updates);
 };
 
 // 訂閱房間狀態
@@ -617,7 +617,7 @@ export const addBot = async (
   let addedBotUid = "";
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
     
     // 1. 檢查呼叫者是否存在且為房主
@@ -706,7 +706,7 @@ export const removeBot = async (
   const roomRef = ref(db, 'rooms/' + roomId);
   
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     // 1. 檢查呼叫者是否為房主
@@ -998,8 +998,15 @@ export const commitPlayerPlay = async (
 ): Promise<void> => {
   if (!db) throw new Error("Firebase DB not initialized");
   const roomRef = ref(db, 'rooms/' + roomId);
+
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
     commitPlayerPlayTx(roomData, playerUid, cards);
     return roomData;
@@ -1028,8 +1035,15 @@ export const commitPlayerPass = async (
 ): Promise<void> => {
   if (!db) throw new Error("Firebase DB not initialized");
   const roomRef = ref(db, 'rooms/' + roomId);
+
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
     commitPlayerPassTx(roomData, playerUid);
     return roomData;
@@ -1062,10 +1076,17 @@ export const executeBotTurn = async (
 ): Promise<BotTurnResult> => {
   if (!db) throw new Error("Firebase DB not initialized");
   const roomRef = ref(db, 'rooms/' + roomId);
+
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    return 'skipped';
+  }
+
   let turnResult: BotTurnResult = 'skipped';
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     // 一、重新讀取最新房間，並確認狀態與回合
@@ -1358,8 +1379,15 @@ export const updateTargetPoints = async (roomId: string, targetPoints: number) =
 export const restartWholeGame = async (roomId: string) => {
   if (!db) return;
   const roomRef = ref(db, 'rooms/' + roomId);
+
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
     
     roomData.status = 'waiting';
@@ -1479,8 +1507,14 @@ export const submitBridgeBid = async (
   if (!db) throw new Error('Firebase DB not initialized');
   const roomRef = ref(db, 'rooms/' + roomId);
 
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
@@ -1561,8 +1595,14 @@ export const submitBridgeCard = async (
   if (!db) throw new Error('Firebase DB not initialized');
   const roomRef = ref(db, 'rooms/' + roomId);
 
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
@@ -1773,8 +1813,14 @@ export const startThirteenGame = async (roomId: string): Promise<void> => {
   if (!db) return;
   const roomRef = ref(db, 'rooms/' + roomId);
 
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
 
     const roomData = sanitizeRoomState(currentData as RoomState);
     const order = [...(roomData.playerOrder || [])];
@@ -1913,8 +1959,14 @@ export const confirmThirteenArrangement = async (
   if (!db) throw new Error('Firebase DB not initialized');
   const roomRef = ref(db, 'rooms/' + roomId);
 
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
 
     const roomData = sanitizeRoomState(currentData as RoomState);
     if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
@@ -2076,8 +2128,14 @@ export const resetThirteenRound = async (roomId: string): Promise<void> => {
   if (!db) return;
   const roomRef = ref(db, 'rooms/' + roomId);
 
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return currentData;
+    if (currentData === null) return {} as any;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     roomData.status = 'waiting';

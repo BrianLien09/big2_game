@@ -477,53 +477,10 @@ function RoomContent() {
       const finalNickname = savedNickname || nickname;
       setUid(user.uid);
 
-      if (!hasNotifiedRef.current) {
-        let isCreator = false;
-        let hasJoinedSuccessfully = false;
-        try {
-          // 在加入或建立房間前先觸發清理
-          await cleanupExpiredRoomsIfNeeded();
+      // 用於防止加入或創建房間時，因連線尚未就緒的 null 值或交易中間態的 null 值誤判為「房間已解散」
+      const isJoiningRef = { current: true };
 
-          const isNewJoin = await joinRoom(roomId, user.uid, finalNickname, user.photoURL || "");
-          if (isNewJoin) {
-            hasJoinedSuccessfully = true;
-          }
-        } catch (e) {
-          const err = e as Error;
-          if (err.message === "房間不存在") {
-            // 只有帶有 gameMode 參數的建立者（房主）才允許在房間不存在時創建房間，防止普通玩家意外覆寫
-            const gameModeParam = searchParams.get("gameMode");
-            if (gameModeParam) {
-              const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
-              const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
-              const resolvedMode = (gameModeParam === 'BRIDGE' ? 'BRIDGE' : gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : 'BIG2') as GameMode;
-              try {
-                await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode);
-                isCreator = true;
-              } catch (createErr) {
-                const cErr = createErr as Error;
-                setError(cErr.message || "建立房間失敗");
-                return;
-              }
-            } else {
-              // 普通玩家，提示房間不存在，不允許自動創建
-              setError("房間不存在或已過期");
-              return;
-            }
-          } else {
-            setError(err.message);
-            return;
-          }
-        }
-
-        if (isCreator) {
-          addToast("成功創建房間！房主已自動準備。", "success");
-        } else if (hasJoinedSuccessfully) {
-          addToast("已成功加入對局房間！", "success");
-        }
-        hasNotifiedRef.current = true;
-      }
-
+      // 1. 先註冊實時訂閱，確保在執行 joinRoom/createRoom 的交易之前，本地快取已被建立並更新
       unsubscribe = subscribeToRoom(roomId, (roomData) => {
         if (roomData) {
           // 監聽是否有其他玩家新加入
@@ -548,10 +505,65 @@ function RoomContent() {
             localStorage.removeItem("last_joined_room_id");
           }
         } else {
-          setError("房間已解散");
-          localStorage.removeItem("last_joined_room_id");
+          // 只有在已完成初始加入後接收到 null，才視為解散
+          if (!isJoiningRef.current) {
+            setError("房間已解散");
+            localStorage.removeItem("last_joined_room_id");
+          }
         }
       });
+
+      // 2. 隨後執行加入或建立房間的操作
+      if (!hasNotifiedRef.current) {
+        let isCreator = false;
+        let hasJoinedSuccessfully = false;
+        try {
+          // 在加入或建立房間前先觸發清理
+          await cleanupExpiredRoomsIfNeeded();
+
+          const isNewJoin = await joinRoom(roomId, user.uid, finalNickname, user.photoURL || "");
+          if (isNewJoin) {
+            hasJoinedSuccessfully = true;
+          }
+          // 成功加入房間後，才解除加入狀態
+          isJoiningRef.current = false;
+        } catch (e) {
+          const err = e as Error;
+          if (err.message === "房間不存在") {
+            // 只有帶有 gameMode 參數的建立者（房主）才允許在房間不存在時創建房間，防止普通玩家意外覆寫
+            const gameModeParam = searchParams.get("gameMode");
+            if (gameModeParam) {
+              const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
+              const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
+              const resolvedMode = (gameModeParam === 'BRIDGE' ? 'BRIDGE' : gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : 'BIG2') as GameMode;
+              try {
+                await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode);
+                isCreator = true;
+                // 成功創建房間後，才解除加入狀態
+                isJoiningRef.current = false;
+              } catch (createErr) {
+                const cErr = createErr as Error;
+                setError(cErr.message || "建立房間失敗");
+                return;
+              }
+            } else {
+              // 普通玩家，提示房間不存在，不允許自動創建
+              setError("房間不存在或已過期");
+              return;
+            }
+          } else {
+            setError(err.message);
+            return;
+          }
+        }
+
+        if (isCreator) {
+          addToast("成功創建房間！房主已自動準備。", "success");
+        } else if (hasJoinedSuccessfully) {
+          addToast("已成功加入對局房間！", "success");
+        }
+        hasNotifiedRef.current = true;
+      }
     });
 
     return () => {
@@ -735,7 +747,14 @@ function RoomContent() {
 
   // ---- 操作函數 ----
   const handleToggleReady = async () => {
-    if (!uid || !room?.players?.[uid]) return;
+    if (!uid) {
+      addToast("錯誤：玩家 ID 尚未載入，請重新整理", "error");
+      return;
+    }
+    if (!room?.players?.[uid]) {
+      addToast(`錯誤：在房間中找不到您的玩家資料 (UID: ${uid.substring(0, 6)})`, "error");
+      return;
+    }
     try {
       await toggleReady(roomId, uid, !room.players[uid].isReady);
     } catch (err) {
@@ -920,6 +939,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
       <>
         {room.playerOrder.map(pUid => {
           const p = room.players[pUid];
+          if (!p) return null;
           const isMe = pUid === uid;
           return (
             <div key={pUid} style={{
@@ -947,7 +967,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 {p.avatarUrl ? (
                   <img src={getAssetPath(p.avatarUrl)} alt="avatar" className="w-full h-full object-cover" />
                 ) : (
-                  p.nickname.charAt(0).toUpperCase()
+                  (p.nickname || "?")?.[0]?.toUpperCase()
                 )}
               </div>
               <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: compact ? 3 : 5 }}>
@@ -1098,7 +1118,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   {room.playerOrder.length}/4 玩家
                 </div>
                 <div style={{ background: "#dcfce7", border: "2px solid #000", borderRadius: 999, padding: "2px 10px", fontWeight: 700, fontSize: "0.72rem", boxShadow: "1px 1px 0 #000", whiteSpace: "nowrap", minWidth: 72, textAlign: "center" }}>
-                  {room.playerOrder.filter(pUid => room.players[pUid].isReady).length}/{room.playerOrder.length} 已準備
+                  {room.playerOrder.filter(pUid => room.players[pUid]?.isReady).length}/{room.playerOrder.length} 已準備
                 </div>
               </div>
               <button className="comic-btn" style={{ padding: "6px 12px", fontSize: "0.8rem", background: "#fff", color: "#6b7280", flexShrink: 0, whiteSpace: "nowrap" }} onClick={handleLeaveRoom}>✕ 退出</button>
@@ -1215,7 +1235,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     {room.playerOrder.length}/4 玩家
                   </div>
                   <div style={{ height: 38, flex: 1, background: "#dcfce7", border: "3px solid #111", borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.8rem" }}>
-                    {room.playerOrder.filter(pUid => room.players[pUid].isReady).length}/{room.playerOrder.length} 已準備
+                    {room.playerOrder.filter(pUid => room.players[pUid]?.isReady).length}/{room.playerOrder.length} 已準備
                   </div>
                 </div>
 
@@ -1323,8 +1343,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   const isThirteenGameOverShowLeaderboard = room.gameMode === "THIRTEEN" && (room.thirteenState?.showLeaderboard ?? false);
   if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard)) {
     const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15);
-    const reachedPlayers = Object.values(room.players).filter(p => (p.points ?? 0) >= target);
-    const sortedPlayers = [...Object.values(room.players)].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+    const reachedPlayers = Object.values(room.players).filter(p => p && (p.points ?? 0) >= target);
+    const sortedPlayers = [...Object.values(room.players)].filter(p => p !== null && p !== undefined).sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
     const isMultiWinner = reachedPlayers.length > 1;
     
     return (
@@ -2790,7 +2810,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`}
                 style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
               >
-                {topPlayer.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                {((topPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
               </div>
             )}
             <div 
@@ -2847,7 +2867,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}
                   style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem" }}
                 >
-                  {leftPlayer.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                  {((leftPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
                 </div>
               )}
               <div 
@@ -2956,7 +2976,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}
                   style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem" }}
                 >
-                  {rightPlayer.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                  {((rightPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
                 </div>
               )}
               <div 
@@ -3034,7 +3054,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     className="self-avatar"
                     style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1rem", backgroundColor: "#f3f4f6", width: 40, height: 40, borderRadius: "50%", border: "2px solid #000" }}
                   >
-                    {me.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                    {((me.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
                   </div>
                 )}
                 <span className="self-name comic-badge" style={{ fontSize: "0.9rem" }}>{me.nickname}</span>
@@ -3083,7 +3103,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     className="self-avatar"
                     style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
                   >
-                    {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                    {((me?.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
                   </div>
                 )}
                 <span className="self-name comic-badge">{me?.nickname}</span>
@@ -3146,7 +3166,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     className="self-avatar"
                     style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
                   >
-                    {me?.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
+                    {((me?.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
                   </div>
                 )}
                 <span className="self-name comic-badge">{me?.nickname}</span>
