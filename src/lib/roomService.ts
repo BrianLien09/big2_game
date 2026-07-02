@@ -215,10 +215,19 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
   if (!db) throw new Error("Firebase DB not initialized");
   
   const roomRef = ref(db, 'rooms/' + roomId);
+
+  // 先用 get() 確認房間是否真實存在，避免 RTDB Transaction 第一次調用
+  // currentData 為 null（本地無快取）時錯誤 abort 並被誤判為「房間不存在」
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
   let isNewJoin = false;
   
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return; // 讓 RTDB 在取得伺服器最新值後再次調用
+    // 本地快取尚未就緒時，等待 RTDB 以伺服器值重試（不 abort）
+    if (currentData === null) return currentData;
     
     const roomData = sanitizeRoomState(currentData as RoomState);
     
@@ -265,9 +274,6 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
   });
   
   if (!result.committed) {
-    if (result.snapshot && !result.snapshot.exists()) {
-      throw new Error("房間不存在");
-    }
     throw new Error("更新失敗");
   }
   
@@ -376,8 +382,13 @@ export const leaveRoom = async (roomId: string, uid: string) => {
   if (!db) return;
   const roomRef = ref(db, 'rooms/' + roomId);
 
+  // 先確認房間是否存在，避免 RTDB Transaction 在無本地快取時錯誤 abort
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) return;
+
   await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return; // 房間不存在則直接結束
+    // 本地快取尚未就緒時，等待 RTDB 以伺服器值重試（不 abort）
+    if (currentData === null) return currentData;
 
     const roomData = sanitizeRoomState(currentData as RoomState);
     if (!roomData.players || !roomData.players[uid]) {
@@ -606,7 +617,7 @@ export const addBot = async (
   let addedBotUid = "";
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
     
     // 1. 檢查呼叫者是否存在且為房主
@@ -695,7 +706,7 @@ export const removeBot = async (
   const roomRef = ref(db, 'rooms/' + roomId);
   
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     // 1. 檢查呼叫者是否為房主
@@ -988,7 +999,7 @@ export const commitPlayerPlay = async (
   if (!db) throw new Error("Firebase DB not initialized");
   const roomRef = ref(db, 'rooms/' + roomId);
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
     commitPlayerPlayTx(roomData, playerUid, cards);
     return roomData;
@@ -1018,7 +1029,7 @@ export const commitPlayerPass = async (
   if (!db) throw new Error("Firebase DB not initialized");
   const roomRef = ref(db, 'rooms/' + roomId);
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
     commitPlayerPassTx(roomData, playerUid);
     return roomData;
@@ -1054,7 +1065,7 @@ export const executeBotTurn = async (
   let turnResult: BotTurnResult = 'skipped';
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     // 一、重新讀取最新房間，並確認狀態與回合
@@ -1348,7 +1359,7 @@ export const restartWholeGame = async (roomId: string) => {
   if (!db) return;
   const roomRef = ref(db, 'rooms/' + roomId);
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
     
     roomData.status = 'waiting';
@@ -1469,7 +1480,7 @@ export const submitBridgeBid = async (
   const roomRef = ref(db, 'rooms/' + roomId);
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
@@ -1551,7 +1562,7 @@ export const submitBridgeCard = async (
   const roomRef = ref(db, 'rooms/' + roomId);
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
@@ -1763,7 +1774,7 @@ export const startThirteenGame = async (roomId: string): Promise<void> => {
   const roomRef = ref(db, 'rooms/' + roomId);
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
 
     const roomData = sanitizeRoomState(currentData as RoomState);
     const order = [...(roomData.playerOrder || [])];
@@ -1903,7 +1914,7 @@ export const confirmThirteenArrangement = async (
   const roomRef = ref(db, 'rooms/' + roomId);
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
 
     const roomData = sanitizeRoomState(currentData as RoomState);
     if (roomData.status !== 'playing') throw new Error('遊戲尚未開始或已結束');
@@ -2066,7 +2077,7 @@ export const resetThirteenRound = async (roomId: string): Promise<void> => {
   const roomRef = ref(db, 'rooms/' + roomId);
 
   const result = await runTransaction(roomRef, (currentData) => {
-    if (currentData === null) return;
+    if (currentData === null) return currentData;
     const roomData = sanitizeRoomState(currentData as RoomState);
 
     roomData.status = 'waiting';
