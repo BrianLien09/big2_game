@@ -517,9 +517,9 @@ function RoomContent() {
                 // 標記已更新，防止重複觸發
                 localStorage.setItem(cacheKey, "true");
                 
-                // 判定贏家：取得所有真人玩家的積分，若自己的積分等於最高積分，則是贏家
-                const realPlayers = Object.values(roomData.players).filter(p => !p.isBot);
-                const maxPoints = Math.max(...realPlayers.map(p => p.points ?? 0));
+                // 判定贏家：必須與包含人機 (Bot) 在內的所有玩家比對最高分，人機贏了真人就不能算冠軍
+                const allPlayers = Object.values(roomData.players);
+                const maxPoints = Math.max(...allPlayers.map(p => p.points ?? 0));
                 const isWinner = (mePlayer.points ?? 0) === maxPoints;
 
                 console.log(`[Leaderboard] 遊戲結束，玩家 ${mePlayer.nickname} 自動更新排行榜。積分: ${mePlayer.points}, 是否奪冠: ${isWinner}`);
