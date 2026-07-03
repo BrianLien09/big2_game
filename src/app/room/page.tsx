@@ -8,7 +8,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
 import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound } from "@/lib/roomService";
 import { PlayingCard } from "@/components/ui/Card";
-import { ref, update } from "firebase/database";
+import { ref, update, onDisconnect } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { Card, getCardName } from "@/lib/big2Logic";
 import { evaluateThirteenHand, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
@@ -583,6 +583,79 @@ function RoomContent() {
     };
   }, [roomId, nickname, router, searchParams, addToast]);
 
+  // 動態註冊與取消 Firebase 離線狀態監聽 (onDisconnect)
+  useEffect(() => {
+    if (!db || !roomId || !uid || !room || !room.players || !room.players[uid]) return;
+
+    const playerOnlineRef = ref(db, `rooms/${roomId}/players/${uid}/isOnline`);
+    const roomRef = ref(db, `rooms/${roomId}`);
+
+    // 先取消舊有的設定
+    onDisconnect(playerOnlineRef).cancel();
+    onDisconnect(roomRef).cancel();
+
+    if (room.status !== "waiting") {
+      // 遊戲進行中：斷線時只設為離線 (isOnline = false)
+      onDisconnect(playerOnlineRef).set(false);
+    } else {
+      // 等待大廳中：
+      // 檢查除了自己外是否還有其他真人玩家
+      const otherRealPlayers = Object.values(room.players).filter(
+        p => p.uid !== uid && !p.isBot
+      );
+      if (otherRealPlayers.length === 0) {
+        // 如果沒有其他真人玩家，表示我是最後一個真人。斷線時直接刪房以省資源。
+        onDisconnect(roomRef).remove();
+      } else {
+        // 還有其他真人在，只將自己設為離線
+        onDisconnect(playerOnlineRef).set(false);
+      }
+    }
+  }, [roomId, uid, db, room?.status, room?.players ? Object.keys(room.players).length : 0]);
+
+  // 當偵測到大廳有其他真人玩家斷線時，執行代為踢出與房主轉移
+  useEffect(() => {
+    if (!db || !roomId || !uid || !room || room.status !== "waiting" || !room.players || !room.players[uid]) return;
+
+    // 找出所有已離線 (isOnline === false) 且不是 Bot 的真人玩家
+    const offlineRealPlayers = Object.values(room.players).filter(
+      p => p.isOnline === false && !p.isBot
+    );
+
+    if (offlineRealPlayers.length === 0) return;
+
+    const me = room.players[uid];
+
+    // 情況 1：如果有普通玩家離線，且我是房主，由我代為踢除
+    if (me.isHost) {
+      offlineRealPlayers.forEach(p => {
+        if (!p.isHost) {
+          console.log(`[Presence] 房主自動代踢離線普通玩家: ${p.nickname} (UID: ${p.uid})`);
+          leaveRoom(roomId, p.uid).catch(err => {
+            console.error("代踢失敗:", err);
+          });
+        }
+      });
+    }
+
+    // 情況 2：如果是房主離線了，需要轉移房主
+    // 為了防止多個在線玩家同時交易，只有「目前在線且 uid 排序最小的真人玩家」來發起
+    const offlineHost = offlineRealPlayers.find(p => p.isHost);
+    if (offlineHost) {
+      const activeRealPlayers = Object.values(room.players).filter(
+        p => p.isOnline !== false && !p.isBot
+      );
+      const sortedActiveUids = activeRealPlayers.map(p => p.uid).sort();
+      
+      if (sortedActiveUids.length > 0 && sortedActiveUids[0] === uid) {
+        console.log(`[Presence] 代理領袖代踢離線房主: ${offlineHost.nickname}，觸發房主移交`);
+        leaveRoom(roomId, offlineHost.uid).catch(err => {
+          console.error("代踢房主失敗:", err);
+        });
+      }
+    }
+  }, [roomId, uid, db, room]);
+
   // 監聽出牌與 Pass 狀態變化並播放對應音效
   const isFirstMountRef = useRef(true);
   const prevLastPlayedKey = useRef<string | null>(null);
@@ -831,6 +904,21 @@ function RoomContent() {
   const handleLeaveRoom = async () => {
     if (!uid) return;
     localStorage.removeItem("last_joined_room_id");
+    
+    // 退房前先主動取消 onDisconnect 監聽，防止寫入 isOnline = false 髒資料
+    if (db && roomId) {
+      const playerOnlineRef = ref(db, `rooms/${roomId}/players/${uid}/isOnline`);
+      const roomRef = ref(db, `rooms/${roomId}`);
+      try {
+        await Promise.all([
+          onDisconnect(playerOnlineRef).cancel(),
+          onDisconnect(roomRef).cancel()
+        ]);
+      } catch (err) {
+        console.warn("取消斷線監聽失敗:", err);
+      }
+    }
+    
     await leaveRoom(roomId, uid);
     router.push("/lobby");
   };
@@ -957,7 +1045,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               display: "flex",
               alignItems: "center",
               gap: compact ? 10 : 14,
-              background: isMe ? "#fef9c3" : "#fff",
+              background: p.isOnline === false && !p.isBot ? "#e5e7eb" : isMe ? "#fef9c3" : "#fff",
+              opacity: p.isOnline === false && !p.isBot ? 0.75 : 1,
               border: `${compact ? 2.5 : 3}px solid #000`,
               borderRadius: 999,
               padding: compact ? "8px 12px 8px 8px" : "12px 18px",
@@ -973,7 +1062,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 display: "grid", placeItems: "center",
                 fontWeight: 900, fontSize: compact ? "1.2rem" : "19px",
                 boxShadow: "2px 2px 0 #000",
-                overflow: "hidden"
+                overflow: "hidden",
+                filter: p.isOnline === false && !p.isBot ? "grayscale(100%)" : "none"
               }}>
                 {p.avatarUrl ? (
                   <img src={getAssetPath(p.avatarUrl)} alt="avatar" className="w-full h-full object-cover" />
@@ -994,6 +1084,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   )}
                   {p.isBot && (
                     <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#10b981", color: "#fff", border: "2px solid #000", borderRadius: 999, padding: "1px 8px" }}>BOT</span>
+                  )}
+                  {p.isOnline === false && !p.isBot && (
+                    <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#ef4444", color: "#fff", border: "2px solid #000", borderRadius: 999, padding: "1px 8px" }}>已離線</span>
                   )}
                   <span style={{
                     fontSize: "0.65rem", fontWeight: 800,
@@ -2815,11 +2908,23 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 src={getAssetPath(topPlayer.avatarUrl)} 
                 alt="avatar" 
                 className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`} 
+                style={{
+                  filter: topPlayer.isOnline === false && !topPlayer.isBot ? "grayscale(100%)" : "none",
+                  opacity: topPlayer.isOnline === false && !topPlayer.isBot ? 0.5 : 1
+                }}
               />
             ) : (
               <div 
                 className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`}
-                style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem", backgroundColor: "#f3f4f6" }}
+                style={{ 
+                  display: "grid", 
+                  placeItems: "center", 
+                  fontWeight: 900, 
+                  fontSize: "1.2rem", 
+                  backgroundColor: "#f3f4f6",
+                  filter: topPlayer.isOnline === false && !topPlayer.isBot ? "grayscale(100%)" : "none",
+                  opacity: topPlayer.isOnline === false && !topPlayer.isBot ? 0.5 : 1
+                }}
               >
                 {((topPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
               </div>
@@ -2829,6 +2934,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               style={{
                 backgroundColor: room.turnUid === topPlayer.uid ? "#fef9c3" : "#fff",
                 borderColor: room.turnUid === topPlayer.uid ? "#fbbf24" : "#000",
+                opacity: topPlayer.isOnline === false && !topPlayer.isBot ? 0.75 : 1
               }}
             >
               {topPlayer.nickname}
@@ -2841,6 +2947,11 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             {topPlayer.isPassed && (
               <span className="text-[10px] font-black text-red-600 bg-red-50 border-[1.5px] border-red-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg] ml-1">
                 PASS
+              </span>
+            )}
+            {topPlayer.isOnline === false && !topPlayer.isBot && (
+              <span className="text-[10px] font-black text-gray-600 bg-gray-50 border-[1.5px] border-gray-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg] ml-1">
+                已離線
               </span>
             )}
           </div>
@@ -2870,13 +2981,26 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           {leftPlayer ? (
             <>
               {leftPlayer.avatarUrl ? (
-                <div className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}>
+                <div 
+                  className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  style={{
+                    filter: leftPlayer.isOnline === false && !leftPlayer.isBot ? "grayscale(100%)" : "none",
+                    opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.5 : 1
+                  }}
+                >
                   <img src={getAssetPath(leftPlayer.avatarUrl)} alt="avatar" />
                 </div>
               ) : (
                 <div 
                   className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}
-                  style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem" }}
+                  style={{ 
+                    display: "grid", 
+                    placeItems: "center", 
+                    fontWeight: 900, 
+                    fontSize: "1.2rem",
+                    filter: leftPlayer.isOnline === false && !leftPlayer.isBot ? "grayscale(100%)" : "none",
+                    opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.5 : 1
+                  }}
                 >
                   {((leftPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
                 </div>
@@ -2886,6 +3010,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 style={{
                   backgroundColor: room.turnUid === leftPlayer.uid ? "#fef9c3" : "#fff",
                   borderColor: room.turnUid === leftPlayer.uid ? "#fbbf24" : "#000",
+                  opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.75 : 1
                 }}
               >
                 {leftPlayer.nickname}
@@ -2895,7 +3020,12 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   思考中…
                 </span>
               )}
-              <div className="opponent-count">
+              {leftPlayer.isOnline === false && !leftPlayer.isBot && (
+                <span className="text-[10px] font-black text-gray-600 bg-gray-50 border-2 border-gray-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-5deg] mt-1">
+                  已離線
+                </span>
+              )}
+              <div className="opponent-count" style={{ opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.6 : 1 }}>
                 {leftPlayer.cards.length === 0 ? (
                   <span className="text-[10px] font-black text-green-600 bg-green-50 border-2 border-green-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-5deg] mt-1">
                     已出完
@@ -2979,13 +3109,26 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           {rightPlayer ? (
             <>
               {rightPlayer.avatarUrl ? (
-                <div className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}>
+                <div 
+                  className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  style={{
+                    filter: rightPlayer.isOnline === false && !rightPlayer.isBot ? "grayscale(100%)" : "none",
+                    opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.5 : 1
+                  }}
+                >
                   <img src={getAssetPath(rightPlayer.avatarUrl)} alt="avatar" />
                 </div>
               ) : (
                 <div 
                   className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}
-                  style={{ display: "grid", placeItems: "center", fontWeight: 900, fontSize: "1.2rem" }}
+                  style={{ 
+                    display: "grid", 
+                    placeItems: "center", 
+                    fontWeight: 900, 
+                    fontSize: "1.2rem",
+                    filter: rightPlayer.isOnline === false && !rightPlayer.isBot ? "grayscale(100%)" : "none",
+                    opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.5 : 1
+                  }}
                 >
                   {((rightPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
                 </div>
@@ -2995,6 +3138,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 style={{
                   backgroundColor: room.turnUid === rightPlayer.uid ? "#fef9c3" : "#fff",
                   borderColor: room.turnUid === rightPlayer.uid ? "#fbbf24" : "#000",
+                  opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.75 : 1
                 }}
               >
                 {rightPlayer.nickname}
@@ -3004,7 +3148,12 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   思考中…
                 </span>
               )}
-              <div className="opponent-count">
+              {rightPlayer.isOnline === false && !rightPlayer.isBot && (
+                <span className="text-[10px] font-black text-gray-600 bg-gray-50 border-2 border-gray-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[5deg] mt-1">
+                  已離線
+                </span>
+              )}
+              <div className="opponent-count" style={{ opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.6 : 1 }}>
                 {rightPlayer.cards.length === 0 ? (
                   <span className="text-[10px] font-black text-green-600 bg-green-50 border-2 border-green-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[5deg] mt-1">
                     已出完
