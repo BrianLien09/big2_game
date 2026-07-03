@@ -24,7 +24,7 @@
 - [🏗 系統架構與目錄結構](#-系統架構與目錄結構)
 - [🛠 技術棧](#-技術棧)
 - [🚀 快速開始](#-快速開始)
-- [🌐 部署至 GitHub Pages](#-部署至-github-pages)
+- [🌐 部署說明 (Vercel 與 GitHub Pages)](#-部署說明-vercel-與-github-pages)
 - [🔒 Firebase Spark 房間生命週期與安全規則](#-firebase-spark-房間生命週期與安全規則)
 
 ---
@@ -46,9 +46,10 @@
 - 支援增量傳輸 (Delta Updates) 技術，每次出牌只推送變更資料，4 人對局單場平均流量僅約 160 KB。
 - 相比 Firestore，每日免費額度使用效率大幅提升 5 倍以上（每日可免費進行逾 2,000 場遊戲）。
 
-### 4. Google 帳號登入與個人化頭像
-- 首頁強制使用 Google 快速登入以提供穩定的身份驗證。
-- 大廳與遊戲內即時顯示 Google 頭像與累積積分，增強社交感與代入感。
+### 4. Google 帳號登入與瀏覽器防禦
+- **反向代理同來源驗證**：針對 Safari 與 Chrome 封鎖第三方 Cookie 導致 Firebase 登入失敗的問題，在 Vercel 網域下實作了 `/__/auth/...` 的同來源反向代理 Rewrite，保障登入穩定性。
+- **彈窗阻擋自動 Fallback**：針對 Brave 或裝有廣告攔截器的瀏覽器阻擋 Popup 彈窗拋出 `auth/popup-blocked` 錯誤的問題，實作了自動 fallback 改採 `signInWithRedirect` 重導向登入，保證 100% 登入成功。
+- **個人化頭像與資訊**：首頁登入後，大廳與對局中即時顯示 Google 頭像與全球累積積分，增強社交感。
 
 ### 5. AI 人機玩家 (BOT) 與 7 款水豚頭像
 - **水豚 AI 對手**：房主可隨時新增人機進行練習，AI 具備合法出牌與策略分析能力（各遊戲皆有專屬 Bot 邏輯）。
@@ -75,8 +76,13 @@
 
 ### 10. 音效系統與斷線重連
 - **點擊喚醒 AudioContext**：完美繞過瀏覽器自動播放政策限制。
-- **對局快速重連**：網路波動或頁面重整後可快速重連回原房間繼續對局。
+- **對局快速重連**：網路波動或頁面重整後可快速重連回原房間繼續對局.
 - **房間號浮水印**：出牌區中央顯示淡雅房號浮水印，便於截圖交流。
+
+### 11. 雙軌資料庫與全球排行榜 (Global Leaderboard)
+- **雙軌架構優勢**：遊戲對局狀態採用 Firebase Realtime Database 以獲得毫秒級的 WebSocket 即時同步，而玩家累計積分與奪冠排行則利用 **Cloud Firestore** 處理，發揮兩者最大優勢。
+- **終局自動累計**：在大老二、十三支、橋牌等遊戲 GameOver 結算時，異步調用排行榜服務，以原子 `increment` 方式累加玩家的總積分與奪冠次數。
+- **30 分鐘本地快取**：在大廳新增排行榜 Modal 並支援並列排名，實作 30 分鐘本地快取機制與手動「整理」按鈕，極大化節省 Firestore 的讀取額度消耗。
 
 ---
 
@@ -134,6 +140,7 @@
 │   │   ├── thirteenLogic.ts         # 十三支：牌型評估、倒水驗證、零和計分、Bot 理牌
 │   │   ├── bridgeLogic.ts           # 橋牌：叫牌合法性、得分計算、吃墩判斷
 │   │   ├── firebase.ts              # Firebase App 初始化設定
+│   │   ├── leaderboardService.ts    # 全球排行榜服務（Firestore 累加總分與排序）
 │   │   └── roomService.ts           # 房間 CRUD、發牌、結算等 Realtime Database 讀寫服務
 │   └── store/
 │       └── useGameStore.ts          # Zustand 全域狀態管理與 Toast 排程
@@ -153,7 +160,7 @@
 | **程式語言** | TypeScript（嚴格型別安全） |
 | **狀態管理** | Zustand 5.0.14 |
 | **樣式系統** | Tailwind CSS 4.0 + CSS Variables + Vanilla CSS |
-| **即時資料庫** | Firebase 12.15.0 (Realtime Database) |
+| **資料庫系統** | Firebase 12.15.0 (Realtime Database 遊戲對局 / Cloud Firestore 排行榜統計) |
 | **身分驗證** | Firebase Authentication (Google OAuth) |
 | **建置工具** | Turbopack (Next.js 內建編譯器) |
 
@@ -194,16 +201,19 @@ npm run start
 
 ---
 
-## 🌐 部署至 GitHub Pages
+## 🌐 部署說明 (Vercel 與 GitHub Pages 雙平台相容)
 
-本專案支援靜態匯出並部署至 GitHub Pages：
+本專案支援 Vercel 與 GitHub Pages 雙重部署目標，會根據部署環境自動切換模式：
 
-### `basePath` 設定
-- 生產環境（`NODE_ENV === 'production'`）下，`basePath` 自動設為 `/big2_game`。
-- `layout.tsx` 中的 `manifest`、`icons` 及 Service Worker 路徑均動態帶上 `basePath` 前綴，防止資源 404。
+### 1. 部署至 Vercel (推薦)
+- **同來源登入反代理**：部署至自訂網域或 Vercel 時，系統會透過 `next.config.ts` 的 `rewrites()` 將 `/__/auth/...` 反向代理至 Firebase，並動態改寫 `authDomain` 為當前網域，繞過主流瀏覽器限制第三方 Cookie 的登入問題。
+- **動態路由支援**：完整相容 Next.js 伺服器端路由，使用者重新整理網頁時不會出現 404。
+- **部署方式**：將 Repo 匯入 Vercel，設定好環境變數後直接部署即可，不需修改 `next.config.ts`。
 
-### 靜態路徑規範
-`public/manifest.json` 與 `public/sw.js` 中的所有圖標路徑均使用**相對路徑**（如 `icons/icon-192x192.png`），避免 GitHub Pages 子路徑截斷。
+### 2. 部署至 GitHub Pages
+- **靜態導出**：專案會在建置時自動以 `output: 'export'` 導出靜態檔案。
+- **`basePath` 自動配置**：生產環境下 `basePath` 自動設為 `/big2_game`。`layout.tsx` 中的網站圖標與 `manifest.json` 路徑均動態帶上 `basePath`，防止子目錄資源 404。
+- **靜態路徑規範**：`public/manifest.json` 與 `public/sw.js` 中的圖標均使用相對路徑，避免路徑截斷。
 
 ---
 
