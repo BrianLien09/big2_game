@@ -306,9 +306,10 @@ export default function ThirteenPlayingView({
                       { rank: 3, label: "葫蘆",   desc: "三條 + 一對",      color: "#d97706" },
                       { rank: 4, label: "同花",   desc: "5 張同花色（非順）", color: "#059669" },
                       { rank: 5, label: "順子",   desc: "5 張連續（非同花）", color: "#2563eb" },
-                      { rank: 6, label: "兩對",   desc: "兩組相同點數",     color: "#475569" },
-                      { rank: 7, label: "一對",   desc: "一組相同點數",     color: "#475569" },
-                      { rank: 8, label: "散牌",   desc: "以最大張點數比較", color: "#9ca3af" },
+                      { rank: 6, label: "三條",   desc: "3 張相同點數",     color: "#dc2626" },
+                      { rank: 7, label: "兩對",   desc: "兩組相同點數",     color: "#475569" },
+                      { rank: 8, label: "一對",   desc: "一組相同點數",     color: "#475569" },
+                      { rank: 9, label: "散牌",   desc: "以最大張點數比較", color: "#9ca3af" },
                     ].map(({ rank, label, desc, color }) => (
                       <div key={rank} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ width: "18px", fontWeight: 900, color: "#9ca3af", fontSize: "0.68rem", flexShrink: 0 }}>#{rank}</span>
