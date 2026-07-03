@@ -19,6 +19,17 @@ const nextConfig: NextConfig = {
   },
   // 允許區網裝置（如手機）存取 dev server 的 HMR，方便本地預覽
   allowedDevOrigins: ['192.168.0.185', '192.168.0.186'],
+  ...(!isGitHubPages && {
+    async rewrites() {
+      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'big2-a5c7e';
+      return [
+        {
+          source: '/__/auth/:path*',
+          destination: `https://${projectId}.firebaseapp.com/__/auth/:path*`,
+        },
+      ];
+    },
+  }),
 };
 
 export default nextConfig;

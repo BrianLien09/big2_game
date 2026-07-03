@@ -7,9 +7,23 @@ import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signO
 // 會讀不到 .env.local 而導致初始化失敗並卡在連線狀態。
 // 因此改為使用 || fallback 直接注入硬編碼值，確保 Capacitor APK 也能正確連線。
 // 注意：這些皆為 Firebase 前端公開金鑰，安全性由 Firebase Security Rules 負責保護。
+// 為了避免 Chrome/Safari 第三方 Cookie 限制導致 Vercel 上登入失敗，
+// 當在 Vercel 網域下運行且為瀏覽器環境時，動態將 authDomain 改為當前網域，
+// 配合 next.config.ts 的 reverse proxy rewrite 做同來源 (First-Party) 驗證。
+const getAuthDomain = () => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    // 排除本地端與 GitHub Pages，其餘情況（Vercel 網域）皆可使用當前域名以配合反向代理
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.endsWith('.github.io')) {
+      return hostname;
+    }
+  }
+  return process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
+};
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  authDomain: getAuthDomain(),
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
