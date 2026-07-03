@@ -448,7 +448,9 @@ function RoomContent() {
   const prevPlayerOrder = useRef<string[]>([]);
 
   useEffect(() => {
-    if (!auth || !db) return;
+    // roomId 初始為空字串，等待另一個 useEffect 從 URL 解析後才有值。
+    // 若 roomId 為空，絕對不能繼續，否則會以空路徑操作 Firebase 根節點並觸發 PERMISSION_DENIED。
+    if (!auth || !db || !roomId) return;
 
     let unsubscribe = () => { };
 
@@ -530,6 +532,7 @@ function RoomContent() {
         } catch (e) {
           const err = e as Error;
           if (err.message === "房間不存在") {
+            // 「房間不存在」是房主建立新房間的正常預期流程，不需要 console.error
             // 只有帶有 gameMode 參數的建立者（房主）才允許在房間不存在時創建房間，防止普通玩家意外覆寫
             const gameModeParam = searchParams.get("gameMode");
             if (gameModeParam) {
@@ -542,17 +545,25 @@ function RoomContent() {
                 // 成功創建房間後，才解除加入狀態
                 isJoiningRef.current = false;
               } catch (createErr) {
-                const cErr = createErr as Error;
-                setError(cErr.message || "建立房間失敗");
+                const cErr = createErr as Error & { code?: string; name?: string };
+                // 建立房間失敗屬於真正的異常，記錄完整錯誤供除錯
+                console.error("[Room Create] 建立房間時發生錯誤 — message:", cErr.message, "| code:", cErr.code, "| name:", cErr.name, "| full:", cErr);
+                const errMsg = cErr.message || cErr.code || cErr.name || "建立房間失敗";
+                setError(errMsg);
+                unsubscribe(); // 發生錯誤時，立即註銷實時訂閱監聽以防卡死
                 return;
               }
             } else {
               // 普通玩家，提示房間不存在，不允許自動創建
               setError("房間不存在或已過期");
+              unsubscribe(); // 立即註銷訂閱
               return;
             }
           } else {
+            // 其他非預期錯誤才記錄
+            console.error("[Room Join] 非預期錯誤：", err);
             setError(err.message);
+            unsubscribe(); // 立即註銷訂閱
             return;
           }
         }
