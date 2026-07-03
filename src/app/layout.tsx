@@ -36,8 +36,11 @@ export const metadata: Metadata = {
     title: "CardDuel",
   },
   icons: {
-    icon: `${basePath}/icons/icon-192x192.png?v=2`, // 網頁分頁圖標 (Favicon)，加 v=2 打破快取
-    apple: `${basePath}/icons/apple-touch-icon.png?v=2`, // 蘋果設備專用的 App 圖標
+    icon: [
+      { url: `${basePath}/favicon.ico?v=3`, sizes: "any" },
+      { url: `${basePath}/icons/icon-192x192.png?v=3`, type: "image/png", sizes: "192x192" }
+    ],
+    apple: `${basePath}/icons/apple-touch-icon.png?v=3`,
   },
 };
 
