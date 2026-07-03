@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut, signInAnonymously } from 'firebase/auth';
 
 // Firebase 前端公開金鑰（NEXT_PUBLIC_ 前綴的環境變數在靜態 APK 編譯時無 server 環境，
 // 會讀不到 .env.local 而導致初始化失敗並卡在連線狀態。
@@ -31,12 +31,19 @@ export const loginWithGoogle = async () => {
     throw new Error("Firebase Auth 未初始化，無法進行 Google 登入。");
   }
   
+  const provider = new GoogleAuthProvider();
   try {
     // 網頁平台：維持原本的 Popup 登入
-    const provider = new GoogleAuthProvider();
     const userCredential = await signInWithPopup(auth, provider);
     return userCredential.user;
   } catch (error) {
+    const err = error as any;
+    // 如果是彈出視窗被阻擋 (auth/popup-blocked)，自動 fallback 到重導向登入流程
+    if (err.code === 'auth/popup-blocked') {
+      console.warn("[Firebase Auth] Popup blocked. Falling back to redirect...");
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
     console.error("Error signing in with Google:", error);
     throw error;
   }
