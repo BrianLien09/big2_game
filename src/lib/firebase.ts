@@ -13,8 +13,10 @@ import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signO
 const getAuthDomain = () => {
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-    // 排除本地端與 GitHub Pages，其餘情況（Vercel 網域）皆可使用當前域名以配合反向代理
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.endsWith('.github.io')) {
+    // 檢查是否為 IP 位址（如 192.168.x.x 或 127.0.0.1）
+    const isIpAddress = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(hostname);
+    // 排除本地端、IP 位址與 GitHub Pages，其餘情況（Vercel 網域）皆可使用當前域名以配合反向代理
+    if (hostname !== 'localhost' && !isIpAddress && !hostname.endsWith('.github.io')) {
       return hostname;
     }
   }

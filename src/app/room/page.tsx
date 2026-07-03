@@ -10,6 +10,7 @@ import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady
 import { PlayingCard } from "@/components/ui/Card";
 import { ref, update, onDisconnect } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { updateMyLeaderboard } from "@/lib/leaderboardService";
 import { Card, getCardName } from "@/lib/big2Logic";
 import { evaluateThirteenHand, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
 import BridgeBiddingView from "@/components/bridge/BridgeBiddingView";
@@ -505,6 +506,27 @@ function RoomContent() {
             localStorage.setItem("last_joined_room_id", roomId);
           } else {
             localStorage.removeItem("last_joined_room_id");
+          }
+
+          // 🏆 排行榜自動更新監聽
+          if (roomData.status === "gameOver" && user.uid && roomData.players?.[user.uid]) {
+            const mePlayer = roomData.players[user.uid];
+            if (!mePlayer.isBot) {
+              const cacheKey = `leaderboard_updated_${roomId}_${user.uid}`;
+              if (!localStorage.getItem(cacheKey)) {
+                // 標記已更新，防止重複觸發
+                localStorage.setItem(cacheKey, "true");
+                
+                // 判定贏家：取得所有真人玩家的積分，若自己的積分等於最高積分，則是贏家
+                const realPlayers = Object.values(roomData.players).filter(p => !p.isBot);
+                const maxPoints = Math.max(...realPlayers.map(p => p.points ?? 0));
+                const isWinner = (mePlayer.points ?? 0) === maxPoints;
+
+                console.log(`[Leaderboard] 遊戲結束，玩家 ${mePlayer.nickname} 自動更新排行榜。積分: ${mePlayer.points}, 是否奪冠: ${isWinner}`);
+                updateMyLeaderboard(user.uid, mePlayer.nickname, mePlayer.points ?? 0, isWinner)
+                  .catch(err => console.error("更新排行榜失敗:", err));
+              }
+            }
           }
         } else {
           // 只有在已完成初始加入後接收到 null，才視為解散

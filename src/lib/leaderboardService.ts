@@ -66,6 +66,30 @@ export const updateLeaderboardOnGameOver = async (
 };
 
 /**
+ * 由每位玩家自己的瀏覽器在遊戲結束時呼叫，僅更新「自己」的排行榜數據。
+ * 避開了 Firestore 安全規則中限制不能修改他人個人文件的問題。
+ */
+export const updateMyLeaderboard = async (
+  uid: string,
+  nickname: string,
+  pointsEarned: number,
+  isWinner: boolean
+): Promise<void> => {
+  if (!firestoreDb) return;
+  const userRef = doc(firestoreDb, 'users', uid);
+  await setDoc(
+    userRef,
+    {
+      nickname,
+      totalPoints: increment(pointsEarned),
+      ...(isWinner ? { firstPlaceCount: increment(1) } : {}),
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
+};
+
+/**
  * 從 Firestore users 集合抓取排行榜資料（按 totalPoints 降序）。
  * 只回傳有 totalPoints 欄位的文件，過濾從未完成整局的舊帳號。
  */

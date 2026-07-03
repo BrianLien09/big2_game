@@ -1,5 +1,4 @@
 import { db } from './firebase';
-import { updateLeaderboardOnGameOver } from './leaderboardService';
 import { 
   ref, set as rtdbSet, get, update, runTransaction, onValue, query, orderByChild, endAt, limitToFirst
 } from 'firebase/database';
@@ -1053,13 +1052,6 @@ export const commitPlayerPlay = async (
     throw new Error("更新失敗");
   }
 
-  // 若 Transaction 成功且遊戲已整局結算，異步寫入排行榜（不阻塞出牌流程）
-  if (result.committed && result.snapshot?.exists()) {
-    const finalRoom = result.snapshot.val() as RoomState;
-    if (finalRoom.status === 'gameOver' && finalRoom.players && finalRoom.targetPoints) {
-      updateLeaderboardOnGameOver(finalRoom.players, finalRoom.targetPoints).catch(console.error);
-    }
-  }
 };
 
 // 真人呼叫的 Exported Pass 服務
@@ -1090,13 +1082,6 @@ export const commitPlayerPass = async (
     throw new Error("更新失敗");
   }
 
-  // Pass 也可能觸發最後一輪結算導致 gameOver。
-  if (result.committed && result.snapshot?.exists()) {
-    const finalRoom = result.snapshot.val() as RoomState;
-    if (finalRoom.status === 'gameOver' && finalRoom.players && finalRoom.targetPoints) {
-      updateLeaderboardOnGameOver(finalRoom.players, finalRoom.targetPoints).catch(console.error);
-    }
-  }
 };
 
 export type BotTurnResult =
@@ -1830,13 +1815,6 @@ export const submitBridgeCard = async (
     throw new Error("更新失敗");
   }
 
-  // 橋牌整局結算時異步寫入排行榜
-  if (result.committed && result.snapshot?.exists()) {
-    const finalRoom = result.snapshot.val() as RoomState;
-    if (finalRoom.status === 'gameOver' && finalRoom.players && finalRoom.targetPoints) {
-      updateLeaderboardOnGameOver(finalRoom.players, finalRoom.targetPoints).catch(console.error);
-    }
-  }
 };
 
 /**
@@ -2179,13 +2157,6 @@ export const confirmThirteenArrangement = async (
     throw new Error("更新失敗");
   }
 
-  // 十三支整局結算時異步寫入排行榜
-  if (result.committed && result.snapshot?.exists()) {
-    const finalRoom = result.snapshot.val() as RoomState;
-    if (finalRoom.status === 'gameOver' && finalRoom.players && finalRoom.targetPoints) {
-      updateLeaderboardOnGameOver(finalRoom.players, finalRoom.targetPoints).catch(console.error);
-    }
-  }
 };
 
 /**
