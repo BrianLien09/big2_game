@@ -22,8 +22,9 @@ export const viewport: Viewport = {
   themeColor: "#ffffff", // 調整為背景色（白色）以避免行動端狀態欄呈現黃色
 };
 
-const isProd = process.env.NODE_ENV === 'production';
-const basePath = isProd ? '/big2_game' : '';
+const isVercel = process.env.VERCEL === '1' || process.env.NEXT_PUBLIC_VERCEL === '1';
+const isGitHubPages = !isVercel && process.env.NODE_ENV === 'production';
+const basePath = isGitHubPages ? '/big2_game' : '';
 
 export const metadata: Metadata = {
   title: "CardDuel — 線上多人紙牌對戰平台",
