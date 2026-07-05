@@ -122,11 +122,11 @@ const PlayerInfoCard: React.FC<{
           gap: 1,
         }}>
           <div style={{ fontSize: "0.62rem", fontWeight: 800, color: "#4b5563" }}>
-            🪙 總計: {totalPoints ?? 0} 分
+            🪙 累計負分: {totalPoints ?? 0}
           </div>
           {scoreInTrick !== undefined && scoreInTrick > 0 && (
             <div style={{ fontSize: "0.58rem", fontWeight: 800, color: "#ef3340", background: "#fee2e2", padding: "1px 5px", borderRadius: 4 }}>
-              💔 本局: +{scoreInTrick}
+              💔 本局負分: +{scoreInTrick}
             </div>
           )}
         </div>
@@ -600,7 +600,7 @@ export default function HeartsPlayingView({
             傷心小棧
           </span>
           <span style={{ fontSize: isMobile ? "0.72rem" : "0.85rem", color: "#475569", fontWeight: 800 }}>
-            目標: {room.targetPoints || 50} 分
+            負分上限: {room.targetPoints || 50}
           </span>
         </div>
 

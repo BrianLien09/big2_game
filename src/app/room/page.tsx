@@ -618,13 +618,24 @@ function RoomContent() {
                 // 標記已更新，防止重複觸發
                 localStorage.setItem(cacheKey, "true");
                 
-                // 判定贏家：必須與包含人機 (Bot) 在內的所有玩家比對最高分，人機贏了真人就不能算冠軍
+                // 判定贏家：必須與包含人機 (Bot) 在內的所有玩家比對。傷心小棧 (HEARTS) 是分數越低越贏，其他模式是分數越高越贏
                 const allPlayers = Object.values(roomData.players);
-                const maxPoints = Math.max(...allPlayers.map(p => p.points ?? 0));
-                const isWinner = (mePlayer.points ?? 0) === maxPoints;
+                let isWinner = false;
+                let pointsToSubmit = 0;
 
-                console.log(`[Leaderboard] 遊戲結束，玩家 ${mePlayer.nickname} 自動更新排行榜。積分: ${mePlayer.points}, 是否奪冠: ${isWinner}`);
-                updateMyLeaderboard(user.uid, mePlayer.nickname, mePlayer.points ?? 0, isWinner)
+                if (roomData.gameMode === "HEARTS") {
+                  const minPoints = Math.min(...allPlayers.map(p => p.points ?? 0));
+                  isWinner = (mePlayer.points ?? 0) === minPoints;
+                  // 傷心小棧不與全域排行榜計算積分，只提交 0 分（僅記錄冠軍 wins）
+                  pointsToSubmit = 0;
+                } else {
+                  const maxPoints = Math.max(...allPlayers.map(p => p.points ?? 0));
+                  isWinner = (mePlayer.points ?? 0) === maxPoints;
+                  pointsToSubmit = mePlayer.points ?? 0;
+                }
+
+                console.log(`[Leaderboard] 遊戲結束，模式: ${roomData.gameMode}，玩家 ${mePlayer.nickname} 自動更新排行榜。積分: ${pointsToSubmit}, 是否奪冠: ${isWinner}`);
+                updateMyLeaderboard(user.uid, mePlayer.nickname, pointsToSubmit, isWinner)
                   .catch(err => console.error("更新排行榜失敗:", err));
               }
             }
@@ -1623,7 +1634,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
               <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜 {sortedPlayers[0]?.nickname} 獲得冠軍！</h2>
               <p style={{ fontWeight: 800, fontSize: isMobile ? "0.9rem" : "1.1rem", marginTop: "6px", color: "#1e293b" }}>
-                以最低的 {sortedPlayers[0]?.points ?? 0} 積分贏得本場對局！
+                以最低的 {sortedPlayers[0]?.points ?? 0} 負分贏得本場對局！
               </p>
             </div>
           ) : isMultiWinner ? (
@@ -1647,7 +1658,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           )}
 
           <p style={{ fontWeight: 700, fontSize: isMobile ? "0.9rem" : "1rem", color: "#475569", marginBottom: isMobile ? "12px" : "1.5rem" }}>
-            目標結束積分：{target} 分
+            {room.gameMode === 'HEARTS' ? '負分上限：' : '目標結束積分：'}{target} {room.gameMode === 'HEARTS' ? '負分' : '分'}
           </p>
 
           <div style={{
@@ -1671,7 +1682,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             }}>
               <div>名次</div>
               <div>玩家</div>
-              <div style={{ textAlign: "center" }}>最終總分</div>
+              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '最終負分' : '最終總分'}</div>
             </div>
             {sortedPlayers.map((player, index) => {
               const isMe = player.uid === uid;
@@ -1703,7 +1714,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
                   </div>
                   <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.8rem" : "1rem" }}>
-                    🪙 {player.points ?? 0}
+                    {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {player.points ?? 0}
                   </div>
                 </div>
               );
@@ -1721,7 +1732,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <button className="comic-btn" style={{ background: "#fbbf24", width: isMobile ? "100%" : "auto", padding: isMobile ? "12px 0" : "12px 28px" }} onClick={async () => {
                 try {
                   await restartWholeGame(roomId);
-                  addToast("已重新開局，積分已歸零", "success");
+                  addToast(room.gameMode === 'HEARTS' ? "已重新開局，負分已重置" : "已重新開局，積分已歸零", "success");
                 } catch (err) {
                    const errMsg = err instanceof Error ? err.message : String(err);
                    addToast(errMsg || "重新開局失敗", "error");
@@ -1858,8 +1869,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             }}>
               <div>名次</div>
               <div>玩家</div>
-              <div style={{ textAlign: "center" }}>本局積分</div>
-              <div style={{ textAlign: "center" }}>累計總分</div>
+              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '本局負分' : '本局積分'}</div>
+              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '累計負分' : '累計總分'}</div>
             </div>
             {(() => {
               const displayOrder = room.gameMode === 'HEARTS'
@@ -1905,7 +1916,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                       {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
                     </div>
                     <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.75rem" : "inherit" }}>
-                      🪙 {player.points ?? 0}
+                      {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {player.points ?? 0}
                     </div>
                   </div>
                 );
