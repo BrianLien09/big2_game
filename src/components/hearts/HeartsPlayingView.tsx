@@ -135,6 +135,51 @@ const PlayerInfoCard: React.FC<{
   );
 };
 
+// 根據玩家位置（下、左、上、右）與是否為手機版，取得基準飛入座標
+const getHeartsAnimationCoords = (playerPos: 'bottom' | 'top' | 'left' | 'right', isMobile: boolean) => {
+  if (isMobile) {
+    switch (playerPos) {
+      case 'left': return { x: '-40vw', y: '-25vh' };
+      case 'right': return { x: '40vw', y: '-25vh' };
+      case 'top': return { x: '0', y: '-35vh' };
+      case 'bottom': return { x: '0', y: '35vh' };
+    }
+  } else {
+    switch (playerPos) {
+      case 'left': return { x: '-35vw', y: '0' };
+      case 'right': return { x: '35vw', y: '0' };
+      case 'top': return { x: '0', y: '-35vh' };
+      case 'bottom': return { x: '0', y: '35vh' };
+    }
+  }
+};
+
+// 根據卡牌 ID 計算獨特的初始抖動值與旋轉角度，建立多張牌飛出時的凌亂手感
+const getHeartsCardAnimationProperties = (cardId: string, playerPos: 'bottom' | 'top' | 'left' | 'right', isMobile: boolean) => {
+  const coords = getHeartsAnimationCoords(playerPos, isMobile);
+  if (!coords) return { startX: '0px', startY: '0px', startRotate: '0deg' };
+  
+  let hash = 0;
+  for (let i = 0; i < cardId.length; i++) {
+    hash = cardId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const baseRotateNum = playerPos === 'left' ? -90 : playerPos === 'right' ? 90 : playerPos === 'top' ? 180 : 0;
+  const startRotateVal = baseRotateNum + (hash % 31) - 15;
+  
+  const jitterX = (hash % 21) - 10;
+  const jitterY = ((hash >> 2) % 21) - 10;
+  
+  const startX = coords.x === '0' ? `${jitterX}px` : `calc(${coords.x} + ${jitterX}px)`;
+  const startY = coords.y === '0' ? `${jitterY}px` : `calc(${coords.y} + ${jitterY}px)`;
+  
+  return {
+    startX,
+    startY,
+    startRotate: `${startRotateVal}deg`,
+  };
+};
+
 // ── 中央桌面：當前圈的牌 ────────────────────────────────
 const TrickDisplay: React.FC<{
   currentTrick: HeartsPlayingState["currentTrick"];
@@ -179,6 +224,22 @@ const TrickDisplay: React.FC<{
       margin: "0 auto",
       position: "relative",
     }}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes cardAppear {
+          0% {
+            opacity: 0;
+            transform: translate3d(var(--card-start-x, 0px), var(--card-start-y, -25px), 0) scale(0.35) rotate(var(--card-start-rotate, -45deg)) rotateY(45deg);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1) rotate(0deg) rotateY(0deg);
+          }
+        }
+        .animate-card-appear {
+          animation: cardAppear 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.15) both;
+        }
+      ` }} />
+
       {playerOrder.map((uid, idx) => {
         const card = cardsByPlayer[uid];
         const posStyle = getPositionStyle(idx);
@@ -194,6 +255,9 @@ const TrickDisplay: React.FC<{
             }} />
           );
         }
+
+        const playerPos = ['bottom', 'left', 'top', 'right'][idx % 4] as 'bottom' | 'left' | 'top' | 'right';
+        const animProps = getHeartsCardAnimationProperties(card.id, playerPos, isMobile);
 
         // 動態計算位移目標 (飛往贏家方向)
         const getTranslateStyle = (): React.CSSProperties => {
@@ -218,11 +282,18 @@ const TrickDisplay: React.FC<{
         const animStyle = getTranslateStyle();
 
         return (
-          <div key={uid} style={{ 
-            ...posStyle, 
-            ...animStyle,
-            transition: animatingWinnerDir ? animStyle.transition : "transform 0.2s ease",
-          }}>
+          <div 
+            key={uid} 
+            className={animatingWinnerDir ? "" : "animate-card-appear"}
+            style={{ 
+              ...posStyle, 
+              ...animStyle,
+              '--card-start-x': animProps.startX,
+              '--card-start-y': animProps.startY,
+              '--card-start-rotate': animProps.startRotate,
+              transition: animatingWinnerDir ? animStyle.transition : "transform 0.2s ease",
+            } as React.CSSProperties}
+          >
             <PlayingCard card={card} size={cardSize} isPlayable={true} style={{ cursor: "default" }} />
           </div>
         );
