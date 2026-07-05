@@ -12,6 +12,7 @@ interface ThirteenShowingViewProps {
   isMobile: boolean;
   onLeave: () => void;
   resetThirteenRound: (roomId: string) => Promise<void>;
+  renderBubble?: (playerUid: string, position: 'bottom' | 'top' | 'left' | 'right') => React.ReactNode;
 }
 
 export default function ThirteenShowingView({
@@ -20,7 +21,8 @@ export default function ThirteenShowingView({
   roomId,
   isMobile,
   onLeave,
-  resetThirteenRound
+  resetThirteenRound,
+  renderBubble
 }: ThirteenShowingViewProps) {
   const [loading, setLoading] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
@@ -660,9 +662,11 @@ export default function ThirteenShowingView({
                 display: "flex",
                 flexDirection: "column",
                 gap: "8px",
-                boxShadow: isMe ? "3px 3px 0px #000" : "1.5px 1.5px 0px #000"
+                boxShadow: isMe ? "3px 3px 0px #000" : "1.5px 1.5px 0px #000",
+                position: "relative"
               }}
             >
+              {renderBubble?.(pUid, 'top')}
               {/* 暱稱與積分顯示 Header */}
               <div style={{ 
                 display: "flex", 

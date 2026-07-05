@@ -7,7 +7,7 @@
 import { Card, Suit } from './big2Logic';
 
 // ── 遊戲模式 ─────────────────────────────────────────
-export type GameMode = 'BIG2' | 'BRIDGE' | 'THIRTEEN';
+export type GameMode = 'BIG2' | 'BRIDGE' | 'THIRTEEN' | 'HEARTS';
 
 // ── 橋牌花色（叫牌用） ────────────────────────────────
 // 叫牌花色高低：NT > S > H > D > C

@@ -6,11 +6,14 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound } from "@/lib/roomService";
+import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound } from "@/lib/roomService";
+import HeartsPlayingView from "@/components/hearts/HeartsPlayingView";
+
 import { PlayingCard } from "@/components/ui/Card";
 import { ref, update, onDisconnect } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { updateMyLeaderboard } from "@/lib/leaderboardService";
+import { sendRoomBubble } from "@/lib/roomService";
 import { Card, getCardName } from "@/lib/big2Logic";
 import { evaluateThirteenHand, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
 import BridgeBiddingView from "@/components/bridge/BridgeBiddingView";
@@ -363,6 +366,10 @@ function RoomContent() {
   const [loadingBot, setLoadingBot] = useState(false);
   const [isUpdatingPoints, setIsUpdatingPoints] = useState(false);
   const searchParams = useSearchParams();
+  const [activeBubbles, setActiveBubbles] = useState<Record<string, { content: string; type: 'text' | 'emoji'; timestamp: number }>>({});
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const lastBubbleTimeRef = useRef<number>(0);
+  const isFirstCallbackRef = useRef(true);
 
   // 透過使用者互動 (點擊/觸摸) 喚醒 Web Audio API，解決瀏覽器自動播放限制 (Autoplay Policy)
   useEffect(() => {
@@ -378,6 +385,72 @@ function RoomContent() {
       document.removeEventListener("pointerdown", handleInteraction);
     };
   }, []);
+
+  const getAvatarAnimClass = (playerUid: string) => {
+    const bubble = activeBubbles[playerUid];
+    if (bubble && bubble.type === 'emoji') {
+      if (bubble.content === 'capy_onsen') return 'capy-sway-avatar';
+      if (bubble.content === 'capy_angry') return 'capy-shaking-avatar';
+    }
+    return '';
+  };
+
+  const renderBubbleAndEmoji = (playerUid: string, position: 'bottom' | 'top' | 'left' | 'right') => {
+    const bubble = activeBubbles[playerUid];
+    if (!bubble) return null;
+
+    const { content, type } = bubble;
+    
+    return (
+      <>
+        {/* 1. 罐頭氣泡文字 */}
+        {type === 'text' && (
+          <div className={`capy-bubble bubble-pos-${position}`}>
+            {content}
+          </div>
+        )}
+
+        {/* 2. 動態表情 */}
+        {type === 'emoji' && (
+          <div className="emoji-overlay">
+            {content === 'capy_sunglasses' && (
+              <span className="capy-anim-sunglasses">😎</span>
+            )}
+            {content === 'capy_onsen' && (
+              <>
+                <span className="capy-anim-onsen-steam1">♨️</span>
+                <span className="capy-anim-onsen-steam2">♨️</span>
+              </>
+            )}
+            {content === 'capy_orange' && (
+              <span className="capy-anim-orange">🍊</span>
+            )}
+            {content === 'capy_dumb' && (
+              <div className="capy-anim-thinking">
+                <span>思考中</span>
+                <span className="capy-dot1">.</span>
+                <span className="capy-dot2">.</span>
+                <span className="capy-dot3">.</span>
+              </div>
+            )}
+            {content === 'capy_genius' && (
+              <span className="capy-anim-genius">💡</span>
+            )}
+            {content === 'capy_angry' && (
+              <span className="capy-anim-angry">💢</span>
+            )}
+            {content === 'capy_big2' && (
+              <>
+                <span className="capy-anim-cardfan">🃏</span>
+                <span className="capy-sparkle-1">✨</span>
+                <span className="capy-sparkle-2">✨</span>
+              </>
+            )}
+          </div>
+        )}
+      </>
+    );
+  };
 
   // 監聽手牌容器寬度以實現自適應重疊效果
   const handContainerRef = useRef<HTMLDivElement>(null);
@@ -501,6 +574,34 @@ function RoomContent() {
           prevPlayerOrder.current = roomData.playerOrder || [];
           setRoom(roomData);
 
+          // 💬 Capy Chat 氣泡與表情監聽與淡出邏輯
+          if (isFirstCallbackRef.current) {
+            isFirstCallbackRef.current = false;
+            if (roomData.chatBubble) {
+              lastBubbleTimeRef.current = roomData.chatBubble.timestamp;
+            }
+          } else if (roomData.chatBubble && roomData.chatBubble.timestamp > lastBubbleTimeRef.current) {
+            const { senderUid, content, type, timestamp } = roomData.chatBubble;
+            lastBubbleTimeRef.current = timestamp;
+
+            setActiveBubbles((prev) => ({
+              ...prev,
+              [senderUid]: { content, type, timestamp }
+            }));
+
+            // 3.5 秒後淡出並清理
+            setTimeout(() => {
+              setActiveBubbles((prev) => {
+                if (prev[senderUid]?.timestamp === timestamp) {
+                  const next = { ...prev };
+                  delete next[senderUid];
+                  return next;
+                }
+                return prev;
+              });
+            }, 3500);
+          }
+
           // 只要自己在房間內且對局未徹底結束，就紀錄房號以便斷線重連
           if (user.uid && roomData.players?.[user.uid] && roomData.status !== "gameOver") {
             localStorage.setItem("last_joined_room_id", roomId);
@@ -560,7 +661,7 @@ function RoomContent() {
             if (gameModeParam) {
               const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
               const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
-              const resolvedMode = (gameModeParam === 'BRIDGE' ? 'BRIDGE' : gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : 'BIG2') as GameMode;
+              const resolvedMode = (gameModeParam === 'BRIDGE' ? 'BRIDGE' : gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : gameModeParam === 'HEARTS' ? 'HEARTS' : 'BIG2') as GameMode;
               try {
                 await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode);
                 isCreator = true;
@@ -914,6 +1015,13 @@ function RoomContent() {
         await startBridgeGame(roomId);
       } else if (room.gameMode === 'THIRTEEN') {
         await startThirteenGame(roomId);
+      } else if (room.gameMode === 'HEARTS') {
+        // 傷心小棧需要恰好 4 位玩家
+        if (room.playerOrder.length !== 4) {
+          addToast("傷心小棧需要恰好 4 位玩家！", "warning");
+          return;
+        }
+        await startHeartsGame(roomId);
       } else {
         await startGame(roomId);
       }
@@ -1075,23 +1183,28 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               boxShadow: compact ? "2px 2px 0 #000" : "0 4px 0 #111",
               minHeight: compact ? "auto" : "108px"
             }}>
-              <div style={{
-                flex: `0 0 ${compact ? 44 : 62}px`,
-                width: compact ? 44 : 62, height: compact ? 44 : 62,
-                borderRadius: "50%",
-                border: `${compact ? 2 : 2.5}px solid #000`,
-                background: "#f3f4f6",
-                display: "grid", placeItems: "center",
-                fontWeight: 900, fontSize: compact ? "1.2rem" : "19px",
-                boxShadow: "2px 2px 0 #000",
-                overflow: "hidden",
-                filter: p.isOnline === false && !p.isBot ? "grayscale(100%)" : "none"
-              }}>
+              <div 
+                className={getAvatarAnimClass(pUid)}
+                style={{
+                  flex: `0 0 ${compact ? 44 : 62}px`,
+                  width: compact ? 44 : 62, height: compact ? 44 : 62,
+                  borderRadius: "50%",
+                  border: `${compact ? 2 : 2.5}px solid #000`,
+                  background: "#f3f4f6",
+                  display: "grid", placeItems: "center",
+                  fontWeight: 900, fontSize: compact ? "1.2rem" : "19px",
+                  boxShadow: "2px 2px 0 #000",
+                  overflow: "hidden",
+                  filter: p.isOnline === false && !p.isBot ? "grayscale(100%)" : "none",
+                  position: "relative"
+                }}
+              >
                 {p.avatarUrl ? (
                   <img src={getAssetPath(p.avatarUrl)} alt="avatar" className="w-full h-full object-cover" />
                 ) : (
                   (p.nickname || "?")?.[0]?.toUpperCase()
                 )}
+                {renderBubbleAndEmoji(pUid, isMobile ? "top" : "left")}
               </div>
               <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: compact ? 3 : 5 }}>
                 <div style={{ fontWeight: 800, fontSize: compact ? "1rem" : "19px", lineHeight: 1 }} className="truncate">
@@ -1461,6 +1574,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             </section>
           </div>
         </div>
+
+        <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
       </div>
     );
   }
@@ -1468,9 +1583,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   // ---- 整場遊戲結束畫面 (Game Over) ----
   const isThirteenGameOverShowLeaderboard = room.gameMode === "THIRTEEN" && (room.thirteenState?.showLeaderboard ?? false);
   if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard)) {
-    const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15);
+    const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : room.gameMode === 'HEARTS' ? 50 : 15);
     const reachedPlayers = Object.values(room.players).filter(p => p && (p.points ?? 0) >= target);
-    const sortedPlayers = [...Object.values(room.players)].filter(p => p !== null && p !== undefined).sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+    const sortedPlayers = [...Object.values(room.players)]
+      .filter(p => p !== null && p !== undefined)
+      .sort((a, b) => room.gameMode === 'HEARTS'
+        ? (a.points ?? 0) - (b.points ?? 0)
+        : (b.points ?? 0) - (a.points ?? 0)
+      );
     const isMultiWinner = reachedPlayers.length > 1;
     
     return (
@@ -1499,7 +1619,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           <div style={{ fontSize: isMobile ? "2.5rem" : "4rem", marginBottom: "0.25rem" }}>🏆</div>
           <h1 style={{ fontSize: isMobile ? "1.8rem" : "2.5rem", fontWeight: 900, marginBottom: "0.5rem", color: "#b45309" }}>整場遊戲結束</h1>
           
-          {isMultiWinner ? (
+          {room.gameMode === 'HEARTS' ? (
+            <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
+              <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜 {sortedPlayers[0]?.nickname} 獲得冠軍！</h2>
+              <p style={{ fontWeight: 800, fontSize: isMobile ? "0.9rem" : "1.1rem", marginTop: "6px", color: "#1e293b" }}>
+                以最低的 {sortedPlayers[0]?.points ?? 0} 積分贏得本場對局！
+              </p>
+            </div>
+          ) : isMultiWinner ? (
             <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
               <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜多人同時達到！</h2>
               <p style={{ fontWeight: 800, fontSize: isMobile ? "0.9rem" : "1.1rem", marginTop: "6px", color: "#1e293b" }}>
@@ -1735,9 +1862,12 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <div style={{ textAlign: "center" }}>累計總分</div>
             </div>
             {(() => {
-              const displayOrder = room.finishedOrder && room.finishedOrder.length > 0
-                ? room.finishedOrder
-                : [...room.playerOrder].sort((a, b) => (room.players[b]?.points ?? 0) - (room.players[a]?.points ?? 0));
+              const displayOrder = room.gameMode === 'HEARTS'
+                ? [...room.playerOrder].sort((a, b) => (room.players[a]?.points ?? 0) - (room.players[b]?.points ?? 0))
+                : (room.finishedOrder && room.finishedOrder.length > 0
+                    ? room.finishedOrder
+                    : [...room.playerOrder].sort((a, b) => (room.players[b]?.points ?? 0) - (room.players[a]?.points ?? 0))
+                  );
               
               return displayOrder.map((pUid, index) => {
                 const player = room.players[pUid];
@@ -1792,6 +1922,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                       await resetThirteenRound(roomId);
                     } else if (room.gameMode === 'BRIDGE') {
                      await resetBridgeRound(roomId);
+                    } else if (room.gameMode === 'HEARTS') {
+                      await resetHeartsRound(roomId);
                    } else {
                       await update(ref(db, "rooms/" + roomId), {
                        status: "waiting", winnerUid: null,
@@ -1841,26 +1973,32 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   if (room.gameMode === 'THIRTEEN') {
     if (room.thirteenState && room.thirteenState.status === 'showing') {
       return (
-        <ThirteenShowingView
-          room={room}
-          uid={uid}
-          roomId={roomId}
-          isMobile={isMobile}
-          onLeave={handleLeaveRoom}
-          resetThirteenRound={resetThirteenRound}
-        />
+        <>
+          <ThirteenShowingView
+            room={room}
+            uid={uid}
+            roomId={roomId}
+            isMobile={isMobile}
+            onLeave={handleLeaveRoom}
+            resetThirteenRound={resetThirteenRound}
+          />
+          <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
+        </>
       );
     }
     if (room.thirteenState && room.thirteenState.status === 'arranging') {
       return (
-        <ThirteenPlayingView
-          room={room}
-          uid={uid}
-          roomId={roomId}
-          isMobile={isMobile}
-          onLeave={handleLeaveRoom}
-          confirmThirteenArrangement={confirmThirteenArrangement}
-        />
+        <>
+          <ThirteenPlayingView
+            room={room}
+            uid={uid}
+            roomId={roomId}
+            isMobile={isMobile}
+            onLeave={handleLeaveRoom}
+            confirmThirteenArrangement={confirmThirteenArrangement}
+          />
+          <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
+        </>
       );
     }
   }
@@ -1870,33 +2008,61 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
     // 叫牌階段
     if (room.bridgeBidding && room.bridgeBidding.status === 'active') {
       return (
-        <BridgeBiddingView
-          key="bridge-bidding-view"
-          room={room}
-          uid={uid}
-          isMobile={isMobile}
-          onBid={async (bid) => {
-            await submitBridgeBid(roomId, uid, bid);
-          }}
-          onLeave={handleLeaveRoom}
-        />
+        <>
+          <BridgeBiddingView
+            key="bridge-bidding-view"
+            room={room}
+            uid={uid}
+            isMobile={isMobile}
+            onBid={async (bid) => {
+              await submitBridgeBid(roomId, uid, bid);
+            }}
+            onLeave={handleLeaveRoom}
+          />
+          <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
+        </>
       );
     }
     // 打牌階段（叫牌完成且有 bridgePlaying）
     if (room.bridgeBidding?.status === 'completed' && room.bridgePlaying) {
       return (
-        <BridgePlayingView
-          key="bridge-playing-view"
+        <>
+          <BridgePlayingView
+            key="bridge-playing-view"
+            room={room}
+            uid={uid}
+            isMobile={isMobile}
+            onPlayCard={async (cardId) => {
+              await submitBridgeCard(roomId, uid, cardId);
+            }}
+            onLeave={handleLeaveRoom}
+          />
+          <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
+        </>
+      );
+    }
+  }
+
+  // ── 傷心小棧模式分路 ──────────────────────────────────────
+  if (room.gameMode === 'HEARTS') {
+    return (
+      <>
+        <HeartsPlayingView
+          key="hearts-playing-view"
           room={room}
           uid={uid}
           isMobile={isMobile}
           onPlayCard={async (cardId) => {
-            await submitBridgeCard(roomId, uid, cardId);
+            await submitHeartsCard(roomId, uid, cardId);
+          }}
+          onConfirmPass={async (cardIds) => {
+            await confirmHeartsPassCards(roomId, uid, cardIds);
           }}
           onLeave={handleLeaveRoom}
         />
-      );
-    }
+        <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
+      </>
+    );
   }
 
   const myIndex = room.playerOrder.indexOf(uid);
@@ -1924,6 +2090,330 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
     <div key="game-play-view" className="game-page select-none">
       <style dangerouslySetInnerHTML={{
         __html: `
+        /* === Capy Chat 氣泡與表情動畫樣式 === */
+        
+        /* 氣泡出現時的彈跳入場動畫 */
+        @keyframes capy-bubble-bounce {
+          0% {
+            transform: scale(0);
+            opacity: 0;
+          }
+          70% {
+            transform: scale(1.1);
+          }
+          100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+        
+        .capy-bubble {
+          position: absolute;
+          background: #fbbf24; /* 黃色高對比底 */
+          border: 3.5px solid #000000;
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-weight: 900; /* 大字重 */
+          font-size: 1.05rem;
+          box-shadow: 4px 4px 0px #000000;
+          z-index: 999;
+          animation: capy-bubble-bounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+          white-space: nowrap;
+          color: #000000;
+          pointer-events: none;
+        }
+
+        /* 手機端字體大小與寬度適配 */
+        @media (max-width: 600px) {
+          .capy-bubble {
+            font-size: 0.85rem;
+            padding: 7px 10px;
+            max-width: 140px;
+            white-space: normal;
+            word-wrap: break-word;
+            border-width: 3px;
+            box-shadow: 2px 2px 0px #000000;
+          }
+        }
+
+        /* 氣泡的對話指引三角箭頭 */
+        .capy-bubble::after {
+          content: '';
+          position: absolute;
+          width: 0;
+          height: 0;
+          border-style: solid;
+        }
+
+        .capy-arrow {
+          position: absolute;
+          width: 0;
+          height: 0;
+          border-style: solid;
+        }
+        .arrow-bottom {
+          top: 100%;
+          left: 50%;
+          margin-left: -6px;
+          border-width: 8px 6px 0 6px;
+          border-color: #000 transparent transparent transparent;
+        }
+        .arrow-top {
+          bottom: 100%;
+          left: 50%;
+          margin-left: -6px;
+          border-width: 0 6px 8px 6px;
+          border-color: transparent transparent #000 transparent;
+        }
+        .arrow-left {
+          top: 50%;
+          right: 100%;
+          margin-top: -6px;
+          border-width: 6px 8px 6px 0;
+          border-color: transparent #000 transparent transparent;
+        }
+        .arrow-right {
+          top: 50%;
+          left: 100%;
+          margin-top: -6px;
+          border-width: 6px 0 6px 8px;
+          border-color: transparent transparent transparent #000;
+        }
+
+        /* 方向避讓的絕對定位 */
+        /* 下方玩家（自己）：氣泡在頭像上方偏右 */
+        .bubble-pos-bottom {
+          bottom: calc(100% + 12px);
+          left: 10px;
+        }
+        .bubble-pos-bottom::after {
+          top: 100%;
+          left: 20px;
+          border-width: 8px 6px 0 6px;
+          border-color: #000 transparent transparent transparent;
+        }
+
+        /* 左側玩家：氣泡在頭像右側 */
+        .bubble-pos-left {
+          top: 50%;
+          left: calc(100% + 14px);
+          transform: translateY(-50%);
+        }
+        .bubble-pos-left::after {
+          top: 50%;
+          right: 100%;
+          margin-top: -6px;
+          border-width: 6px 8px 6px 0;
+          border-color: transparent #000 transparent transparent;
+        }
+
+        /* 右側玩家：氣泡在頭像左側 */
+        .bubble-pos-right {
+          top: 50%;
+          right: calc(100% + 14px);
+          transform: translateY(-50%);
+        }
+        .bubble-pos-right::after {
+          top: 50%;
+          left: 100%;
+          margin-top: -6px;
+          border-width: 6px 0 6px 8px;
+          border-color: transparent transparent transparent #000;
+        }
+
+        /* 頂部玩家：氣泡在頭像下方 */
+        .bubble-pos-top {
+          top: calc(100% + 12px);
+          left: 50%;
+          transform: translateX(-50%);
+        }
+        .bubble-pos-top::after {
+          bottom: 100%;
+          left: 50%;
+          margin-left: -6px;
+          border-width: 0 6px 8px 6px;
+          border-color: transparent transparent #000 transparent;
+        }
+
+        /* 表情動畫特效 */
+        .emoji-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 1000;
+        }
+
+        /* 1. 😎 墨鏡降落與旋轉 */
+        @keyframes capy-sunglasses-fall {
+          0% {
+            transform: translateY(-60px) rotate(-45deg) scale(2);
+            opacity: 0;
+          }
+          70% {
+            transform: translateY(2px) rotate(5deg) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(0px) rotate(0deg) scale(1);
+            opacity: 1;
+          }
+        }
+        .capy-anim-sunglasses {
+          position: absolute;
+          font-size: 2.2rem;
+          left: 50%;
+          top: 50%;
+          margin-left: -1.1rem;
+          margin-top: -1.1rem;
+          animation: capy-sunglasses-fall 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+        }
+
+        /* 2. ♨️ 溫泉熱氣上升 */
+        @keyframes capy-onsen-steam {
+          0% {
+            transform: translateY(10px) scale(0.8);
+            opacity: 0;
+          }
+          50% {
+            opacity: 0.8;
+          }
+          100% {
+            transform: translateY(-30px) scale(1.2);
+            opacity: 0;
+          }
+        }
+        @keyframes capy-onsen-sway {
+          0%, 100% { transform: rotate(-3deg); }
+          50% { transform: rotate(3deg); }
+        }
+        .capy-anim-onsen-steam1 {
+          position: absolute;
+          left: 30%;
+          top: -20px;
+          font-size: 1rem;
+          animation: capy-onsen-steam 1.5s infinite ease-out;
+        }
+        .capy-anim-onsen-steam2 {
+          position: absolute;
+          left: 60%;
+          top: -25px;
+          font-size: 0.9rem;
+          animation: capy-onsen-steam 1.5s infinite ease-out 0.4s;
+        }
+        .capy-sway-avatar {
+          animation: capy-onsen-sway 1s infinite ease-in-out;
+        }
+
+        /* 3. 🍊 頂橘子彈跳 */
+        @keyframes capy-orange-bounce {
+          0%, 100% {
+            transform: translateY(-16px) scaleY(1);
+          }
+          50% {
+            transform: translateY(-24px) scaleY(1.05);
+          }
+        }
+        .capy-anim-orange {
+          position: absolute;
+          font-size: 1.8rem;
+          left: 50%;
+          top: -28px;
+          margin-left: -0.9rem;
+          animation: capy-orange-bounce 0.6s infinite ease-in-out;
+        }
+
+        /* 4. 💬 思考氣泡與點點 */
+        @keyframes capy-thinking-dots {
+          0%, 100% { opacity: 0.2; }
+          33% { opacity: 1; }
+        }
+        .capy-anim-thinking {
+          position: absolute;
+          top: -22px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #fff;
+          border: 2px solid #000;
+          border-radius: 999px;
+          padding: 2px 8px;
+          font-weight: 900;
+          font-size: 0.75rem;
+          box-shadow: 2px 2px 0 #000;
+          color: #000;
+        }
+        .capy-dot1 { animation: capy-thinking-dots 1.5s infinite 0s; }
+        .capy-dot2 { animation: capy-thinking-dots 1.5s infinite 0.4s; }
+        .capy-dot3 { animation: capy-thinking-dots 1.5s infinite 0.8s; }
+
+        /* 5. 💡 天才亮燈泡與發光 */
+        @keyframes capy-lightbulb-glow {
+          0%, 100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 1px #fbbf24); }
+          50% { transform: scale(1.15) rotate(5deg); filter: drop-shadow(0 0 8px #fbbf24); }
+        }
+        .capy-anim-genius {
+          position: absolute;
+          font-size: 1.8rem;
+          left: 50%;
+          top: -26px;
+          margin-left: -0.9rem;
+          animation: capy-lightbulb-glow 0.8s infinite ease-in-out;
+        }
+
+        /* 6. 💢 生氣與頭像劇烈抖動 */
+        @keyframes capy-angry-pulse {
+          0%, 100% { transform: scale(1) rotate(-10deg); }
+          50% { transform: scale(1.25) rotate(10deg); }
+        }
+        @keyframes capy-shaking {
+          0%, 100% { transform: translate(0, 0) rotate(0); }
+          20% { transform: translate(-3px, 1px) rotate(-1.5deg); }
+          40% { transform: translate(3px, -1px) rotate(1.5deg); }
+          60% { transform: translate(-3px, -1px) rotate(-1.5deg); }
+          80% { transform: translate(3px, 1px) rotate(1.5deg); }
+        }
+        .capy-anim-angry {
+          position: absolute;
+          font-size: 1.6rem;
+          left: 70%;
+          top: -18px;
+          animation: capy-angry-pulse 0.4s infinite ease-in-out;
+        }
+        .capy-shaking-avatar {
+          animation: capy-shaking 0.15s infinite linear;
+        }
+
+        /* 7. 🃏 牌王出牌撒花 */
+        @keyframes capy-card-fan {
+          0% { transform: translateY(10px) rotate(-20deg) scale(0.5); opacity: 0; }
+          100% { transform: translateY(-22px) rotate(0deg) scale(1); opacity: 1; }
+        }
+        @keyframes capy-sparkle {
+          0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+          50% { opacity: 1; }
+          100% { transform: translate(var(--x), var(--y)) scale(1.2); opacity: 0; }
+        }
+        .capy-anim-cardfan {
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          top: -22px;
+          font-size: 1.5rem;
+          animation: capy-card-fan 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.2) both;
+        }
+        .capy-sparkle-1 {
+          --x: -25px; --y: -25px;
+          position: absolute; left: 20%; top: -10px; font-size: 0.8rem;
+          animation: capy-sparkle 1s infinite ease-out;
+        }
+        .capy-sparkle-2 {
+          --x: 25px; --y: -30px;
+          position: absolute; left: 80%; top: -15px; font-size: 0.7rem;
+          animation: capy-sparkle 1s infinite ease-out 0.3s;
+        }
+
         @keyframes turn-glow {
           0%, 100% {
             box-shadow: 0 0 4px #fbbf24, 2px 2px 0 #000;
@@ -2924,12 +3414,12 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
         </button>
 
         {topPlayer ? (
-          <div className="header-player">
+          <div className="header-player" style={{ position: "relative" }}>
             {topPlayer.avatarUrl ? (
               <img 
                 src={getAssetPath(topPlayer.avatarUrl)} 
                 alt="avatar" 
-                className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`} 
+                className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""} ${getAvatarAnimClass(topPlayer.uid)}`} 
                 style={{
                   filter: topPlayer.isOnline === false && !topPlayer.isBot ? "grayscale(100%)" : "none",
                   opacity: topPlayer.isOnline === false && !topPlayer.isBot ? 0.5 : 1
@@ -2937,7 +3427,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               />
             ) : (
               <div 
-                className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""}`}
+                className={`header-avatar ${room.turnUid === topPlayer.uid ? "header-avatar-active" : ""} ${getAvatarAnimClass(topPlayer.uid)}`}
                 style={{ 
                   display: "grid", 
                   placeItems: "center", 
@@ -2951,6 +3441,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 {((topPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
               </div>
             )}
+            {renderBubbleAndEmoji(topPlayer.uid, "top")}
             <div 
               className="header-player-name comic-badge truncate"
               style={{
@@ -3004,27 +3495,31 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             <>
               {leftPlayer.avatarUrl ? (
                 <div 
-                  className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""} ${getAvatarAnimClass(leftPlayer.uid)}`}
                   style={{
                     filter: leftPlayer.isOnline === false && !leftPlayer.isBot ? "grayscale(100%)" : "none",
-                    opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.5 : 1
+                    opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.5 : 1,
+                    position: "relative"
                   }}
                 >
                   <img src={getAssetPath(leftPlayer.avatarUrl)} alt="avatar" />
+                  {renderBubbleAndEmoji(leftPlayer.uid, "left")}
                 </div>
               ) : (
                 <div 
-                  className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  className={`opponent-avatar ${room.turnUid === leftPlayer.uid ? "opponent-active-avatar" : ""} ${getAvatarAnimClass(leftPlayer.uid)}`}
                   style={{ 
                     display: "grid", 
                     placeItems: "center", 
                     fontWeight: 900, 
                     fontSize: "1.2rem",
                     filter: leftPlayer.isOnline === false && !leftPlayer.isBot ? "grayscale(100%)" : "none",
-                    opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.5 : 1
+                    opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.5 : 1,
+                    position: "relative"
                   }}
                 >
                   {((leftPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
+                  {renderBubbleAndEmoji(leftPlayer.uid, "left")}
                 </div>
               )}
               <div 
@@ -3132,27 +3627,31 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             <>
               {rightPlayer.avatarUrl ? (
                 <div 
-                  className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""} ${getAvatarAnimClass(rightPlayer.uid)}`}
                   style={{
                     filter: rightPlayer.isOnline === false && !rightPlayer.isBot ? "grayscale(100%)" : "none",
-                    opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.5 : 1
+                    opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.5 : 1,
+                    position: "relative"
                   }}
                 >
                   <img src={getAssetPath(rightPlayer.avatarUrl)} alt="avatar" />
+                  {renderBubbleAndEmoji(rightPlayer.uid, "right")}
                 </div>
               ) : (
                 <div 
-                  className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""}`}
+                  className={`opponent-avatar ${room.turnUid === rightPlayer.uid ? "opponent-active-avatar" : ""} ${getAvatarAnimClass(rightPlayer.uid)}`}
                   style={{ 
                     display: "grid", 
                     placeItems: "center", 
                     fontWeight: 900, 
                     fontSize: "1.2rem",
                     filter: rightPlayer.isOnline === false && !rightPlayer.isBot ? "grayscale(100%)" : "none",
-                    opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.5 : 1
+                    opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.5 : 1,
+                    position: "relative"
                   }}
                 >
                   {((rightPlayer.nickname || "").replace("🤖 ", "") || "?")?.[0]?.toUpperCase()}
+                  {renderBubbleAndEmoji(rightPlayer.uid, "right")}
                 </div>
               )}
               <div 
@@ -3196,12 +3695,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
       {/* 下方我的手牌區 */}
       <div
-        className="bottom-panel"
+        className={`bottom-panel ${getAvatarAnimClass(uid || "")}`}
         style={{
           borderTopColor: isMyTurn ? "#fbbf24" : "#000",
           backgroundColor: (me && me.cards.length === 0) ? "#f0fdf4" : (isMyTurn ? "#fffbeb" : "#fff"),
+          position: "relative"
         }}
       >
+        {renderBubbleAndEmoji(uid || "", "bottom")}
         {me && me.cards.length === 0 ? (
           <div style={{
             gridRow: "1 / -1",
@@ -3448,9 +3949,309 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           </>
         )}
       </div>
+      <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
     </div>
   );
 }
+
+interface CapyChatOverlayProps {
+  roomId: string;
+  uid: string;
+  activeBubbles: Record<string, { content: string; type: 'text' | 'emoji'; timestamp: number }>;
+  isChatOpen: boolean;
+  setIsChatOpen: (open: boolean) => void;
+  room: RoomState;
+  isMobile: boolean;
+}
+
+const CapyChatOverlay: React.FC<CapyChatOverlayProps> = ({
+  roomId,
+  uid,
+  activeBubbles,
+  isChatOpen,
+  setIsChatOpen,
+  room,
+  isMobile
+}) => {
+  return null; // 暫時停用互動氣泡表情與訊息發送功能
+  const getPlayerViewportPosition = (pUid: string): 'bottom' | 'top' | 'left' | 'right' => {
+    // 自己永遠在底部
+    if (pUid === uid) return 'bottom';
+
+    const myIndex = room.playerOrder.indexOf(uid);
+    const pIndex = room.playerOrder.indexOf(pUid);
+    const total = room.playerOrder.length;
+
+    // 若找不到座位（如大廳邊界情況）先fallback到 top，讓氣泡至少能顯示
+    if (myIndex === -1 || pIndex === -1) return 'top';
+
+    if (total === 4) {
+      const diff = (pIndex - myIndex + 4) % 4;
+      if (diff === 1) return 'right';
+      if (diff === 2) return 'top';
+      if (diff === 3) return 'left';
+    } else if (total === 3) {
+      const diff = (pIndex - myIndex + 3) % 3;
+      if (diff === 1) return 'right';
+      if (diff === 2) return 'left';
+    } else if (total === 2) {
+      return 'top';
+    }
+    return 'top';
+  };
+
+  return (
+    <>
+      {/* 💬 Capy Chat 全局氣泡與表情覆蓋層（所有狀態皆渲染，gameOver 除外） */}
+      {room.status !== 'gameOver' && Object.keys(activeBubbles).length > 0 && (
+        <div 
+          className="global-chat-overlay"
+          style={{
+            position: "fixed",
+            top: 0, left: 0, width: "100vw", height: "100vh",
+            pointerEvents: "none",
+            zIndex: 1999
+          }}
+        >
+          {Object.entries(activeBubbles).map(([pUid, bubble]) => {
+            const position = getPlayerViewportPosition(pUid);
+            
+            return (
+              <div 
+                key={`global-bubble-${pUid}`}
+                className={`global-bubble-container bubble-pos-${position}`}
+                style={{
+                  position: "absolute",
+                  ...(position === 'bottom' ? {
+                    bottom: isMobile ? "170px" : "200px",
+                    left: "50%",
+                    transform: "translateX(-50%)"
+                  } : {}),
+                  ...(position === 'top' ? {
+                    top: isMobile ? "90px" : "110px",
+                    left: "50%",
+                    transform: "translateX(-50%)"
+                  } : {}),
+                  ...(position === 'left' ? {
+                    left: isMobile ? "40px" : "80px",
+                    top: "40%",
+                    transform: "translateY(-50%)"
+                  } : {}),
+                  ...(position === 'right' ? {
+                    right: isMobile ? "40px" : "80px",
+                    top: "40%",
+                    transform: "translateY(-50%)"
+                  } : {}),
+                  pointerEvents: "none"
+                }}
+              >
+                {bubble.type === 'text' && (
+                  <div 
+                    className="capy-bubble"
+                    style={{
+                      position: "relative",
+                      animation: "capy-bubble-bounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both"
+                    }}
+                  >
+                    {bubble.content}
+                    <div className={`capy-arrow arrow-${position}`} />
+                  </div>
+                )}
+
+                {bubble.type === 'emoji' && (
+                  <div style={{ position: "relative", width: "80px", height: "80px", display: "grid", placeItems: "center" }}>
+                    {bubble.content === 'capy_sunglasses' && (
+                      <span className="capy-anim-sunglasses">😎</span>
+                    )}
+                    {bubble.content === 'capy_onsen' && (
+                      <>
+                        <span className="capy-anim-onsen-steam1">♨️</span>
+                        <span className="capy-anim-onsen-steam2">♨️</span>
+                      </>
+                    )}
+                    {bubble.content === 'capy_orange' && (
+                      <span className="capy-anim-orange">🍊</span>
+                    )}
+                    {bubble.content === 'capy_dumb' && (
+                      <div className="capy-anim-thinking">
+                        <span>思考中</span>
+                        <span className="capy-dot1">.</span>
+                        <span className="capy-dot2">.</span>
+                        <span className="capy-dot3">.</span>
+                      </div>
+                    )}
+                    {bubble.content === 'capy_genius' && (
+                      <span className="capy-anim-genius">💡</span>
+                    )}
+                    {bubble.content === 'capy_angry' && (
+                      <span className="capy-anim-angry">💢</span>
+                    )}
+                    {bubble.content === 'capy_big2' && (
+                      <>
+                        <span className="capy-anim-cardfan">🃏</span>
+                        <span className="capy-sparkle-1">✨</span>
+                        <span className="capy-sparkle-2">✨</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 💬 Capy Chat 浮動按鈕與發送 Modal */}
+      {room.status !== 'gameOver' && (
+        <>
+          <button 
+            className="comic-btn"
+            style={{
+              position: "fixed",
+              right: "16px",
+              bottom: "160px",
+              zIndex: 1001,
+              width: "48px",
+              height: "48px",
+              borderRadius: "50%",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "1.4rem",
+              background: "#fbbf24",
+              border: "3px solid #000",
+              boxShadow: "3px 3px 0 #000",
+              cursor: "pointer"
+            }}
+            onClick={() => setIsChatOpen(true)}
+          >
+            💬
+          </button>
+
+          {isChatOpen && (
+            <div 
+              key="chat-modal-overlay"
+              style={{
+                position: "fixed",
+                top: 0, left: 0, width: "100vw", height: "100vh",
+                backgroundColor: "rgba(0, 0, 0, 0.4)",
+                zIndex: 2000,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+              onClick={() => setIsChatOpen(false)}
+            >
+              <div 
+                className="comic-panel"
+                style={{
+                  background: "#fff",
+                  border: "3px solid #000",
+                  borderRadius: "16px",
+                  boxShadow: "6px 6px 0 #000",
+                  width: "min(90vw, 340px)",
+                  padding: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px"
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px dashed #000", paddingBottom: "10px" }}>
+                  <span style={{ fontWeight: 900, fontSize: "1.1rem", color: "#000" }}>🐹 Capy Chat 快捷溝通</span>
+                  <button 
+                    onClick={() => setIsChatOpen(false)}
+                    style={{ border: "2px solid #000", borderRadius: "50%", width: "24px", height: "24px", display: "grid", placeItems: "center", background: "#f3f4f6", fontWeight: 900, cursor: "pointer", fontSize: "10px" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: "0.85rem", color: "#6b7280", marginBottom: "8px" }}>💬 快捷對話</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    {[
+                      "快點啦，等你出牌！",
+                      "运氣真好！",
+                      "好牌！這局我贏定了！",
+                      "這手牌也太爛了吧...",
+                      "承讓承讓！",
+                      "再來一局！"
+                    ].map(txt => (
+                      <button 
+                        key={txt}
+                        className="comic-btn"
+                        style={{
+                          fontSize: "0.75rem",
+                          padding: "8px",
+                          borderRadius: "8px",
+                          border: "2px solid #000",
+                          boxShadow: "2px 2px 0 #000",
+                          cursor: "pointer",
+                          background: "#fef08a",
+                          transform: "none"
+                        }}
+                        onClick={() => {
+                          sendRoomBubble(roomId, uid, txt, 'text').catch(console.error);
+                          setIsChatOpen(false);
+                        }}
+                      >
+                        {txt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: "0.85rem", color: "#6b7280", marginBottom: "8px" }}>🐹 水豚動態表情</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+                    {[
+                      { id: "capy_onsen",      emoji: "♨️", label: "溫泉" },
+                      { id: "capy_sunglasses", emoji: "😎", label: "墨鏡" },
+                      { id: "capy_orange",     emoji: "🍊", label: "橘子" },
+                      { id: "capy_dumb",       emoji: "💬", label: "思考" },
+                      { id: "capy_genius",     emoji: "💡", label: "天才" },
+                      { id: "capy_angry",      emoji: "💢", label: "生氣" },
+                      { id: "capy_big2",       emoji: "🃏", label: "牌王" }
+                    ].map(item => (
+                      <button 
+                        key={item.id}
+                        className="comic-btn"
+                        style={{
+                          fontSize: "1.3rem",
+                          padding: "6px 0",
+                          borderRadius: "8px",
+                          border: "2px solid #000",
+                          boxShadow: "2px 2px 0 #000",
+                          cursor: "pointer",
+                          background: "#fff",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "2px",
+                          transform: "none"
+                        }}
+                        onClick={() => {
+                          sendRoomBubble(roomId, uid, item.id, 'emoji').catch(console.error);
+                          setIsChatOpen(false);
+                        }}
+                      >
+                        <span>{item.emoji}</span>
+                        <span style={{ fontSize: "10px", fontWeight: 800, color: "#6b7280" }}>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+};
 
 export default function RoomPage() {
   return (

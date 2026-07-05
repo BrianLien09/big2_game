@@ -19,6 +19,7 @@ interface ThirteenPlayingViewProps {
     middle: Card[],
     back: Card[]
   ) => Promise<void>;
+  renderBubble?: (playerUid: string, position: 'bottom' | 'top' | 'left' | 'right') => React.ReactNode;
 }
 
 export default function ThirteenPlayingView({
@@ -27,7 +28,8 @@ export default function ThirteenPlayingView({
   roomId,
   isMobile,
   onLeave,
-  confirmThirteenArrangement
+  confirmThirteenArrangement,
+  renderBubble
 }: ThirteenPlayingViewProps) {
   const myThirteenState = room.thirteenState?.players[uid];
 
@@ -400,7 +402,8 @@ export default function ThirteenPlayingView({
                     padding: "8px 12px",
                     background: isMe ? "#fef08a" : "#f3f4f6",
                     border: "2px solid #000",
-                    borderRadius: "8px"
+                    borderRadius: "8px",
+                    position: "relative"
                   }}>
                     <span style={{ fontWeight: 800, fontSize: "0.88rem" }}>
                       {player.nickname} {isMe && "(我)"}
@@ -412,6 +415,7 @@ export default function ThirteenPlayingView({
                     }}>
                       {pThirteen?.isConfirmed ? "✓ 已完成" : "⏳ 排牌中"}
                     </span>
+                    {renderBubble?.(pUid, isMobile ? 'top' : 'left')}
                   </div>
                 );
               })}

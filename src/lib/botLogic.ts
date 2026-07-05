@@ -1,5 +1,7 @@
 import { Card, PlayedHand, evaluateHand, compareSingleCard, canPlay, getFourOfAKindRank } from './big2Logic';
-import { BidLevel } from './bridgeLogic';
+import { BidLevel, TrickCard } from './bridgeLogic';
+import { validateHeartsPlay, isHeartsScoreCard, HEARTS_RANK_WEIGHT } from './heartsLogic';
+
 
 export type EvaluatedHand = PlayedHand;
 
@@ -528,4 +530,141 @@ export const selectBridgeCardPlay = (
     return wa - wb; // 升冪排序，拿點數最小的牌墊掉
   })[0];
 };
+
+// ====================================================
+// 傷心小棧 (Hearts) 人機 Bot 決策邏輯
+// ====================================================
+
+/**
+ * 傷心小棧 Bot 選擇 3 張傳出的牌
+ * 優先丟棄：黑桃 Q、大紅心、大黑桃、其他花色的大牌
+ */
+export const selectHeartsPassCards = (botCards: Card[]): Card[] => {
+  if (botCards.length < 3) return [...botCards];
+
+  // 計算每張牌的「討厭分數」 (分數越高越想傳出去)
+  const getPassPriority = (card: Card): number => {
+    // 1. 黑桃 Q 價值 13 分，最優先丟棄
+    if (card.suit === 'spades' && card.rank === 'Q') {
+      return 1000;
+    }
+    // 2. 紅心是分數牌，大紅心更危險
+    if (card.suit === 'hearts') {
+      const weight = HEARTS_RANK_WEIGHT[card.rank] ?? 0;
+      return 100 + weight * 10;
+    }
+    // 3. 黑桃 A、K 容易強迫吃到黑桃 Q
+    if (card.suit === 'spades' && (card.rank === 'A' || card.rank === 'K')) {
+      return 80;
+    }
+    // 4. 其他大牌也容易吃圈，給予適當優先度
+    const weight = HEARTS_RANK_WEIGHT[card.rank] ?? 0;
+    return weight * 2;
+  };
+
+  const sortedByPriority = [...botCards].sort((a, b) => getPassPriority(b) - getPassPriority(a));
+  return sortedByPriority.slice(0, 3);
+};
+
+/**
+ * 傷心小棧 Bot 出牌決策
+ */
+export const selectHeartsCardPlay = (
+  botCards: Card[],
+  leadSuit: Card['suit'] | null,
+  heartsBroken: boolean,
+  isFirstTrick: boolean,
+  isLeadCard: boolean,
+  currentTrick: TrickCard[]
+): Card => {
+  if (botCards.length === 0) {
+    throw new Error("Bot has no cards to play");
+  }
+
+  // 1. 取得所有合法的牌
+  const playable = botCards.filter(c => 
+    validateHeartsPlay(c, botCards, leadSuit, heartsBroken, isFirstTrick).valid
+  );
+  
+  const candidates = playable.length > 0 ? playable : botCards;
+
+  // 2. ── 情境 A：自己是引牌者 (Lead Card) ──
+  if (isLeadCard || !leadSuit) {
+    // 若為第一圈，且必須出梅花 2 (如果有梅花 2，candidates 應該只會有梅花 2)
+    const clubs2 = candidates.find(c => c.suit === 'clubs' && c.rank === '2');
+    if (clubs2) return clubs2;
+
+    // 常規引牌：優先引出安全的小牌 (點數小的非分數牌)
+    const nonScoreCards = candidates.filter(c => !isHeartsScoreCard(c));
+    if (nonScoreCards.length > 0) {
+      // 依點數由小到大排序，引出最小的
+      return nonScoreCards.sort((a, b) => HEARTS_RANK_WEIGHT[a.rank] - HEARTS_RANK_WEIGHT[b.rank])[0];
+    }
+    // 若手牌全為分數牌，引出最小的分數牌
+    return candidates.sort((a, b) => HEARTS_RANK_WEIGHT[a.rank] - HEARTS_RANK_WEIGHT[b.rank])[0];
+  }
+
+  // 3. ── 情境 B：後手出牌 ──
+  // A. 必須跟花色 (Follow Suit)
+  const isFollowSuit = candidates.every(c => c.suit === leadSuit);
+  if (isFollowSuit) {
+    // 找出目前場上該圈中，跟主導花色相同且點數最大的卡牌權重
+    let currentMaxWeight = 0;
+    currentTrick.forEach(tc => {
+      if (tc.card.suit === leadSuit) {
+        const w = HEARTS_RANK_WEIGHT[tc.card.rank] ?? 0;
+        if (w > currentMaxWeight) {
+          currentMaxWeight = w;
+        }
+      }
+    });
+
+    // 檢查這一圈目前是否有分數牌 (紅心或黑桃 Q)
+    const trickHasScore = currentTrick.some(tc => isHeartsScoreCard(tc.card));
+
+    // 排序候選牌
+    const sortedAsc = [...candidates].sort((a, b) => HEARTS_RANK_WEIGHT[a.rank] - HEARTS_RANK_WEIGHT[b.rank]);
+
+    // 若手上有黑桃 Q 且主導花色是黑桃
+    if (leadSuit === 'spades') {
+      const spadeQ = candidates.find(c => c.rank === 'Q');
+      if (spadeQ) {
+        // 如果場上已經有人出了黑桃 A 或 K，我們可以非常安全地把黑桃 Q 甩給他！
+        if (currentMaxWeight > HEARTS_RANK_WEIGHT['Q']) {
+          return spadeQ;
+        }
+        // 否則，若其他人還沒出 A, K，我們暫時保留黑桃 Q，出比 Q 小的黑桃避難
+        const saferSpades = sortedAsc.filter(c => HEARTS_RANK_WEIGHT[c.rank] < HEARTS_RANK_WEIGHT['Q']);
+        if (saferSpades.length > 0) {
+          return saferSpades[saferSpades.length - 1]; // 出小黑桃中最大的，保留空間
+        }
+      }
+    }
+
+    // 防守策略：如果不想吃圈，盡量出小於 currentMaxWeight 且最大的牌
+    const smallerCards = sortedAsc.filter(c => (HEARTS_RANK_WEIGHT[c.rank] ?? 0) < currentMaxWeight);
+    if (smallerCards.length > 0) {
+      return smallerCards[smallerCards.length - 1]; // 墊出一張安全且儘量大的牌
+    }
+
+    // 如果無法出比場上小的牌，勢必要吃圈了，那就索性打掉手中該花色最大的牌
+    return sortedAsc[sortedAsc.length - 1];
+  }
+
+  // B. 手中沒有引牌花色，可以隨便墊牌 (這是一口氣塞分或清空大牌的好時機！)
+  // 優先順序：
+  // 1. 黑桃 Q
+  const spadeQ = candidates.find(c => c.suit === 'spades' && c.rank === 'Q');
+  if (spadeQ) return spadeQ;
+
+  // 2. 點數大的紅心牌 (♥A, ♥K, ♥Q 等)
+  const hearts = candidates.filter(c => c.suit === 'hearts');
+  if (hearts.length > 0) {
+    return hearts.sort((a, b) => HEARTS_RANK_WEIGHT[b.rank] - HEARTS_RANK_WEIGHT[a.rank])[0];
+  }
+
+  // 3. 點數大的其他花色牌 (如 ♠A, ♠K)
+  return candidates.sort((a, b) => HEARTS_RANK_WEIGHT[b.rank] - HEARTS_RANK_WEIGHT[a.rank])[0];
+};
+
 
