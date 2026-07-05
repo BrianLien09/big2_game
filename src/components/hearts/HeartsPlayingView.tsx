@@ -371,6 +371,9 @@ export default function HeartsPlayingView({
   const currentTrickRef = useRef(currentTrick);
   const prevTricksCountRef = useRef(completedTricks.length);
   const relativePlayerOrderRef = useRef(relativePlayerOrder);
+  // 追蹤兩個 timer，確保 Effect 重新觸發時能正確取消，防止 isAnimatingRef 永久卡死
+  const delayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const animationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 同步 Ref，避免在 useEffect 的 deps 中帶入 localTrick / relativePlayerOrder
   useEffect(() => { localTrickRef.current = localTrick; }, [localTrick]);
@@ -404,6 +407,12 @@ export default function HeartsPlayingView({
 
     if (!lastTrick) return;
 
+    // 如果前一輪動畫還在進行，先強制取消兩個 timer 並解除鎖定
+    // 防止因人機快速連續吃圈導致 isAnimatingRef 永久卡死
+    if (delayTimerRef.current) { clearTimeout(delayTimerRef.current); delayTimerRef.current = null; }
+    if (animationTimerRef.current) { clearTimeout(animationTimerRef.current); animationTimerRef.current = null; }
+    setAnimatingWinnerDir(null);
+
     isAnimatingRef.current = true;
     setLocalTrick(lastTrick.cards);
 
@@ -411,24 +420,31 @@ export default function HeartsPlayingView({
     const dirs: ('bottom' | 'left' | 'top' | 'right')[] = ['bottom', 'left', 'top', 'right'];
     const winnerDir = dirs[winnerIdx >= 0 ? winnerIdx : 2];
 
-    const delayTimer = setTimeout(() => {
+    // 1000ms 亮相後開始飛牌
+    delayTimerRef.current = setTimeout(() => {
+      delayTimerRef.current = null;
       setAnimatingWinnerDir(winnerDir);
 
-      const animationTimer = setTimeout(() => {
+      // 600ms 飛牌動畫完成後解鎖
+      animationTimerRef.current = setTimeout(() => {
+        animationTimerRef.current = null;
         setLocalTrick([]);
         setAnimatingWinnerDir(null);
         isAnimatingRef.current = false;
 
-        // 如果動畫期間已經有人出牌，立刻補拉同步到畫面
+        // 動畫期間已有人出牌，補拉同步到畫面
         if (currentTrickRef.current.length > 0) {
           setLocalTrick(currentTrickRef.current);
         }
       }, 600);
+    }, 1000);
 
-      return () => clearTimeout(animationTimer);
-    }, 1000); // 增加停留時間至 1000ms (1秒)，讓最後一張牌亮相充足
-
-    return () => clearTimeout(delayTimer);
+    // Effect cleanup：Effect 重新觸發時取消兩個 timer，並強制解除動畫鎖定
+    return () => {
+      if (delayTimerRef.current) { clearTimeout(delayTimerRef.current); delayTimerRef.current = null; }
+      if (animationTimerRef.current) { clearTimeout(animationTimerRef.current); animationTimerRef.current = null; }
+      isAnimatingRef.current = false;
+    };
   // 只依賴 completedTricks.length，圈數改變才觸發，不受 state 影響
   }, [completedTricks.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
