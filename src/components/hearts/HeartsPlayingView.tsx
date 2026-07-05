@@ -297,11 +297,13 @@ export default function HeartsPlayingView({
 
   const isAnimatingRef = useRef(false);
   const localTrickRef = useRef(localTrick);
+  const currentTrickRef = useRef(currentTrick);
   const prevTricksCountRef = useRef(completedTricks.length);
   const relativePlayerOrderRef = useRef(relativePlayerOrder);
 
   // 同步 Ref，避免在 useEffect 的 deps 中帶入 localTrick / relativePlayerOrder
   useEffect(() => { localTrickRef.current = localTrick; }, [localTrick]);
+  useEffect(() => { currentTrickRef.current = currentTrick; }, [currentTrick]);
   useEffect(() => { relativePlayerOrderRef.current = relativePlayerOrder; }, [relativePlayerOrder]);
 
   // ── Effect 1：只負責將出牌桌同步到 localTrick（不依賴 localTrick 本身）──
@@ -345,6 +347,11 @@ export default function HeartsPlayingView({
         setLocalTrick([]);
         setAnimatingWinnerDir(null);
         isAnimatingRef.current = false;
+
+        // 如果動畫期間已經有人出牌，立刻補拉同步到畫面
+        if (currentTrickRef.current.length > 0) {
+          setLocalTrick(currentTrickRef.current);
+        }
       }, 600);
 
       return () => clearTimeout(animationTimer);
