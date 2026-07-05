@@ -348,7 +348,7 @@ export default function HeartsPlayingView({
       }, 600);
 
       return () => clearTimeout(animationTimer);
-    }, 150);
+    }, 1000); // 增加停留時間至 1000ms (1秒)，讓最後一張牌亮相充足
 
     return () => clearTimeout(delayTimer);
   // 只依賴 completedTricks.length，圈數改變才觸發，不受 state 影響
