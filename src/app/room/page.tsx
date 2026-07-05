@@ -1388,10 +1388,17 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
           {/* 目標積分設定列 */}
           <div style={{ flexShrink: 0, padding: "10px 16px", background: "#fff", borderBottom: "2px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#4b5563" }}>目標結束積分</span>
+            <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#4b5563" }}>
+              {room.gameMode === 'HEARTS' ? '結束負分上限' : '目標結束積分'}
+            </span>
             {me?.isHost ? (
               <div style={{ display: "flex", gap: 6 }}>
-                {(room.gameMode === 'BRIDGE' ? [500, 1000, 1500] : [10, 15, 20]).map((pts) => {
+                {(room.gameMode === 'BRIDGE' 
+                  ? [500, 1000, 1500] 
+                  : room.gameMode === 'HEARTS' 
+                    ? [30, 50, 100] 
+                    : [10, 15, 20]
+                ).map((pts) => {
                   const isSelected = room.targetPoints === pts;
                   return (
                     <button
@@ -1402,7 +1409,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                           setIsUpdatingPoints(true);
                           await updateTargetPoints(roomId, pts);
                         } catch (err) {
-                          addToast("更新目標積分失敗", "error");
+                          addToast(room.gameMode === 'HEARTS' ? "更新負分上限失敗" : "更新目標積分失敗", "error");
                         } finally {
                           setIsUpdatingPoints(false);
                         }
@@ -1418,14 +1425,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                         cursor: "pointer"
                       }}
                     >
-                      {pts}分
+                      {pts}{room.gameMode === 'HEARTS' ? '負分' : '分'}
                     </button>
                   );
                 })}
               </div>
             ) : (
               <span style={{ fontSize: "0.85rem", fontWeight: 900, color: "#b45309" }}>
-                🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15)} 分
+                🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}
               </span>
             )}
           </div>
@@ -1503,10 +1510,17 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
                 {/* 目標積分設定區域 */}
                 <div style={{ width: "100%", marginBottom: 20, textAlign: "center" }}>
-                  <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>目標結束積分</div>
+                  <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>
+                    {room.gameMode === 'HEARTS' ? '結束負分上限' : '目標結束積分'}
+                  </div>
                   {me?.isHost ? (
                     <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                      {(room.gameMode === 'BRIDGE' ? [500, 1000, 1500] : [10, 15, 20]).map((pts) => {
+                      {(room.gameMode === 'BRIDGE' 
+                        ? [500, 1000, 1500] 
+                        : room.gameMode === 'HEARTS' 
+                          ? [30, 50, 100] 
+                          : [10, 15, 20]
+                      ).map((pts) => {
                         const isSelected = room.targetPoints === pts;
                         return (
                           <button
@@ -1515,9 +1529,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                             onClick={async () => {
                               try {
                                 setIsUpdatingPoints(true);
-                                  await updateTargetPoints(roomId, pts);
+                                await updateTargetPoints(roomId, pts);
                               } catch (err) {
-                                addToast("更新目標積分失敗", "error");
+                                addToast(room.gameMode === 'HEARTS' ? "更新負分上限失敗" : "更新目標積分失敗", "error");
                               } finally {
                                 setIsUpdatingPoints(false);
                               }
@@ -1535,14 +1549,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                               cursor: "pointer"
                             }}
                           >
-                            {pts}分
+                            {pts}{room.gameMode === 'HEARTS' ? '負分' : '分'}
                           </button>
                         );
                       })}
                     </div>
                   ) : (
                     <span className="comic-badge" style={{ background: "#f3f4f6", color: "#000", padding: "6px 16px", border: "2px solid #000", fontWeight: 900, borderRadius: 8, display: "inline-block" }}>
-                      🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : 15)} 分結束
+                      🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}結束
                     </span>
                   )}
                 </div>
