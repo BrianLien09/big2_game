@@ -19,6 +19,11 @@ interface ThirteenPlayingViewProps {
     middle: Card[],
     back: Card[]
   ) => Promise<void>;
+  confirmThirteenPassCards?: (
+    roomId: string,
+    playerUid: string,
+    cardIds: string[]
+  ) => Promise<void>;
   renderBubble?: (playerUid: string, position: 'bottom' | 'top' | 'left' | 'right') => React.ReactNode;
 }
 
@@ -29,9 +34,14 @@ export default function ThirteenPlayingView({
   isMobile,
   onLeave,
   confirmThirteenArrangement,
+  confirmThirteenPassCards,
   renderBubble
 }: ThirteenPlayingViewProps) {
   const myThirteenState = room.thirteenState?.players[uid];
+
+  const isPassingPhase = room.thirteenState?.status === 'passing';
+  const myPassingConfirmed = myThirteenState?.isPassingConfirmed;
+  const passDirection = room.thirteenState?.passDirection;
 
   // 卡牌分配的狀態
   const [unassigned, setUnassigned] = useState<Card[]>([]);
@@ -43,30 +53,52 @@ export default function ThirteenPlayingView({
   const [errorMsg, setErrorMsg] = useState("");
   const [hasInitialized, setHasInitialized] = useState(false);
   const [showTips, setShowTips] = useState(false); // 牌型提示下拉面板
+  const [showReceivedBanner, setShowReceivedBanner] = useState(true); // 收到傳牌的提示橫幅顯示狀態
 
+
+  // 追蹤上一次的狀態，當狀態從 passing 變為 arranging 時，需要重新初始化手牌
+  const prevStatusRef = React.useRef<string | undefined>(undefined);
 
   // 初始化手牌：若 Firebase 裡已有此玩家的 cards
   useEffect(() => {
-    if (myThirteenState && !hasInitialized) {
-      Promise.resolve().then(() => {
-        if (myThirteenState.isConfirmed) {
-          setFront(myThirteenState.front || []);
-          setMiddle(myThirteenState.middle || []);
-          setBack(myThirteenState.back || []);
-          setUnassigned([]);
-        } else {
-          const totalArranged = (myThirteenState.front?.length || 0) + (myThirteenState.middle?.length || 0) + (myThirteenState.back?.length || 0);
-          if (totalArranged === 0) {
+    if (myThirteenState) {
+      const currentStatus = room.thirteenState?.status;
+      const statusChanged = prevStatusRef.current !== currentStatus;
+
+      if (!hasInitialized || statusChanged) {
+        prevStatusRef.current = currentStatus;
+        Promise.resolve().then(() => {
+          if (isPassingPhase) {
+            // 傳牌階段：所有牌放未分配
             setUnassigned(sortThirteenCards(myThirteenState.cards || []));
             setFront([]);
             setMiddle([]);
             setBack([]);
+            setSelectedCards([]);
+            // 理牌階段
+            setSelectedCards([]); // 確保清空選取
+            setErrorMsg("");
+            setShowReceivedBanner(true); // 重新顯示收到傳牌的提示橫幅
+            if (myThirteenState.isConfirmed) {
+              setFront(myThirteenState.front || []);
+              setMiddle(myThirteenState.middle || []);
+              setBack(myThirteenState.back || []);
+              setUnassigned([]);
+            } else {
+              const totalArranged = (myThirteenState.front?.length || 0) + (myThirteenState.middle?.length || 0) + (myThirteenState.back?.length || 0);
+              if (totalArranged === 0) {
+                setUnassigned(sortThirteenCards(myThirteenState.cards || []));
+                setFront([]);
+                setMiddle([]);
+                setBack([]);
+              }
+            }
           }
-        }
-        setHasInitialized(true);
-      });
+          setHasInitialized(true);
+        });
+      }
     }
-  }, [myThirteenState, hasInitialized]);
+  }, [myThirteenState, hasInitialized, isPassingPhase, room.thirteenState?.status]);
 
   // 即時計算三墩牌型
   const frontEval = front.length > 0 ? evaluateThirteenHand(front) : null;
@@ -112,6 +144,10 @@ export default function ThirteenPlayingView({
     if (selectedCards.some(c => c.id === card.id)) {
       setSelectedCards(selectedCards.filter(c => c.id !== card.id));
     } else {
+      if (isPassingPhase && selectedCards.length >= 3) {
+        // 傳牌階段最多選擇 3 張
+        return;
+      }
       setSelectedCards([...selectedCards, card]);
     }
   };
@@ -364,7 +400,7 @@ export default function ThirteenPlayingView({
       </div>
 
       {/* 主要內容區域 */}
-      {myThirteenState?.isConfirmed ? (
+      {(myThirteenState?.isConfirmed || (isPassingPhase && myPassingConfirmed)) ? (
         /* 情況 A：玩家已確認 ➔ 僅顯示玩家排牌狀態與已確認提示（排牌區全隱藏） */
         <div className="comic-panel" style={{
           width: "100%",
@@ -380,20 +416,27 @@ export default function ThirteenPlayingView({
         }}>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: "3rem", color: "#10b981", animation: "pulse 1.5s infinite", marginBottom: "8px" }}>✓</div>
-            <h3 style={{ margin: "0 0 6px 0", fontWeight: 900, color: "#10b981", fontSize: "1.2rem" }}>已確認排牌！</h3>
-            <p style={{ margin: 0, fontSize: "0.85rem", color: "#6b7280", fontWeight: 700 }}>正在等待其他玩家完成對局結算...</p>
+            <h3 style={{ margin: "0 0 6px 0", fontWeight: 900, color: "#10b981", fontSize: "1.2rem" }}>
+              {isPassingPhase ? "已確認傳牌！" : "已確認排牌！"}
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.85rem", color: "#6b7280", fontWeight: 700 }}>
+              {isPassingPhase ? "正在等待其他玩家確認傳牌..." : "正在等待其他玩家完成對局結算..."}
+            </p>
           </div>
 
           <hr style={{ width: "100%", border: "none", borderTop: "2px dashed #000", margin: "10px 0" }} />
 
           <div style={{ width: "100%" }}>
-            <h4 style={{ margin: "0 0 12px 0", fontSize: "0.95rem", fontWeight: 900, textAlign: "center" }}>玩家排牌狀態</h4>
+            <h4 style={{ margin: "0 0 12px 0", fontSize: "0.95rem", fontWeight: 900, textAlign: "center" }}>
+              {isPassingPhase ? "玩家傳牌狀態" : "玩家排牌狀態"}
+            </h4>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {room.playerOrder.map(pUid => {
                 const player = room.players[pUid];
                 const pThirteen = room.thirteenState?.players[pUid];
                 if (!player) return null;
                 const isMe = pUid === uid;
+                const confirmed = isPassingPhase ? pThirteen?.isPassingConfirmed : pThirteen?.isConfirmed;
                 return (
                   <div key={pUid} style={{
                     display: "flex",
@@ -411,9 +454,9 @@ export default function ThirteenPlayingView({
                     <span style={{
                       fontSize: "0.8rem",
                       fontWeight: 900,
-                      color: pThirteen?.isConfirmed ? "#10b981" : "#f59e0b"
+                      color: confirmed ? "#10b981" : "#f59e0b"
                     }}>
-                      {pThirteen?.isConfirmed ? "✓ 已完成" : "⏳ 排牌中"}
+                      {confirmed ? "✓ 已完成" : isPassingPhase ? "⏳ 傳牌中" : "⏳ 排牌中"}
                     </span>
                     {renderBubble?.(pUid, isMobile ? 'top' : 'left')}
                   </div>
@@ -421,6 +464,123 @@ export default function ThirteenPlayingView({
               })}
             </div>
           </div>
+        </div>
+      ) : isPassingPhase ? (
+        /* 情況 C：玩家傳牌中 ➔ 選擇 3 張傳出 */
+        <div className="comic-panel" style={{
+          width: "100%",
+          maxWidth: "600px",
+          padding: "20px",
+          background: "#fff",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxSizing: "border-box"
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <h3 style={{ margin: "0 0 6px 0", fontWeight: 900, fontSize: "1.2rem" }}>
+              🎁 傳牌娛樂階段
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.85rem", color: "#4b5563", fontWeight: 700 }}>
+              請選擇 3 張手牌送給其他玩家（傳牌方向：
+              <span style={{ color: "#ef4444", fontWeight: 900 }}>
+                {passDirection === 'left' ? '向左傳' : passDirection === 'right' ? '向右傳' : passDirection === 'across' ? '對家傳' : '不傳'}
+              </span>
+              ）
+            </p>
+          </div>
+
+          <hr style={{ width: "100%", border: "none", borderTop: "2px dashed #000", margin: "5px 0" }} />
+
+          {/* 選取與按鈕狀態 */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 800 }}>
+              已選擇: <span style={{ color: selectedCards.length === 3 ? "#10b981" : "#d97706", fontWeight: 900 }}>{selectedCards.length}</span> / 3 張
+            </span>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                className="comic-btn"
+                style={{ padding: "4px 8px", fontSize: "0.75rem", background: "#fff", border: "2px solid #000" }}
+                onClick={() => setSelectedCards([])}
+              >
+                重設
+              </button>
+              <button
+                className="comic-btn"
+                disabled={selectedCards.length !== 3 || loading}
+                onClick={async () => {
+                  if (selectedCards.length !== 3 || loading || !confirmThirteenPassCards) return;
+                  setLoading(true);
+                  setErrorMsg("");
+                  try {
+                    await confirmThirteenPassCards(roomId, uid, selectedCards.map(c => c.id));
+                  } catch (e: any) {
+                    setErrorMsg(e.message || "傳牌失敗");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                style={{
+                  background: selectedCards.length === 3 ? "#b87e6b" : "#d1d5db",
+                  color: selectedCards.length === 3 ? "#fff" : "#9ca3af",
+                  cursor: selectedCards.length === 3 ? "pointer" : "not-allowed",
+                  padding: "4px 8px",
+                  fontSize: "0.75rem",
+                  border: "2px solid #000"
+                }}
+              >
+                {loading ? "傳送中..." : "確認送出"}
+              </button>
+            </div>
+          </div>
+
+          {/* 13 張牌展示 */}
+          <div style={{
+            display: "flex",
+            overflowX: "auto",
+            padding: isMobile ? "20px 0 10px" : "10px 0",
+            minHeight: "100px",
+            alignItems: "center"
+          }}>
+            {unassigned.map((card, idx) => {
+              const isSel = selectedCards.some(c => c.id === card.id);
+              return (
+                <div
+                  key={card.id}
+                  style={{
+                    marginLeft: idx > 0 ? (isMobile ? "-28px" : "-10px") : "0px",
+                    zIndex: idx,
+                    position: "relative",
+                    transition: "transform 0.15s ease",
+                    transform: isSel ? "translateY(-14px)" : "none"
+                  }}
+                >
+                  <PlayingCard
+                    card={card}
+                    size={isMobile ? "mobile" : "tablet"}
+                    selected={isSel}
+                    onClick={() => handleSelectCard(card)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {errorMsg && (
+            <div style={{
+              width: "100%",
+              padding: "6px 8px",
+              background: "#fee2e2",
+              border: "2px solid #ef4444",
+              borderRadius: "8px",
+              color: "#dc2626",
+              fontSize: "0.75rem",
+              fontWeight: 900,
+              boxSizing: "border-box"
+            }}>
+              ⚠️ {errorMsg}
+            </div>
+          )}
         </div>
       ) : (
         /* 情況 B：玩家排牌中 ➔ 顯示前中後三墩與未分配手牌（隱藏狀態欄以最大化操作空間） */
@@ -431,6 +591,63 @@ export default function ThirteenPlayingView({
           maxWidth: "960px",
           gap: "16px"
         }}>
+          {/* 傳牌提示 Banner */}
+          {room.isThirteenPassingMode && room.thirteenState?.receivedPassCards?.[uid] && showReceivedBanner && (
+            <div className="comic-panel" style={{
+              background: "#dcfce7",
+              border: "3px solid #000",
+              boxShadow: "3px 3px 0 #000",
+              padding: "12px 18px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "12px",
+              boxSizing: "border-box",
+              width: "100%"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "1.2rem" }}>🎁</span>
+                <span style={{ fontWeight: 900, fontSize: "0.88rem", color: "#16a34a" }}>
+                  {room.players[room.thirteenState.receivedPassCards[uid].fromUid]?.nickname || "其他玩家"}
+                </span>
+                <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "#1e293b" }}>
+                  傳給了您 3 張牌：
+                </span>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {room.thirteenState.receivedPassCards[uid].cards.map((card, idx) => (
+                    <span 
+                      key={card.id || idx}
+                      style={{
+                        padding: "2px 6px",
+                        background: "#fff",
+                        border: "2px solid #000",
+                        borderRadius: "6px",
+                        fontWeight: 900,
+                        fontSize: "0.78rem",
+                        color: (card.suit === 'hearts' || card.suit === 'diamonds') ? "#dc2626" : "#000"
+                      }}
+                    >
+                      {card.suit === 'spades' ? '♠' : card.suit === 'hearts' ? '♥' : card.suit === 'diamonds' ? '♦' : '♣'}
+                      {card.rank}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReceivedBanner(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  fontWeight: 900,
+                  fontSize: "1.1rem",
+                  cursor: "pointer",
+                  color: "#4b5563"
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {/* 前墩 (3張) */}
           <div 
             className="comic-panel" 

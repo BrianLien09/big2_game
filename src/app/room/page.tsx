@@ -6,7 +6,7 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound } from "@/lib/roomService";
+import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode } from "@/lib/roomService";
 import HeartsPlayingView from "@/components/hearts/HeartsPlayingView";
 
 import { PlayingCard } from "@/components/ui/Card";
@@ -1552,6 +1552,37 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             )}
           </div>
 
+          {/* 十三支傳牌娛樂模式設定列 (行動版) */}
+          {room.gameMode === 'THIRTEEN' && (
+            <div style={{ flexShrink: 0, padding: "10px 16px", background: "#fff", borderBottom: "2px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#4b5563" }}>
+                傳牌娛樂玩法
+              </span>
+              {me?.isHost ? (
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 900, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!room.isThirteenPassingMode}
+                    onChange={async (e) => {
+                      try {
+                        await toggleThirteenPassingMode(roomId, e.target.checked);
+                        addToast(e.target.checked ? "已開啟傳牌娛樂玩法" : "已關閉傳牌娛樂玩法", "success");
+                      } catch (err) {
+                        addToast("更新傳牌設定失敗", "error");
+                      }
+                    }}
+                    style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                  />
+                  開啟傳牌
+                </label>
+              ) : (
+                <span style={{ fontSize: "0.85rem", fontWeight: 900, color: room.isThirteenPassingMode ? "#16a34a" : "#b45309" }}>
+                  {room.isThirteenPassingMode ? "✓ 傳牌模式" : "經典模式"}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* 玩家列表（可捲動） */}
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px 8px" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#6b7280", marginBottom: 10 }}>玩家列表</div>
@@ -1675,6 +1706,39 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     </span>
                   )}
                 </div>
+
+                {/* 十三支傳牌娛樂模式設定列 (桌機版) */}
+                {room.gameMode === 'THIRTEEN' && (
+                  <div style={{ width: "100%", marginBottom: 20, textAlign: "center" }}>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>
+                      傳牌娛樂玩法
+                    </div>
+                    {me?.isHost ? (
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: "0.9rem", fontWeight: 900, cursor: "pointer", background: room.isThirteenPassingMode ? "#dcfce7" : "#fff", border: "2px solid #000", borderRadius: 8, padding: "6px 16px", boxShadow: "2px 2px 0px #000" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!room.isThirteenPassingMode}
+                            onChange={async (e) => {
+                              try {
+                                await toggleThirteenPassingMode(roomId, e.target.checked);
+                                addToast(e.target.checked ? "已開啟傳牌娛樂玩法" : "已關閉傳牌娛樂玩法", "success");
+                              } catch (err) {
+                                addToast("更新傳牌設定失敗", "error");
+                              }
+                            }}
+                            style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                          />
+                          開啟傳牌
+                        </label>
+                      </div>
+                    ) : (
+                      <span className="comic-badge" style={{ background: room.isThirteenPassingMode ? "#dcfce7" : "#f3f4f6", color: room.isThirteenPassingMode ? "#16a34a" : "#000", padding: "6px 16px", border: "2px solid #000", fontWeight: 900, borderRadius: 8, display: "inline-block" }}>
+                        {room.isThirteenPassingMode ? "✓ 傳牌模式" : "經典模式（不傳牌）"}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginTop: 6, width: "100%" }}>
                   {me?.isHost ? (
@@ -2126,7 +2190,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
         </>
       );
     }
-    if (room.thirteenState && room.thirteenState.status === 'arranging') {
+    if (room.thirteenState && (room.thirteenState.status === 'arranging' || room.thirteenState.status === 'passing')) {
       return (
         <>
           <ThirteenPlayingView
@@ -2136,6 +2200,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             isMobile={isMobile}
             onLeave={handleLeaveRoom}
             confirmThirteenArrangement={confirmThirteenArrangement}
+            confirmThirteenPassCards={confirmThirteenPassCards}
           />
           <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
         </>
