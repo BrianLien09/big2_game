@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense, useMemo } from "react";
+import { useEffect, useState, useRef, Suspense, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
@@ -14,7 +14,7 @@ import { ref, update, onDisconnect } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { updateMyLeaderboard } from "@/lib/leaderboardService";
 import { sendRoomBubble } from "@/lib/roomService";
-import { Card, getCardName } from "@/lib/big2Logic";
+import { Card, getCardName, PlayedHand } from "@/lib/big2Logic";
 import { evaluateThirteenHand, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
 import BridgeBiddingView from "@/components/bridge/BridgeBiddingView";
 import BridgePlayingView from "@/components/bridge/BridgePlayingView";
@@ -370,6 +370,121 @@ function RoomContent() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const lastBubbleTimeRef = useRef<number>(0);
   const isFirstCallbackRef = useRef(true);
+
+  // 取得玩家相對於我的視角的位置 ('bottom' | 'top' | 'left' | 'right')
+  const getPlayerViewportPosition = useCallback((pUid: string): 'bottom' | 'top' | 'left' | 'right' => {
+    if (!room || !uid) return 'top';
+    if (pUid === uid) return 'bottom';
+
+    const myIndex = room.playerOrder.indexOf(uid);
+    const pIndex = room.playerOrder.indexOf(pUid);
+    const total = room.playerOrder.length;
+
+    if (myIndex === -1 || pIndex === -1) return 'top';
+
+    if (total === 4) {
+      const diff = (pIndex - myIndex + 4) % 4;
+      if (diff === 1) return 'right';
+      if (diff === 2) return 'top';
+      if (diff === 3) return 'left';
+    } else if (total === 3) {
+      const diff = (pIndex - myIndex + 3) % 3;
+      if (diff === 1) return 'right';
+      if (diff === 2) return 'left';
+    } else if (total === 2) {
+      return 'top';
+    }
+    return 'top';
+  }, [room?.playerOrder, uid]);
+
+  // 監聽一圈結束收牌動畫
+  const [exitingHand, setExitingHand] = useState<{ cards: Card[]; uid: string; keyCardId?: string } | null>(null);
+  const [exitingWinnerPosition, setExitingWinnerPosition] = useState<'bottom' | 'top' | 'left' | 'right' | null>(null);
+  const prevLastPlayedHandRef = useRef<PlayedHand | null>(null);
+  const prevLastPlayedUidRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!room || !uid) return;
+
+    // 偵測一圈結束 (lastPlayedHand 變為 null，且之前是有值的)
+    if (prevLastPlayedHandRef.current && !room.lastPlayedHand && prevLastPlayedUidRef.current) {
+      const winnerUid = prevLastPlayedUidRef.current;
+      const winnerPosition = getPlayerViewportPosition(winnerUid);
+
+      setExitingHand({
+        cards: prevLastPlayedHandRef.current.cards,
+        uid: winnerUid,
+        keyCardId: prevLastPlayedHandRef.current.keyCard?.id
+      });
+      setExitingWinnerPosition(winnerPosition);
+
+      // 600ms 飛牌動畫後清除
+      const timer = setTimeout(() => {
+        setExitingHand(null);
+        setExitingWinnerPosition(null);
+      }, 600);
+
+      prevLastPlayedHandRef.current = null;
+      prevLastPlayedUidRef.current = null;
+      return () => clearTimeout(timer);
+    }
+
+    prevLastPlayedHandRef.current = room.lastPlayedHand || null;
+    prevLastPlayedUidRef.current = room.lastPlayedUid || null;
+  }, [room?.lastPlayedHand, room?.lastPlayedUid, uid, getPlayerViewportPosition]);
+
+  // 監聽單局/整局結束的停頓與飛牌動畫
+  const [showFinishedView, setShowFinishedView] = useState(false);
+  const [finalExitingHand, setFinalExitingHand] = useState<{ cards: Card[]; uid: string; keyCardId?: string } | null>(null);
+  const [finalExitingWinnerPosition, setFinalExitingWinnerPosition] = useState<'bottom' | 'top' | 'left' | 'right' | null>(null);
+
+  useEffect(() => {
+    if (!room || room.gameMode === "THIRTEEN") {
+      setShowFinishedView(false);
+      setFinalExitingHand(null);
+      setFinalExitingWinnerPosition(null);
+      return;
+    }
+
+    const isEnded = room.status === "finished" || room.status === "gameOver";
+
+    if (isEnded) {
+      // 重置狀態，先不顯示結算畫面
+      setShowFinishedView(false);
+      setFinalExitingHand(null);
+      setFinalExitingWinnerPosition(null);
+
+      // Timer 1: 2.0 秒後，啟動桌面卡牌飛向贏家的動畫
+      const animTimer = setTimeout(() => {
+        if (room.lastPlayedHand && room.lastPlayedUid) {
+          const winnerUid = room.lastPlayedUid;
+          const winnerPosition = getPlayerViewportPosition(winnerUid);
+          setFinalExitingHand({
+            cards: room.lastPlayedHand.cards,
+            uid: winnerUid,
+            keyCardId: room.lastPlayedHand.keyCard?.id
+          });
+          setFinalExitingWinnerPosition(winnerPosition);
+        }
+      }, 2000);
+
+      // Timer 2: 2.6 秒後，顯示結算/結束畫面
+      const viewTimer = setTimeout(() => {
+        setShowFinishedView(true);
+        setFinalExitingHand(null);
+        setFinalExitingWinnerPosition(null);
+      }, 2600);
+
+      return () => {
+        clearTimeout(animTimer);
+        clearTimeout(viewTimer);
+      };
+    } else {
+      setShowFinishedView(false);
+      setFinalExitingHand(null);
+      setFinalExitingWinnerPosition(null);
+    }
+  }, [room?.status, room?.lastPlayedHand, room?.lastPlayedUid, room?.gameMode, getPlayerViewportPosition]);
 
   // 透過使用者互動 (點擊/觸摸) 喚醒 Web Audio API，解決瀏覽器自動播放限制 (Autoplay Policy)
   useEffect(() => {
@@ -1607,7 +1722,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
   // ---- 整場遊戲結束畫面 (Game Over) ----
   const isThirteenGameOverShowLeaderboard = room.gameMode === "THIRTEEN" && (room.thirteenState?.showLeaderboard ?? false);
-  if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard)) {
+  if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard) && (room.gameMode === "THIRTEEN" || showFinishedView)) {
     const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : room.gameMode === 'HEARTS' ? 50 : 15);
     const reachedPlayers = Object.values(room.players).filter(p => p && (p.points ?? 0) >= target);
     const sortedPlayers = [...Object.values(room.players)]
@@ -1767,7 +1882,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   }
 
   // ---- 結束畫面 ----
-  if (room.status === "finished" && room.gameMode !== "THIRTEEN") {
+  if (room.status === "finished" && room.gameMode !== "THIRTEEN" && showFinishedView) {
     const isWinner = room.winnerUid === uid;
     return (
       <div key="finished-view" style={{ 
@@ -2470,6 +2585,19 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           100% {
             opacity: 1;
             transform: translate3d(0, 0, 0) scale(1) rotate(0deg) rotateY(0deg);
+          }
+        }
+        .animate-card-exit {
+          animation: cardExit 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+        }
+        @keyframes cardExit {
+          0% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+          }
+          100% {
+            opacity: 0;
+            transform: translate3d(var(--card-exit-x, 0px), var(--card-exit-y, 0px), 0) scale(0.2) rotate(var(--card-exit-rotate, 0deg));
           }
         }
         /* ================= 桌面版 (Desktop: >= 901px) ================= */
@@ -3587,7 +3715,37 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
         {/* 中央出牌區 */}
         <div className="table-center">
-          {room.lastPlayedHand ? (
+          {finalExitingHand ? (
+            <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
+              <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
+                【{room.players[finalExitingHand.uid]?.nickname || ""}】 收牌
+              </span>
+              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full" style={{ perspective: "600px" }}>
+                {(() => {
+                  const coords = getAnimationCoords(finalExitingWinnerPosition || 'top', isMobile);
+                  const exitRotate = finalExitingWinnerPosition === 'left' ? '-90deg' : finalExitingWinnerPosition === 'right' ? '90deg' : finalExitingWinnerPosition === 'top' ? '180deg' : '0deg';
+                  
+                  return finalExitingHand.cards.map((card, idx) => {
+                    const uniqueKey = `final-exit-${card.id}-${finalExitingHand.uid}-${finalExitingHand.keyCardId || ""}`;
+                    return (
+                      <div 
+                        key={uniqueKey} 
+                        className="animate-card-exit transform"
+                        style={{ 
+                          '--card-exit-x': coords.x,
+                          '--card-exit-y': coords.y,
+                          '--card-exit-rotate': exitRotate,
+                          animationDelay: `${idx * 40}ms`
+                        } as React.CSSProperties}
+                      >
+                        <PlayingCard card={card} size={tableCardSize} className="playing-card" />
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          ) : room.lastPlayedHand ? (
             <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
                 【{room.players[room.lastPlayedUid!]?.nickname}】 出牌
@@ -3615,6 +3773,36 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                           '--card-start-y': animProps.startY,
                           '--card-start-rotate': animProps.startRotate,
                           animationDelay: `${idx * 60}ms`
+                        } as React.CSSProperties}
+                      >
+                        <PlayingCard card={card} size={tableCardSize} className="playing-card" />
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          ) : exitingHand ? (
+            <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
+              <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
+                【{room.players[exitingHand.uid]?.nickname || ""}】 收牌
+              </span>
+              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full" style={{ perspective: "600px" }}>
+                {(() => {
+                  const coords = getAnimationCoords(exitingWinnerPosition || 'top', isMobile);
+                  const exitRotate = exitingWinnerPosition === 'left' ? '-90deg' : exitingWinnerPosition === 'right' ? '90deg' : exitingWinnerPosition === 'top' ? '180deg' : '0deg';
+                  
+                  return exitingHand.cards.map((card, idx) => {
+                    const uniqueKey = `exit-${card.id}-${exitingHand.uid}-${exitingHand.keyCardId || ""}`;
+                    return (
+                      <div 
+                        key={uniqueKey} 
+                        className="animate-card-exit transform"
+                        style={{ 
+                          '--card-exit-x': coords.x,
+                          '--card-exit-y': coords.y,
+                          '--card-exit-rotate': exitRotate,
+                          animationDelay: `${idx * 40}ms`
                         } as React.CSSProperties}
                       >
                         <PlayingCard card={card} size={tableCardSize} className="playing-card" />
