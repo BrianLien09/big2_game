@@ -3041,8 +3041,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           .game-page {
             height: 100dvh;
             display: grid;
-            /* 配合變高與往上抬的操作區，將第三個 row 高度調大至 310px */
-            grid-template-rows: 58px minmax(0, 1fr) calc(310px + env(safe-area-inset-bottom));
+            /* 配合變高與往上抬的操作區，將第三個 row 高度調大至 328px */
+            grid-template-rows: 58px minmax(0, 1fr) calc(328px + env(safe-area-inset-bottom));
             overflow: hidden;
             background-color: #f8f9fa;
           }
@@ -3228,10 +3228,10 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             font-weight: 800;
           }
           .bottom-panel {
-            /* 配合操作區整體再往上抬與放大卡片，將總高度與各 row 高度加大 */
-            height: calc(310px + env(safe-area-inset-bottom));
+            /* 配合操作區與手牌區放大及抬高，將總高度加大至 328px，並調整各 row 分配 */
+            height: calc(328px + env(safe-area-inset-bottom));
             display: grid;
-            grid-template-rows: 72px 38px 200px;
+            grid-template-rows: 84px 34px 210px;
             border-top-width: 3px;
             border-top-style: solid;
             box-sizing: border-box;
@@ -3249,9 +3249,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           }
           .action-main-row {
             min-width: 0;
-            padding: 7px 10px 4px;
+            padding: 10px 10px 4px;
             display: grid;
-            grid-template-columns: 66px 1fr 66px;
+            grid-template-columns: 80px 1fr 80px;
             align-items: center;
             gap: 8px;
             box-sizing: border-box;
@@ -3291,10 +3291,10 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             box-sizing: border-box;
           }
           .action-buttons {
-            width: 138px;
-            min-width: 138px;
+            width: 166px;
+            min-width: 166px;
             display: grid;
-            grid-template-columns: repeat(2, 66px);
+            grid-template-columns: repeat(2, 80px);
             grid-auto-flow: column;
             align-items: center;
             gap: 6px;
@@ -3302,13 +3302,13 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           }
           .pass-button,
           .play-button {
-            width: 66px;
-            height: 44px;
-            min-width: 66px;
-            max-width: 66px;
+            width: 80px;
+            height: 48px;
+            min-width: 80px;
+            max-width: 80px;
             margin: 0;
             padding: 0;
-            font-size: 15px;
+            font-size: 16px;
             border: 2.5px solid #000;
             border-radius: 10px;
             box-shadow: 0 3px 0 #000;
@@ -3376,8 +3376,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             width: 100%;
             min-width: 0;
             max-width: 100vw;
-            /* 配合操作區與手牌再往上抬與放大，將高度放大至 200px */
-            height: 200px;
+            /* 配合操作區與手牌再往上抬與放大，將滾動高度放大至 210px */
+            height: 210px;
             overflow-x: auto;
             overflow-y: hidden;
             padding: 14px 0 6px;
@@ -3393,8 +3393,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           .mobile-hand-cards {
             width: max-content;
             min-width: max-content;
-            /* 配合操作區與手牌再往上抬與放大，將高度放大至 180px */
-            height: 180px;
+            /* 配合操作區與手牌再往上抬與放大，將卡片容器高度放大至 190px */
+            height: 190px;
             display: flex;
             align-items: flex-end;
             justify-content: flex-start;
@@ -3409,16 +3409,16 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             flex: 0 0 76px;
             position: relative;
             margin-left: -28px;
-            /* 預設往上抬 20px，使卡片底部留白增加、視覺浮起更顯眼 */
-            transform: translateY(-20px);
+            /* 預設往上抬 32px，使卡片底部留白增加、視覺浮起更顯眼 */
+            transform: translateY(-32px);
             transition: transform 0.15s ease;
           }
           .playing-card-wrapper:first-child {
             margin-left: 0;
           }
           .playing-card-wrapper.selected {
-            /* 調整選取時彈起的高度，往上移動至 42px，使選取效果更加明顯 */
-            transform: translateY(-42px);
+            /* 調整選取時彈起的高度，往上移動至 56px，使選取效果更加明顯且不被裁切 */
+            transform: translateY(-56px);
           }
           .hand-container-wrapper {
             width: 100%;
