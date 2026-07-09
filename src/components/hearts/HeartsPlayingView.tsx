@@ -375,10 +375,10 @@ export default function HeartsPlayingView({
   const delayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 同步 Ref，避免在 useEffect 的 deps 中帶入 localTrick / relativePlayerOrder
-  useEffect(() => { localTrickRef.current = localTrick; }, [localTrick]);
-  useEffect(() => { currentTrickRef.current = currentTrick; }, [currentTrick]);
-  useEffect(() => { relativePlayerOrderRef.current = relativePlayerOrder; }, [relativePlayerOrder]);
+  // 直接在 render 主體內同步 Ref，確保定時器等非同步回呼能立刻讀到最新 render 狀態，防止 useEffect 造成的時序差
+  localTrickRef.current = localTrick;
+  currentTrickRef.current = currentTrick;
+  relativePlayerOrderRef.current = relativePlayerOrder;
 
   // ── Effect 1：只負責將出牌桌同步到 localTrick（不依賴 localTrick 本身）──
   useEffect(() => {
@@ -439,11 +439,13 @@ export default function HeartsPlayingView({
       }, 600);
     }, 1000);
 
-    // Effect cleanup：Effect 重新觸發時取消兩個 timer，並強制解除動畫鎖定
+    // Effect cleanup：Effect 重新觸發時取消兩個 timer，並強制解除動畫鎖定並補拉出牌
     return () => {
       if (delayTimerRef.current) { clearTimeout(delayTimerRef.current); delayTimerRef.current = null; }
       if (animationTimerRef.current) { clearTimeout(animationTimerRef.current); animationTimerRef.current = null; }
       isAnimatingRef.current = false;
+      // 確保在解鎖時同步最新出牌桌，避免畫面卡死在空桌或舊牌
+      setLocalTrick(currentTrickRef.current);
     };
   // 只依賴 completedTricks.length，圈數改變才觸發，不受 state 影響
   }, [completedTricks.length]); // eslint-disable-line react-hooks/exhaustive-deps
