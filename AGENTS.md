@@ -228,4 +228,8 @@
 *   **原因分析**：`ThirteenPlayingView.tsx` 中負責初始化手牌與清空狀態的 `useEffect` 是以 `hasInitialized` 作為開頭阻擋條件。由於 `hasInitialized` 在傳牌階段載入時就已被置為 `true`，當狀態從 `passing` 變更為 `arranging` 時，雖然手牌 `myThirteenState.cards` 被重新寫入，但該 Effect 不會重新執行，導致手牌 `unassigned` 仍為舊牌，且 `selectedCards` 未被清空（原本傳牌選擇的那 3 張牌物件仍留在陣列中，因 ID 對應或順序匹配導致新牌被渲染成抬起狀態）。
 *   **修復步驟**：在組件中引入 `prevStatusRef` 來追蹤 `room.thirteenState.status`，並修改 `useEffect` 的執行條件，使狀態在發生改變時（即 `statusChanged = true`）能重新執行初始化流程。在進入 `arranging` 時主動執行 `setSelectedCards([])` 徹底清空選取，並調用 `setUnassigned` 載入新收到的手牌資料。
 
-
+### 6.18 房主退出/離線觸發房主轉移時，接任玩家未準備導致新房主卡死
+*   **Bug 症狀**：在遊戲大廳（等待狀態 `status === 'waiting'`）中，若房主退出或離線觸發移交時，接任房主的真人玩家若當時尚未點選「準備」，在成為新房主後，因為 UI 會隱藏準備按鈕並顯示「開始遊戲」按鈕，但開始遊戲邏輯會判定「還有玩家未準備，無法開始遊戲！」，新房主因為沒有準備按鈕而無法變更自己的準備狀態，導致對局永遠卡死。
+*   **發現技巧**：在大廳中，讓房主退出，且下一順位真人玩家處於「未準備」狀態，新房主產生後點擊「開始遊戲」即可看見卡死現象。
+*   **原因分析**：`leaveRoom` 函數在轉移 `isHost` 給 `nextHostUid` 時，僅將其 `isHost` 設為 `true`，而沒有同步更新該玩家的準備狀態 `isReady`。在大老二與其它模式中，房主本身被預期是預設準備好（`isReady: true`）的，若接任時 `isReady` 仍為 `false`，則會使 `allReady` 的全局檢查失敗。
+*   **修復步驟**：在 `leaveRoom` 的房主轉移迴圈中，當更新剩餘玩家的 `isHost` 狀態時，如果該玩家為新房主 (`isNewHost === true`)，同步在 updates 中將其 `isReady` 設定為 `true`。

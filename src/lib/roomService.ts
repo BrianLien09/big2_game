@@ -470,10 +470,14 @@ export const leaveRoom = async (roomId: string, uid: string) => {
     [`players/${uid}`]: null,
   };
 
-  // 更新剩餘玩家的 isHost 狀態
+  // 更新剩餘玩家的 isHost 狀態，且新房主自動設為已準備狀態 (isReady: true)
   roomData.playerOrder.forEach((id) => {
     if (roomData.players[id]) {
-      updates[`players/${id}/isHost`] = (id === nextHostUid);
+      const isNewHost = (id === nextHostUid);
+      updates[`players/${id}/isHost`] = isNewHost;
+      if (isNewHost) {
+        updates[`players/${id}/isReady`] = true;
+      }
     }
   });
 
