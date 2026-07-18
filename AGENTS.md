@@ -245,3 +245,11 @@
     1. 實作 `resetBig2Round` 函數，使用 transaction 重置大老二的房間狀態，將真人玩家的準備狀態重設為未準備，並清空所有人卡牌與殘留欄位。
     2. 在 `room/page.tsx` 中，大老二再玩一局改為調用 `resetBig2Round(roomId)`。
     3. 在 `room/page.tsx` 的大老二打牌畫面的頂部加上 `room.status === "finished" && !showFinishedView` 的半透明漫畫風結算中遮罩，以阻擋操作並美化等待過渡，且在 2.0 秒的飛牌動畫期間，玩家仍能在半透明背景中看到收牌動畫，最後完美過渡到結算畫面。
+
+### 6.20 遊戲進行中點「離開」後，大廳重連卡片完全不出現
+*   **Bug 症狀**：玩家在大老二（或其他模式）遊戲進行中，點擊「🚪 離開」按鈕返回大廳後，lobby 頁面沒有出現「⚡ 偵測到未完成的對局！」的重連卡片，無法快速重連回對局。
+*   **發現技巧**：在任何遊戲進行中（`status = "playing"` 或 `"finished"`），點擊離開按鈕後跳到大廳，大廳完全不顯示重連卡片，即使 Firebase 中對局資料仍然存在。
+*   **原因分析**：`handleLeaveRoom` 函數的**第一行**就是 `localStorage.removeItem("last_joined_room_id")`，**無論當前狀態為何（`waiting`、`playing`、`finished`）一律清除**。大廳的重連偵測邏輯依賴 `localStorage.getItem("last_joined_room_id")` 讀取房間號碼，由於已被清除，大廳永遠查不到應該重連的房間，導致重連卡片永久不出現。
+*   **修復步驟**：重構 `handleLeaveRoom` 為兩個分支：
+    1. **等待大廳（`status === "waiting"`）**：執行完整退出流程——清除 `last_joined_room_id`、取消 `onDisconnect` 監聽、呼叫 `leaveRoom` 移出房間、跳轉 lobby。
+    2. **遊戲進行中（`status !== "waiting"`，含 `playing`、`finished`、`arranging`、`showing`）**：**不清除** `last_joined_room_id`、**不呼叫** `leaveRoom`（玩家仍保留在房間中），只取消 `onDisconnect` 監聽後直接跳轉 lobby。到大廳後，重連卡片正常出現，玩家可選擇「快速重連」回到對局，或點「放棄重連」才由 `handleIgnoreReconnect` 真正呼叫 `leaveRoom` 移出房間並清除 key。

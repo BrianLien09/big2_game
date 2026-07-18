@@ -1159,24 +1159,45 @@ function RoomContent() {
 
   const handleLeaveRoom = async () => {
     if (!uid) return;
-    localStorage.removeItem("last_joined_room_id");
-    
-    // 退房前先主動取消 onDisconnect 監聽，防止寫入 isOnline = false 髒資料
-    if (db && roomId) {
-      const playerOnlineRef = ref(db, `rooms/${roomId}/players/${uid}/isOnline`);
-      const roomRef = ref(db, `rooms/${roomId}`);
-      try {
-        await Promise.all([
-          onDisconnect(playerOnlineRef).cancel(),
-          onDisconnect(roomRef).cancel()
-        ]);
-      } catch (err) {
-        console.warn("取消斷線監聽失敗:", err);
+
+    const currentStatus = room?.status;
+
+    if (currentStatus && currentStatus !== "waiting") {
+      // 遊戲進行中（playing / finished / arranging / showing）：
+      // 不立即移出房間，讓玩家保留重連機會。
+      // 先取消 onDisconnect 監聽（避免觸發殘留寫入），再直接跳到 lobby，
+      // lobby 會讀取 last_joined_room_id 並顯示重連卡片讓玩家決定。
+      if (db && roomId) {
+        const playerOnlineRef = ref(db, `rooms/${roomId}/players/${uid}/isOnline`);
+        const roomRef = ref(db, `rooms/${roomId}`);
+        try {
+          await Promise.all([
+            onDisconnect(playerOnlineRef).cancel(),
+            onDisconnect(roomRef).cancel()
+          ]);
+        } catch (err) {
+          console.warn("取消斷線監聽失敗:", err);
+        }
       }
+      router.push("/lobby");
+    } else {
+      // 等待大廳（waiting）：真正退出，清除重連記錄，呼叫 leaveRoom 移出房間。
+      localStorage.removeItem("last_joined_room_id");
+      if (db && roomId) {
+        const playerOnlineRef = ref(db, `rooms/${roomId}/players/${uid}/isOnline`);
+        const roomRef = ref(db, `rooms/${roomId}`);
+        try {
+          await Promise.all([
+            onDisconnect(playerOnlineRef).cancel(),
+            onDisconnect(roomRef).cancel()
+          ]);
+        } catch (err) {
+          console.warn("取消斷線監聽失敗:", err);
+        }
+      }
+      await leaveRoom(roomId, uid);
+      router.push("/lobby");
     }
-    
-    await leaveRoom(roomId, uid);
-    router.push("/lobby");
   };
 
   const copyToClipboard = async (text: string, label: string) => {
