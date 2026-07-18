@@ -3088,6 +3088,57 @@ export const confirmThirteenArrangement = async (
 };
 
 /**
+ * 重置大老二房間回到等待狀態（保留積分，清空手牌與準備狀態，除房主與 Bot 外）
+ */
+export const resetBig2Round = async (roomId: string): Promise<void> => {
+  if (!db) return;
+  const roomRef = ref(db, 'rooms/' + roomId);
+
+  // 確保房間存在，避免 RTDB Transaction 因本地無快取而錯誤中止
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) {
+    throw new Error("房間不存在");
+  }
+
+  const result = await runTransaction(roomRef, (currentData) => {
+    if (currentData === null) return {} as any;
+    const roomData = sanitizeRoomState(currentData as RoomState);
+
+    roomData.status = 'waiting';
+    roomData.winnerUid = null;
+    roomData.lastPlayedHand = null;
+    roomData.lastPlayedUid = null;
+    roomData.turnUid = null;
+    roomData.passCount = 0;
+    roomData.finishedOrder = [];
+    roomData.roundScores = {};
+    roomData.updatedAt = Date.now();
+    roomData.expiresAt = Date.now() + ROOM_EXPIRE_MS;
+
+    // 重置玩家狀態，房主與 Bot 預設 Ready，真人則設為未 Ready
+    Object.keys(roomData.players || {}).forEach(uid => {
+      const p = roomData.players[uid];
+      if (p) {
+        const isHost = p.isHost;
+        const isBot = p.isBot;
+        p.isReady = isHost || isBot;
+        p.cards = [];
+        p.isPassed = false;
+      }
+    });
+
+    return roomData;
+  });
+
+  if (!result.committed) {
+    if (result.snapshot && !result.snapshot.exists()) {
+      throw new Error("房間不存在");
+    }
+    throw new Error("更新失敗");
+  }
+};
+
+/**
  * 重置十三支房間回到等待狀態（保留積分，清除十三支專屬狀態，將玩家設為未準備，除房主外）
  */
 export const resetThirteenRound = async (roomId: string): Promise<void> => {

@@ -6,7 +6,7 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode } from "@/lib/roomService";
+import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode, resetBig2Round } from "@/lib/roomService";
 import HeartsPlayingView from "@/components/hearts/HeartsPlayingView";
 
 import { PlayingCard } from "@/components/ui/Card";
@@ -2129,13 +2129,13 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     } else if (room.gameMode === 'HEARTS') {
                       await resetHeartsRound(roomId);
                    } else {
-                      await update(ref(db, "rooms/" + roomId), {
+                      await resetBig2Round(roomId);/*
                        status: "waiting", winnerUid: null,
                        lastPlayedHand: null, lastPlayedUid: null,
                        turnUid: null, passCount: 0,
                        updatedAt: Date.now(),
                        expiresAt: getRoomExpirationTimestamp()
-                     });
+                     */
                    }
                    addToast("已重置為待機狀態，準備新一局", "success");
                  } catch (err) {
@@ -2293,6 +2293,38 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
   return (
     <div key="game-play-view" className="game-page select-none">
+      {room.status === "finished" && !showFinishedView && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100vw",
+          height: "100vh",
+          backgroundColor: "rgba(0, 0, 0, 0.4)",
+          backdropFilter: "blur(4px)",
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          pointerEvents: "auto"
+        }}>
+          <div className="comic-panel" style={{
+            padding: "24px 36px",
+            background: "#fff",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "16px"
+          }}>
+            <CapybaraLoader />
+            <span style={{ fontWeight: 900, fontSize: "1.25rem", color: "#000" }}>
+              本局結束，正在結算中...
+            </span>
+          </div>
+        </div>
+      )}
       <style dangerouslySetInnerHTML={{
         __html: `
         /* === Capy Chat 氣泡與表情動畫樣式 === */
