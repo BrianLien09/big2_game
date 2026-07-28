@@ -49,7 +49,6 @@ export interface Player {
   avatarUrl?: string;
   isBot: boolean; // 新增 isBot 欄位
   points?: number; // 新增積分欄位
-  isOnline?: boolean; // 新增 isOnline 欄位，標記玩家是否在線
 }
 
 export interface ChatBubble {
@@ -236,8 +235,7 @@ export const createRoom = async (
         wins: 0,
         points: 0, // 初始化積分
         avatarUrl: hostAvatarUrl,
-        isBot: false, // 真人玩家明確設定
-        isOnline: true
+        isBot: false // 真人玩家明確設定
       }
     },
     status: 'waiting',
@@ -283,7 +281,6 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
       if (roomData.players && roomData.players[uid]) {
         roomData.players[uid].nickname = nickname;
         roomData.players[uid].avatarUrl = avatarUrl;
-        roomData.players[uid].isOnline = true; // 斷線重連時重新設為在線
         roomData.updatedAt = Date.now();
         roomData.expiresAt = Date.now() + ROOM_EXPIRE_MS;
         isNewJoin = false;
@@ -309,8 +306,7 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
         wins: 0,
         points: 0, // 初始化積分
         avatarUrl,
-        isBot: false, // 真人玩家明確設定
-        isOnline: true
+        isBot: false // 真人玩家明確設定
       };
       
       if (!roomData.players) roomData.players = {};
