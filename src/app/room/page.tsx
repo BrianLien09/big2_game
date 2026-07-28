@@ -313,8 +313,8 @@ function playGameOverSound(): void {
 const getAnimationCoords = (playerPos: 'bottom' | 'top' | 'left' | 'right', isMobile: boolean) => {
   if (isMobile) {
     switch (playerPos) {
-      case 'left': return { x: '-40vw', y: '-25vh' };
-      case 'right': return { x: '40vw', y: '-25vh' };
+      case 'left': return { x: '-35vw', y: '0' };
+      case 'right': return { x: '35vw', y: '0' };
       case 'top': return { x: '0', y: '-35vh' };
       case 'bottom': return { x: '0', y: '35vh' };
     }
@@ -3391,8 +3391,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           .table-center {
             position: absolute;
             left: 50%;
-            /* 調整出牌區中心點高度，避開左右兩側玩家/機器人 Pass 標籤的顯示範圍，防止遮擋 */
-            top: 56%;
+            top: 50%;
             transform: translate(-50%, -50%);
             width: 100%;
             display: flex;
@@ -3414,14 +3413,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 4px;
+            gap: 2px;
             z-index: 10;
           }
           .opponent-avatar {
-            width: 44px;
-            height: 44px;
+            width: 38px;
+            height: 38px;
             border-radius: 50%;
-            border: 2.5px solid #111;
+            border: 2px solid #111;
             overflow: hidden;
             background-color: #fff;
           }
@@ -3432,46 +3431,48 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           }
           .opponent-left {
             position: absolute;
-            left: 10px;
-            top: 12px;
-            transform: none;
+            left: 4px;
+            top: 50%;
+            transform: translateY(-50%);
           }
           .opponent-right {
             position: absolute;
-            right: 10px;
-            top: 12px;
-            transform: none;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
           }
           .opponent-name {
             width: auto;
-            max-width: 110px;
-            height: 36px;
-            padding: 0 8px;
+            max-width: 68px;
+            height: 26px;
+            padding: 0 4px;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
-            border: 2.5px solid #111;
+            border: 2px solid #111;
             border-radius: 999px;
-            font-size: 13px;
+            font-size: 10.5px;
             font-weight: 800;
             background-color: #fff;
             box-sizing: border-box;
             text-align: center;
           }
           .opponent-count {
-            min-width: 40px;
-            height: 28px;
-            font-size: 12px;
-            border: 2.5px solid #111;
-            box-shadow: 1.5px 1.5px 0 #000;
+            min-width: 36px;
+            height: 22px;
+            font-size: 11px;
+            border: 2px solid #111;
+            box-shadow: 1px 1px 0 #000;
             background-color: #ebf8ff;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 800;
+            padding: 0 4px;
+            border-radius: 999px;
           }
           .bottom-panel {
             /* 配合操作區與手牌區放大及抬高，將總高度加大至 328px，並調整各 row 分配 */
@@ -3838,7 +3839,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
                 【{room.players[finalExitingHand.uid]?.nickname || ""}】 收牌
               </span>
-              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full" style={{ perspective: "600px" }}>
+              <div className="flex justify-center items-center flex-wrap p-1 max-w-full" style={{ perspective: "600px" }}>
                 {(() => {
                   const coords = getAnimationCoords(finalExitingWinnerPosition || 'top', isMobile);
                   const exitRotate = finalExitingWinnerPosition === 'left' ? '-90deg' : finalExitingWinnerPosition === 'right' ? '90deg' : finalExitingWinnerPosition === 'top' ? '180deg' : '0deg';
@@ -3853,7 +3854,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                           '--card-exit-x': coords.x,
                           '--card-exit-y': coords.y,
                           '--card-exit-rotate': exitRotate,
-                          animationDelay: `${idx * 40}ms`
+                          animationDelay: `${idx * 40}ms`,
+                          marginLeft: isMobile && idx > 0 && finalExitingHand.cards.length >= 3 ? "-20px" : undefined
                         } as React.CSSProperties}
                       >
                         <PlayingCard card={card} size={tableCardSize} className="playing-card" />
@@ -3868,7 +3870,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
                 【{room.players[room.lastPlayedUid!]?.nickname}】 出牌
               </span>
-              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full" style={{ perspective: "600px" }}>
+              <div className="flex justify-center items-center flex-wrap p-1 max-w-full" style={{ perspective: "600px" }}>
                 {(() => {
                   const lastPlayedPosition: 'bottom' | 'top' | 'left' | 'right' = 
                     room.lastPlayedUid === uid
@@ -3890,7 +3892,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                           '--card-start-x': animProps.startX,
                           '--card-start-y': animProps.startY,
                           '--card-start-rotate': animProps.startRotate,
-                          animationDelay: `${idx * 60}ms`
+                          animationDelay: `${idx * 60}ms`,
+                          marginLeft: isMobile && idx > 0 && room.lastPlayedHand!.cards.length >= 3 ? "-20px" : undefined
                         } as React.CSSProperties}
                       >
                         <PlayingCard card={card} size={tableCardSize} className="playing-card" />
@@ -3905,7 +3908,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
                 【{room.players[exitingHand.uid]?.nickname || ""}】 收牌
               </span>
-              <div className="flex justify-center items-center flex-wrap gap-1 p-1 max-w-full" style={{ perspective: "600px" }}>
+              <div className="flex justify-center items-center flex-wrap p-1 max-w-full" style={{ perspective: "600px" }}>
                 {(() => {
                   const coords = getAnimationCoords(exitingWinnerPosition || 'top', isMobile);
                   const exitRotate = exitingWinnerPosition === 'left' ? '-90deg' : exitingWinnerPosition === 'right' ? '90deg' : exitingWinnerPosition === 'top' ? '180deg' : '0deg';
@@ -3920,7 +3923,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                           '--card-exit-x': coords.x,
                           '--card-exit-y': coords.y,
                           '--card-exit-rotate': exitRotate,
-                          animationDelay: `${idx * 40}ms`
+                          animationDelay: `${idx * 40}ms`,
+                          marginLeft: isMobile && idx > 0 && exitingHand.cards.length >= 3 ? "-20px" : undefined
                         } as React.CSSProperties}
                       >
                         <PlayingCard card={card} size={tableCardSize} className="playing-card" />
