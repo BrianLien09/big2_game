@@ -10,8 +10,8 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-36 md:bottom-auto md:top-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-4 w-[calc(100%-32px)] max-w-md pointer-events-none">
-      {toasts.map((toast, index) => {
+    <div className="fixed bottom-28 md:bottom-auto md:top-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2.5 w-[calc(100%-32px)] max-w-md pointer-events-none">
+      {toasts.slice(-2).map((toast, index) => {
         let bgColor = 'bg-white';
         let accentColor = 'bg-[#fbbf24]'; // 預設黃色
         let icon = '💡';
@@ -40,7 +40,7 @@ export default function ToastContainer() {
         return (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex flex-col gap-3 p-5 border-[3px] border-black rounded-2xl shadow-[6px_6px_0px_#000] ${bgColor} text-black transition-all duration-300 transform hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[8px_8px_0px_#000] active:scale-95 ${rotationClass} animate-in fade-in zoom-in-95 duration-200`}
+            className={`pointer-events-auto flex flex-col gap-2 p-3.5 md:p-5 border-[2.5px] md:border-[3px] border-black rounded-2xl shadow-[4px_4px_0px_#000] md:shadow-[6px_6px_0px_#000] ${bgColor} text-black transition-all duration-300 transform hover:-translate-y-1 hover:-translate-x-1 active:scale-95 ${rotationClass} animate-in fade-in zoom-in-95 duration-200`}
             style={{ fontFamily: 'var(--font-bricolage), system-ui, sans-serif' }}
           >
             {/* 頂部區域 */}

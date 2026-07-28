@@ -681,8 +681,8 @@ function RoomContent() {
             );
             newUids.forEach((pUid) => {
               if (pUid !== user.uid) {
-                const playerNickname = roomData.players?.[pUid]?.nickname || "玩家";
-                addToast(`玩家 【${playerNickname}】 已加入對局！`, "info");
+                const playerNickname = (roomData.players?.[pUid]?.nickname || "玩家").replace("🤖 ", "");
+                addToast(`玩家 【${playerNickname}】 已加入對局！`, "info", 2000);
               }
             });
           }
@@ -1101,7 +1101,6 @@ function RoomContent() {
     setLoadingBot(true);
     try {
       await addBot(roomId, uid);
-      addToast("已成功添加人機！", "success");
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       addToast(errMsg || "添加人機失敗", "error");

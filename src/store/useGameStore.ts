@@ -24,10 +24,10 @@ export const useGameStore = create<GameState>((set) => ({
   roomId: null,
   setRoomId: (id) => set({ roomId: id }),
   toasts: [],
-  addToast: (message, type = 'info', duration = 4000, extra = {}) => {
+  addToast: (message, type = 'info', duration = 3000, extra = {}) => {
     const id = Math.random().toString(36).substring(2, 9);
     set((state) => ({
-      toasts: [...state.toasts, { id, message, type, duration, ...extra }],
+      toasts: [...state.toasts, { id, message, type, duration, ...extra }].slice(-2),
     }));
     if (duration > 0) {
       setTimeout(() => {
