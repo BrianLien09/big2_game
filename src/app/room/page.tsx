@@ -1886,12 +1886,12 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "40px 1fr 70px" : "60px 1fr 100px",
+              gridTemplateColumns: isMobile ? "44px 1fr 75px" : "60px 1fr 100px",
               fontWeight: 900,
-              fontSize: isMobile ? "0.74rem" : "0.85rem",
+              fontSize: isMobile ? "0.85rem" : "0.85rem",
               background: "#f3f4f6",
               borderBottom: "3px solid #000",
-              padding: isMobile ? "8px 10px" : "10px 12px",
+              padding: isMobile ? "10px 12px" : "10px 12px",
               textAlign: "left"
             }}>
               <div>名次</div>
@@ -1907,27 +1907,27 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               return (
                 <div key={player.uid} style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "40px 1fr 70px" : "60px 1fr 100px",
+                  gridTemplateColumns: isMobile ? "44px 1fr 75px" : "60px 1fr 100px",
                   fontWeight: 800,
-                  fontSize: isMobile ? "0.74rem" : "0.85rem",
+                  fontSize: isMobile ? "0.92rem" : "0.95rem",
                   borderBottom: index === sortedPlayers.length - 1 ? "none" : "2px solid #000",
-                  padding: isMobile ? "8px 10px" : "10px 12px",
+                  padding: isMobile ? "10px 12px" : "10px 12px",
                   textAlign: "left",
                   background: isWinner ? "#fef9c3" : "#fff",
                   alignItems: "center"
                 }}>
-                  <div style={{ fontSize: isMobile ? "0.85rem" : "1.1rem", fontWeight: 900 }}>{placementText}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <div style={{ fontSize: isMobile ? "1.25rem" : "1.25rem", fontWeight: 900 }}>{placementText}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     {player.avatarUrl ? (
-                      <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
+                      <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid #000", objectFit: "cover" }} />
                     ) : (
-                      <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.72rem", fontWeight: 900 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.85rem", fontWeight: 900 }}>
                         {player.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
+                    <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800, fontSize: isMobile ? "0.92rem" : "0.95rem" }}>{player.nickname}</span>
                   </div>
-                  <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.8rem" : "1rem" }}>
+                  <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.9rem" : "1rem" }}>
                     {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {player.points ?? 0}
                   </div>
                 </div>
@@ -2073,12 +2073,12 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "35px 1fr 52px 58px" : "60px 1fr 80px 80px",
+              gridTemplateColumns: isMobile ? "44px 1fr 65px 70px" : "60px 1fr 80px 80px",
               fontWeight: 900,
-              fontSize: isMobile ? "0.72rem" : "0.85rem",
+              fontSize: isMobile ? "0.85rem" : "0.85rem",
               background: "#f3f4f6",
               borderBottom: "3px solid #000",
-              padding: isMobile ? "8px 10px" : "10px 12px",
+              padding: isMobile ? "10px 12px" : "10px 12px",
               textAlign: "left"
             }}>
               <div>名次</div>
@@ -2106,30 +2106,30 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 return (
                   <div key={pUid} style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "35px 1fr 52px 58px" : "60px 1fr 80px 80px",
+                    gridTemplateColumns: isMobile ? "44px 1fr 65px 70px" : "60px 1fr 80px 80px",
                     fontWeight: 800,
-                    fontSize: isMobile ? "0.72rem" : "0.85rem",
+                    fontSize: isMobile ? "0.92rem" : "0.95rem",
                     borderBottom: index === displayOrder.length - 1 ? "none" : "2px solid #000",
-                    padding: isMobile ? "8px 10px" : "10px 12px",
+                    padding: isMobile ? "10px 12px" : "10px 12px",
                     textAlign: "left",
                     background: isMe ? "#fef9c3" : "#fff",
                     alignItems: "center"
                   }}>
-                    <div style={{ fontSize: isMobile ? "0.85rem" : "1.1rem", fontWeight: 900 }}>{placementText}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <div style={{ fontSize: isMobile ? "1.25rem" : "1.25rem", fontWeight: 900 }}>{placementText}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                       {player.avatarUrl ? (
-                        <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", objectFit: "cover" }} />
+                        <img src={getAssetPath(player.avatarUrl)} alt="avatar" style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid #000", objectFit: "cover" }} />
                       ) : (
-                        <div style={{ width: 24, height: 24, borderRadius: "50%", border: "1.5px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.75rem", fontWeight: 900 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid #000", background: "#e5e7eb", display: "grid", placeItems: "center", fontSize: "0.85rem", fontWeight: 900 }}>
                           {player.nickname.replace("🤖 ", "").charAt(0).toUpperCase()}
                         </div>
                       )}
-                      <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800 }}>{player.nickname}</span>
+                      <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800, fontSize: isMobile ? "0.92rem" : "0.95rem" }}>{player.nickname}</span>
                     </div>
-                    <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900, fontSize: isMobile ? "0.75rem" : "inherit" }}>
+                    <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900, fontSize: isMobile ? "0.88rem" : "inherit" }}>
                       {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
                     </div>
-                    <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.75rem" : "inherit" }}>
+                    <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.88rem" : "inherit" }}>
                       {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {player.points ?? 0}
                     </div>
                   </div>
@@ -3413,14 +3413,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 2px;
+            gap: 4px;
             z-index: 10;
           }
           .opponent-avatar {
-            width: 38px;
-            height: 38px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
-            border: 2px solid #111;
+            border: 2.5px solid #111;
             overflow: hidden;
             background-color: #fff;
           }
@@ -3431,47 +3431,47 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           }
           .opponent-left {
             position: absolute;
-            left: 4px;
+            left: 18px;
             top: 50%;
             transform: translateY(-50%);
           }
           .opponent-right {
             position: absolute;
-            right: 4px;
+            right: 18px;
             top: 50%;
             transform: translateY(-50%);
           }
           .opponent-name {
             width: auto;
-            max-width: 68px;
-            height: 26px;
-            padding: 0 4px;
+            max-width: 76px;
+            height: 28px;
+            padding: 0 6px;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
-            border: 2px solid #111;
+            border: 2.5px solid #111;
             border-radius: 999px;
-            font-size: 10.5px;
+            font-size: 11.5px;
             font-weight: 800;
             background-color: #fff;
             box-sizing: border-box;
             text-align: center;
           }
           .opponent-count {
-            min-width: 36px;
-            height: 22px;
-            font-size: 11px;
-            border: 2px solid #111;
-            box-shadow: 1px 1px 0 #000;
+            min-width: 40px;
+            height: 25px;
+            font-size: 12px;
+            border: 2.5px solid #111;
+            box-shadow: 1.5px 1.5px 0 #000;
             background-color: #ebf8ff;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 800;
-            padding: 0 4px;
+            padding: 0 6px;
             border-radius: 999px;
           }
           .bottom-panel {
@@ -3722,7 +3722,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 opacity: topPlayer.isOnline === false && !topPlayer.isBot ? 0.75 : 1
               }}
             >
-              {topPlayer.nickname}
+              {topPlayer.nickname.replace("🤖 ", "")}
             </div>
             {room.turnUid === topPlayer.uid && topPlayer.isBot && (
               <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] ml-1 animate-pulse">
@@ -3802,7 +3802,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   opacity: leftPlayer.isOnline === false && !leftPlayer.isBot ? 0.75 : 1
                 }}
               >
-                {leftPlayer.nickname}
+                {leftPlayer.nickname.replace("🤖 ", "")}
               </div>
               {room.turnUid === leftPlayer.uid && leftPlayer.isBot && (
                 <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] animate-pulse">
@@ -3837,9 +3837,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           {finalExitingHand ? (
             <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
-                【{room.players[finalExitingHand.uid]?.nickname || ""}】 收牌
+                【{(room.players[finalExitingHand.uid]?.nickname || "").replace("🤖 ", "")}】 收牌
               </span>
-              <div className="flex justify-center items-center flex-wrap p-1 max-w-full" style={{ perspective: "600px" }}>
+              <div className={`flex justify-center items-center p-1 max-w-full ${isMobile && finalExitingHand.cards.length >= 3 ? "-space-x-6" : "gap-1 flex-wrap"}`} style={{ perspective: "600px" }}>
                 {(() => {
                   const coords = getAnimationCoords(finalExitingWinnerPosition || 'top', isMobile);
                   const exitRotate = finalExitingWinnerPosition === 'left' ? '-90deg' : finalExitingWinnerPosition === 'right' ? '90deg' : finalExitingWinnerPosition === 'top' ? '180deg' : '0deg';
@@ -3849,13 +3849,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     return (
                       <div 
                         key={uniqueKey} 
-                        className="animate-card-exit transform"
+                        className="animate-card-exit transform relative"
                         style={{ 
                           '--card-exit-x': coords.x,
                           '--card-exit-y': coords.y,
                           '--card-exit-rotate': exitRotate,
                           animationDelay: `${idx * 40}ms`,
-                          marginLeft: isMobile && idx > 0 && finalExitingHand.cards.length >= 3 ? "-20px" : undefined
+                          zIndex: idx + 1,
+                          marginLeft: isMobile && idx > 0 && finalExitingHand.cards.length >= 3 ? "-24px" : undefined
                         } as React.CSSProperties}
                       >
                         <PlayingCard card={card} size={tableCardSize} className="playing-card" />
@@ -3868,9 +3869,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           ) : room.lastPlayedHand ? (
             <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
-                【{room.players[room.lastPlayedUid!]?.nickname}】 出牌
+                【{(room.players[room.lastPlayedUid!]?.nickname || "").replace("🤖 ", "")}】 出牌
               </span>
-              <div className="flex justify-center items-center flex-wrap p-1 max-w-full" style={{ perspective: "600px" }}>
+              <div className={`flex justify-center items-center p-1 max-w-full ${isMobile && room.lastPlayedHand.cards.length >= 3 ? "-space-x-6" : "gap-1 flex-wrap"}`} style={{ perspective: "600px" }}>
                 {(() => {
                   const lastPlayedPosition: 'bottom' | 'top' | 'left' | 'right' = 
                     room.lastPlayedUid === uid
@@ -3887,13 +3888,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     return (
                       <div 
                         key={uniqueKey} 
-                        className="animate-card-appear transform transition-transform hover:scale-105"
+                        className="animate-card-appear transform transition-transform hover:scale-105 relative"
                         style={{ 
                           '--card-start-x': animProps.startX,
                           '--card-start-y': animProps.startY,
                           '--card-start-rotate': animProps.startRotate,
                           animationDelay: `${idx * 60}ms`,
-                          marginLeft: isMobile && idx > 0 && room.lastPlayedHand!.cards.length >= 3 ? "-20px" : undefined
+                          zIndex: idx + 1,
+                          marginLeft: isMobile && idx > 0 && room.lastPlayedHand!.cards.length >= 3 ? "-24px" : undefined
                         } as React.CSSProperties}
                       >
                         <PlayingCard card={card} size={tableCardSize} className="playing-card" />
@@ -3906,9 +3908,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           ) : exitingHand ? (
             <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
-                【{room.players[exitingHand.uid]?.nickname || ""}】 收牌
+                【{(room.players[exitingHand.uid]?.nickname || "").replace("🤖 ", "")}】 收牌
               </span>
-              <div className="flex justify-center items-center flex-wrap p-1 max-w-full" style={{ perspective: "600px" }}>
+              <div className={`flex justify-center items-center p-1 max-w-full ${isMobile && exitingHand.cards.length >= 3 ? "-space-x-6" : "gap-1 flex-wrap"}`} style={{ perspective: "600px" }}>
                 {(() => {
                   const coords = getAnimationCoords(exitingWinnerPosition || 'top', isMobile);
                   const exitRotate = exitingWinnerPosition === 'left' ? '-90deg' : exitingWinnerPosition === 'right' ? '90deg' : exitingWinnerPosition === 'top' ? '180deg' : '0deg';
@@ -3918,13 +3920,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     return (
                       <div 
                         key={uniqueKey} 
-                        className="animate-card-exit transform"
+                        className="animate-card-exit transform relative"
                         style={{ 
                           '--card-exit-x': coords.x,
                           '--card-exit-y': coords.y,
                           '--card-exit-rotate': exitRotate,
                           animationDelay: `${idx * 40}ms`,
-                          marginLeft: isMobile && idx > 0 && exitingHand.cards.length >= 3 ? "-20px" : undefined
+                          zIndex: idx + 1,
+                          marginLeft: isMobile && idx > 0 && exitingHand.cards.length >= 3 ? "-24px" : undefined
                         } as React.CSSProperties}
                       >
                         <PlayingCard card={card} size={tableCardSize} className="playing-card" />
@@ -3997,7 +4000,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   opacity: rightPlayer.isOnline === false && !rightPlayer.isBot ? 0.75 : 1
                 }}
               >
-                {rightPlayer.nickname}
+                {rightPlayer.nickname.replace("🤖 ", "")}
               </div>
               {room.turnUid === rightPlayer.uid && rightPlayer.isBot && (
                 <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg] animate-pulse">
