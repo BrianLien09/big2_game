@@ -79,6 +79,28 @@ export const ROOM_EXPIRE_MS = 6 * 60 * 60 * 1000; // 6 小時過期
 export const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 同一瀏覽器 30 分鐘節流限制
 export const CLEANUP_LIMIT = 20; // 每次最多清理 20 間房間
 
+// 快捷訊息只允許使用介面提供的固定內容，避免把任意文字當成即時聊天資料寫入房間。
+export const QUICK_TEXT_BUBBLES = [
+  "快點啦，等你出牌！",
+  "運氣真好！",
+  "好牌！這局我贏定了！",
+  "這手牌也太爛了吧...",
+  "承讓承讓！",
+  "再來一局！"
+] as const;
+
+export const QUICK_EMOJI_BUBBLES = [
+  "capy_onsen",
+  "capy_sunglasses",
+  "capy_orange",
+  "capy_dumb",
+  "capy_genius",
+  "capy_angry",
+  "capy_big2"
+] as const;
+
+const QUICK_BUBBLE_COOLDOWN_MS = 800;
+
 // 取得目前的過期時間 (目前時間 + 6 小時)
 export function getRoomExpirationTimestamp(): number {
   return Date.now() + ROOM_EXPIRE_MS;
@@ -2462,16 +2484,45 @@ export const sendRoomBubble = async (
   content: string,
   type: 'text' | 'emoji'
 ): Promise<void> => {
-  if (!db) return;
+  if (!db) throw new Error("Firebase DB not initialized");
+  const allowedContent = type === 'emoji'
+    ? (QUICK_EMOJI_BUBBLES as readonly string[]).includes(content)
+    : (QUICK_TEXT_BUBBLES as readonly string[]).includes(content);
+  if (!allowedContent) throw new Error("不支援的快捷訊息");
+
   const roomRef = ref(db, 'rooms/' + roomId);
-  await update(roomRef, {
-    chatBubble: {
-      senderUid,
-      content,
-      type,
-      timestamp: Date.now()
-    },
-    updatedAt: Date.now(),
-    expiresAt: Date.now() + ROOM_EXPIRE_MS
+  const existsSnap = await get(roomRef);
+  if (!existsSnap.exists()) throw new Error("房間不存在");
+  const initialRoom = existsSnap.val() as RoomState;
+  if (!initialRoom.players?.[senderUid]) throw new Error("你不在此房間");
+
+  let bubbleError: string | null = null;
+  const result = await runTransaction(roomRef, (currentData) => {
+    bubbleError = null;
+    if (currentData === null) {
+      bubbleError = "房間不存在";
+      return;
+    }
+
+    const roomData = sanitizeRoomState(currentData as RoomState);
+    if (!roomData.players?.[senderUid]) {
+      bubbleError = "你不在此房間";
+      return;
+    }
+
+    const previousBubble = roomData.chatBubble;
+    const now = Date.now();
+    if (previousBubble?.senderUid === senderUid && now - previousBubble.timestamp < QUICK_BUBBLE_COOLDOWN_MS) {
+      bubbleError = "請稍候再發送訊息";
+      return;
+    }
+
+    roomData.chatBubble = { senderUid, content, type, timestamp: now };
+    roomData.updatedAt = now;
+    roomData.expiresAt = now + ROOM_EXPIRE_MS;
+    return roomData;
   });
+
+  if (bubbleError) throw new Error(bubbleError);
+  if (!result.committed) throw new Error("快捷訊息發送失敗");
 };

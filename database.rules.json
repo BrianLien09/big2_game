@@ -12,7 +12,10 @@
       ".indexOn": ["expiresAt"],
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null",
+        "chatBubble": {
+          ".validate": "root.child('rooms').child($roomId).child('players').child(auth.uid).exists() && newData.hasChildren(['senderUid', 'content', 'type', 'timestamp']) && newData.child('senderUid').val() == auth.uid && newData.child('timestamp').isNumber() && ((newData.child('type').val() == 'emoji' && (newData.child('content').val() == 'capy_onsen' || newData.child('content').val() == 'capy_sunglasses' || newData.child('content').val() == 'capy_orange' || newData.child('content').val() == 'capy_dumb' || newData.child('content').val() == 'capy_genius' || newData.child('content').val() == 'capy_angry' || newData.child('content').val() == 'capy_big2')) || (newData.child('type').val() == 'text' && (newData.child('content').val() == '快點啦，等你出牌！' || newData.child('content').val() == '運氣真好！' || newData.child('content').val() == '好牌！這局我贏定了！' || newData.child('content').val() == '這手牌也太爛了吧...' || newData.child('content').val() == '承讓承讓！' || newData.child('content').val() == '再來一局！')))"
+        }
       }
     }
   }
