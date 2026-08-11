@@ -6,14 +6,17 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode, resetBig2Round } from "@/lib/roomService";
+import { subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode, resetBig2Round } from "@/lib/room/service";
+import type { RoomState } from "@/lib/room/types";
 import HeartsPlayingView from "@/components/hearts/HeartsPlayingView";
 
 import { PlayingCard } from "@/components/ui/Card";
 import { db } from "@/lib/firebase";
 import { updateMyLeaderboard } from "@/lib/leaderboardService";
-import { sendRoomBubble } from "@/lib/roomService";
-import { Card, getCardName, PlayedHand } from "@/lib/big2Logic";
+import { sendRoomBubble } from "@/lib/room/service";
+import type { Card } from "@/lib/core/cards";
+import { getCardName, PlayedHand } from "@/lib/games/big2/logic";
+import type { GameMode } from "@/lib/core/gameMode";
 import ThirteenPlayingView from "@/components/thirteen/ThirteenPlayingView";
 import ThirteenShowingView from "@/components/thirteen/ThirteenShowingView";
 

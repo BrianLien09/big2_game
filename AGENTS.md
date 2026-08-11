@@ -26,11 +26,16 @@
 │   │   ├── thirteen/                # 十三支子組件：ThirteenPlayingView (理牌), ThirteenShowingView (比牌/結算)
 │   │   ├── ui/                      # 共享卡牌 (Card.tsx) 與 Toast 容器
 │   │   └── CapybaraLoader.tsx       # 水豚載入動畫組件
-│   ├── lib/                         # 核心遊戲邏輯
-│   │   ├── big2Logic.ts             # 大老二出牌規則、牌型強度、壓牌驗證
-│   │   ├── thirteenLogic.ts         # 十三支理牌評估、倒水驗證、兩兩對決零和計分、AI Bot理牌算法
+│   ├── lib/
+│   │   ├── core/                    # 所有遊戲共用的卡牌與模式資料
+│   │   ├── games/                   # 各遊戲的規則、Bot、狀態與模式設定
+│   │   │   ├── big2/
+│   │   │   ├── hearts/
+│   │   │   ├── thirteen/
+│   │   │   └── registry.ts
+│   │   ├── room/                    # 房間資料契約與房間服務公開入口
 │   │   ├── firebase.ts              # Firebase 初始化設定
-│   │   └── roomService.ts           # 房間管理 CRUD、發牌、積分原子更新、斷線重連機制
+│   │   └── roomService.ts           # 舊版房間服務實作相容層
 │   └── store/
 │       └── useGameStore.ts          # Zustand 全域 Store
 ├── firestore.rules                  # Firestore 資料安全與欄位寫入限制規則

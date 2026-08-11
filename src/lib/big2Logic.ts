@@ -1,40 +1,10 @@
-// 遊戲模式，供 roomService 切換邏輯使用
-export type GameMode = 'BIG2' | 'THIRTEEN' | 'HEARTS';
+import type { Card, Rank, Suit } from './core/cards';
 
-// 定義撲克牌花色與點數
-export type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs'; // 黑桃, 紅心, 方塊, 梅花
-export type Rank = '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A' | '2';
+// 兼容舊有匯入；新的共用卡牌型別請從 core/cards 使用。
+export type { Card, Rank, Suit } from './core/cards';
+export { createDeck, shuffleDeck } from './core/cards';
 
-export interface Card {
-  id: string; // ex: 'spades-A'
-  suit: Suit;
-  rank: Rank;
-}
-
-// 建立一副完整的撲克牌
-export const createDeck = (): Card[] => {
-  const suits: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
-  const ranks: Rank[] = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
-  const deck: Card[] = [];
-
-  suits.forEach((suit) => {
-    ranks.forEach((rank) => {
-      deck.push({ id: `${suit}-${rank}`, suit, rank });
-    });
-  });
-
-  return deck;
-};
-
-// 洗牌 (Fisher-Yates)
-export const shuffleDeck = (deck: Card[]): Card[] => {
-  const newDeck = [...deck];
-  for (let i = newDeck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newDeck[i], newDeck[j]] = [newDeck[j], newDeck[i]];
-  }
-  return newDeck;
-};
+// 卡牌資料與牌堆操作屬於所有遊戲共用的核心層。
 
 // 權重計算（用於比較大小）
 const rankWeight: Record<Rank, number> = {

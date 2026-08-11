@@ -1,5 +1,5 @@
-import { Card, Suit, Rank } from '../src/lib/big2Logic';
-import { TrickCard, CompletedTrick } from '../src/lib/heartsLogic';
+import type { Card, Suit, Rank } from '../src/lib/core/cards';
+import { TrickCard, CompletedTrick } from '../src/lib/games/hearts/logic';
 import {
   HEARTS_RANK_WEIGHT,
   sortHeartsHand,
@@ -9,11 +9,11 @@ import {
   getHeartsTrickWinner,
   calculateHeartsScores,
   getPassDirection
-} from '../src/lib/heartsLogic';
+} from '../src/lib/games/hearts/logic';
 import {
   selectHeartsPassCards,
   selectHeartsCardPlay
-} from '../src/lib/botLogic';
+} from '../src/lib/games/hearts/bot';
 
 console.log("=== 正在開始 Hearts 傷心小棧單元測試 ===");
 

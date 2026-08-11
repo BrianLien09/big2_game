@@ -8,7 +8,7 @@ import {
   increment,
 } from 'firebase/firestore';
 import { firestoreDb } from './firebase';
-import type { Player } from './roomService';
+import type { Player } from './room/types';
 
 // ─── 排行榜條目型別 ──────────────────────────────────────────────
 export interface LeaderboardEntry {

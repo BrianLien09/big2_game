@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Card } from "@/lib/big2Logic";
+import type { Card } from "@/lib/core/cards";
 import { PlayingCard } from "@/components/ui/Card";
-import { evaluateThirteenHand, THIRTEEN_HAND_LABELS, isArrangementValid, sortThirteenCards } from "@/lib/thirteenLogic";
-import { RoomState } from "@/lib/roomService";
+import { evaluateThirteenHand, THIRTEEN_HAND_LABELS, isArrangementValid, sortThirteenCards } from "@/lib/games/thirteen/logic";
+import type { RoomState } from "@/lib/room/types";
 
 interface ThirteenPlayingViewProps {
   room: RoomState;

@@ -3,7 +3,7 @@
 // 執行方式: npx tsx scratch/test_thirteen.ts
 // ====================================================
 
-import { Card, Rank } from "../src/lib/big2Logic";
+import type { Card, Rank } from "../src/lib/core/cards";
 import {
   evaluateThirteenHand,
   compareThirteenHands,
@@ -11,7 +11,7 @@ import {
   calculateScores,
   autoArrangeThirteen,
   THIRTEEN_HAND_LABELS
-} from "../src/lib/thirteenLogic";
+} from "../src/lib/games/thirteen/logic";
 
 // 簡單斷言輔助函數
 function assert(condition: boolean, message: string) {

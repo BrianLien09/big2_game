@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PlayingCard } from "@/components/ui/Card";
-import { Card, createDeck, shuffleDeck, sortCards, evaluateHand, PlayedHand } from "@/lib/big2Logic";
+import type { Card } from "@/lib/core/cards";
+import { createDeck, shuffleDeck } from "@/lib/core/cards";
+import { sortCards, evaluateHand, PlayedHand } from "@/lib/games/big2/logic";
 
 const TYPE_NAMES: Record<string, string> = {
   single: "單張",

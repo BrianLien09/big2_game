@@ -1,5 +1,5 @@
-import { Card } from "../src/lib/big2Logic";
-import { selectBotAction } from "../src/lib/botLogic";
+import type { Card } from "../src/lib/core/cards";
+import { selectBotAction } from "../src/lib/games/big2/bot";
 
 // ── 輔助函數：構造撲克牌 ──
 const makeCard = (suit: Card["suit"], rank: string): Card => ({

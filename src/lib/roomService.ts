@@ -2,122 +2,28 @@ import { db } from './firebase';
 import { 
   ref, set as rtdbSet, get, update, runTransaction, onValue, query, orderByChild, endAt, limitToFirst
 } from 'firebase/database';
-import { Card, PlayedHand, createDeck, shuffleDeck, sortCards, compareSingleCard, validatePlay, evaluateHand, type GameMode } from './big2Logic';
-import { selectBotAction, selectHeartsPassCards, selectHeartsCardPlay } from './botLogic';
-import { sortHeartsHand, validateHeartsPlay, getHeartsTrickWinner, calculateHeartsScores, getPassDirection, type CompletedTrick, type TrickCard } from './heartsLogic';
+import { createDeck, shuffleDeck } from './core/cards';
+import type { Card } from './core/cards';
+import { sortCards, compareSingleCard, validatePlay, evaluateHand } from './games/big2/logic';
+import type { PlayedHand } from './games/big2/logic';
+import type { GameMode } from './core/gameMode';
+import { selectBotAction } from './games/big2/bot';
+import { selectHeartsPassCards, selectHeartsCardPlay } from './games/hearts/bot';
+import { sortHeartsHand, validateHeartsPlay, getHeartsTrickWinner, calculateHeartsScores, getPassDirection, type CompletedTrick, type TrickCard } from './games/hearts/logic';
+import type { HeartsPlayerState, HeartsPlayingState, HeartsState } from './games/hearts/types';
+import type { ThirteenPlayerState, ThirteenState } from './games/thirteen/types';
+import type { ChatBubble, Player, RoomState } from './room/types';
 
 import {
   autoArrangeThirteen,
   calculateScores,
   isArrangementValid,
   sortThirteenCards
-} from './thirteenLogic';
+} from './games/thirteen/logic';
 
 
-export type { GameMode } from './big2Logic';
-
-export interface Player {
-  uid: string;
-  nickname: string;
-  isReady: boolean;
-  cards: Card[];
-  isHost: boolean;
-  isPassed: boolean;
-  wins: number;
-  avatarUrl?: string;
-  isBot: boolean; // 新增 isBot 欄位
-  points?: number; // 新增積分欄位
-}
-
-export interface ChatBubble {
-  senderUid: string;
-  content: string; // 快捷文字或表情 ID
-  type: 'text' | 'emoji';
-  timestamp: number;
-}
-
-export interface RoomState {
-  id: string;
-  name: string;
-  players: Record<string, Player>;
-  status: 'waiting' | 'playing' | 'finished' | 'gameOver';
-  turnUid: string | null; 
-  lastPlayedHand: PlayedHand | null;
-  lastPlayedUid: string | null;
-  passCount: number; 
-  playerOrder: string[]; 
-  createdAt: number;
-  updatedAt: number;
-  expiresAt: number;
-  winnerUid: string | null;
-  firstPlayRequiredCardId?: string | null; 
-  finishedOrder?: string[];
-  roundParticipants?: string[];
-  roundPlayerSnapshots?: Record<
-    string,
-    {
-      nickname: string;
-      avatarUrl: string;
-      isBot: boolean;
-    }
-  >;
-  roundScores?: Record<string, number>;
-  targetPoints?: number;
-  gameMode?: GameMode;
-  // ─── 十三支專屬欄位 ───
-  thirteenState?: ThirteenState;
-  isThirteenPassingMode?: boolean;  // 十三支傳牌娛樂玩法開關
-  thirteenRoundNumber?: number;     // 十三支當局累計局數
-  // ─── 傷心小棧專屬欄位 ───
-  heartsState?: HeartsState;
-  chatBubble?: ChatBubble;
-}
-
-export interface HeartsPlayerState {
-  cards: Card[];
-  selectedPassCards?: Card[];
-  isConfirmed: boolean;
-}
-
-export interface HeartsPlayingState {
-  currentTrick: TrickCard[];
-  completedTricks: CompletedTrick[];
-  currentLeaderUid: string;
-  heartsBroken: boolean;
-}
-
-export interface HeartsState {
-  status: 'passing' | 'playing' | 'showing';
-  passDirection: 'left' | 'right' | 'across' | 'none';
-  players: Record<string, HeartsPlayerState>;
-  heartsPlaying?: HeartsPlayingState;
-  scores?: Record<string, number>;
-  netScores?: Record<string, number>; // 保存累計的積分
-  showLeaderboard?: boolean;
-  roundNumber?: number;
-}
-
-export interface ThirteenPlayerState {
-  cards: Card[];
-  front: Card[];
-  middle: Card[];
-  back: Card[];
-  isConfirmed: boolean;
-  selectedPassCards?: Card[];       // 選擇傳出的 3 張牌
-  isPassingConfirmed?: boolean;     // 是否已確認傳牌
-}
-
-export interface ThirteenState {
-  status: 'passing' | 'arranging' | 'showing';
-  players: Record<string, ThirteenPlayerState>;
-  scores?: Record<string, number>; // 本局積分 (0~3)
-  netScores?: Record<string, number>; // 零和淨分（比牌得失分，用於前端顯示）
-  settledOnce?: boolean;
-  showLeaderboard?: boolean;
-  passDirection?: 'left' | 'right' | 'across' | 'none'; // 傳牌方向
-  roundNumber?: number;
-  receivedPassCards?: Record<string, { fromUid: string; cards: Card[] }>; // 每位玩家收到的傳牌資訊
-}
+export type { GameMode } from './core/gameMode';
+export type { ChatBubble, HeartsPlayerState, HeartsPlayingState, HeartsState, Player, RoomState, ThirteenPlayerState, ThirteenState } from './room/types';
 
 
 

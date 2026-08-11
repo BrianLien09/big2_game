@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PlayingCard } from "@/components/ui/Card";
-import { Card } from "@/lib/big2Logic";
+import type { Card } from "@/lib/core/cards";
 
 // ── 分頁定義 ──────────────────────────────────────────
 type Tab = "intro" | "arranging" | "ranks" | "scoring" | "practice";

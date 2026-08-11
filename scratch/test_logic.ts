@@ -1,4 +1,5 @@
-import { Card, evaluateHand, validatePlay, PlayedHand, Rank, HandType } from "../src/lib/big2Logic";
+import type { Card, Rank } from "../src/lib/core/cards";
+import { evaluateHand, validatePlay, PlayedHand, HandType } from "../src/lib/games/big2/logic";
 
 // 輔助函式：快速建立 Card 物件
 function makeCard(suit: 'spades' | 'hearts' | 'diamonds' | 'clubs', rank: string): Card {

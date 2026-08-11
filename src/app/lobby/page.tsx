@@ -7,8 +7,10 @@ import { auth, logoutWithGoogle, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { ref, get } from "firebase/database";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { cleanupExpiredRoomsIfNeeded, leaveRoom } from "@/lib/roomService";
+import { cleanupExpiredRoomsIfNeeded, leaveRoom } from "@/lib/room/service";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/leaderboardService";
+import { GAME_DEFINITIONS, GAME_MODES } from "@/lib/games/registry";
+import type { GameMode } from "@/lib/core/gameMode";
 
 export default function Lobby() {
   const router = useRouter();
@@ -19,7 +21,7 @@ export default function Lobby() {
   const [joinRoomId, setJoinRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [targetPoints, setTargetPoints] = useState<number>(15);
-  const [gameMode, setGameMode] = useState<'BIG2' | 'THIRTEEN' | 'HEARTS'>('BIG2');
+  const [gameMode, setGameMode] = useState<GameMode>('BIG2');
 
   // Firebase 使用者與載入狀態
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -118,7 +120,7 @@ export default function Lobby() {
     e.preventDefault();
     await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-    const roomTypeLabel = gameMode === 'THIRTEEN' ? '十三支' : gameMode === 'HEARTS' ? '傷心小棧' : '大老二';
+    const roomTypeLabel = GAME_DEFINITIONS[gameMode].label;
     const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的${roomTypeLabel}對局`);
     router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}&gameMode=${gameMode}`);
   };
@@ -360,27 +362,25 @@ export default function Lobby() {
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>遊戲模式</label>
                 <div style={{ display: "flex", gap: "12px" }}>
-                  {(["BIG2", "THIRTEEN", "HEARTS"] as const).map((mode) => {
+                  {GAME_MODES.map((mode) => {
                     const isSelected = gameMode === mode;
-                    const modeBg = mode === 'THIRTEEN' ? "#b87e6b" : mode === 'HEARTS' ? "#ef4444" : "#fbbf24";
-                    const modeColor = mode === 'THIRTEEN' || mode === 'HEARTS' ? "#fff" : "#000";
-                    const modeBorder = mode === 'THIRTEEN' ? "#a66a58" : mode === 'HEARTS' ? "#b91c1c" : "#000";
+                    const definition = GAME_DEFINITIONS[mode];
                     return (
                       <button
                         key={mode}
                         type="button"
                         onClick={() => {
                           setGameMode(mode);
-                          setTargetPoints(mode === 'HEARTS' ? 50 : 15);
+                          setTargetPoints(definition.defaultTargetPoints);
                         }}
                         className="comic-btn"
                         style={{
                           flex: 1,
                           padding: "12px 4px",
                           fontSize: "0.86rem",
-                          background: isSelected ? modeBg : "#fff",
-                          color: isSelected ? modeColor : "#6b7280",
-                          border: `3px solid ${isSelected ? modeBorder : "#e5e7eb"}`,
+                          background: isSelected ? definition.colors.background : "#fff",
+                          color: isSelected ? definition.colors.text : "#6b7280",
+                          border: `3px solid ${isSelected ? definition.colors.border : "#e5e7eb"}`,
                           borderRadius: "12px",
                           boxShadow: isSelected ? "2px 2px 0px #000" : "none",
                           fontWeight: 900,
@@ -388,7 +388,7 @@ export default function Lobby() {
                           transition: "all 0.15s ease",
                         }}
                       >
-                        {mode === 'BIG2' ? '🂡 大老二' : mode === 'THIRTEEN' ? '🃎 十三支' : '💔 傷心小棧'}
+                        {definition.icon} {definition.label}
                       </button>
                     );
                   })}
@@ -422,7 +422,7 @@ export default function Lobby() {
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>目標結束積分</label>
                 <div style={{ display: "flex", gap: "12px" }}>
-                  {(gameMode === 'HEARTS' ? [30, 50, 100] : [10, 15, 20]).map((pts) => {
+                  {GAME_DEFINITIONS[gameMode].targetPoints.map((pts) => {
                     const isSelected = targetPoints === pts;
                     return (
                       <button
@@ -444,7 +444,7 @@ export default function Lobby() {
                           transition: "all 0.15s ease",
                         }}
                       >
-                        {pts} 分
+                        {pts} {GAME_DEFINITIONS[gameMode].targetUnit}
                       </button>
                     );
                   })}

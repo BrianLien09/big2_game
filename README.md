@@ -1,5 +1,7 @@
 # 🃏 CardDuel — 線上多人紙牌對戰平台
 
+專案架構與遊戲模組邊界請參考 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+
 [![Next.js](https://img.shields.io/badge/Next.js-16.2.9-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![Firebase](https://img.shields.io/badge/Firebase-12.15.0-orange?style=flat-square&logo=firebase)](https://firebase.google.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
@@ -12,6 +14,7 @@
 |---|---|---|
 | 🃏 **大老二 (Big 2)** | 2–4 人 | 台灣經典撲克，比對手更快出完手牌 |
 | 🃍 **十三支 (Chinese Poker)** | 2–4 人 | 將 13 張牌分為前墩(3張)、中墩(5張)、後墩(5張)進行比牌 |
+| 💔 **傷心小棧 (Hearts)** | 4 人 | 依照跟牌、吃墩與負分規則完成多人對局 |
 
 專案採用 **Neo-brutalism（經典黑白漫畫風）** 設計語言，針對手機與電腦端進行響應式適配，並支援 PWA，讓玩家在手機上享有原生 App 般的沉浸式體驗。
 
@@ -33,6 +36,7 @@
 ### 1. 三款遊戲一站搞定
 - **大老二**：完整支援梅花三起手、五張特殊牌型（鐵支、同花順可壓牌）、積分賽制。
 - **十三支**：支援前/中/後三墩拖拉放牌、多選批量移入、全新「牌型大小提示」下拉按鈕、動態「公平並列給分」機制、打槍計分（三墩全贏額外 +3）、比牌動畫手動控制。
+- **傷心小棧**：支援傳牌、跟牌、吃墩、紅心破心與 Shoot the Moon 負分計算。
 
 ### 2. 漫畫風格 UI (Neo-brutalism Style)
 - 高對比度白底黑字、加粗黑色外框、帶偏移的硬陰影與大字重排版。
@@ -120,15 +124,27 @@
 │   │   │   ├── Card.tsx             # 撲克牌卡面渲染與點擊互動組件
 │   │   │   └── ToastContainer.tsx   # 漫畫風格 Toast 容器
 │   │   ├── CapybaraLoader.tsx       # 水豚載入動畫組件
+│   │   ├── hearts/                  # 傷心小棧遊戲子組件
+│   │   │   └── HeartsPlayingView.tsx    # 傳牌、出牌與吃墩畫面
 │   │   ├── thirteen/                # 十三支遊戲子組件
 │   │   │   ├── ThirteenPlayingView.tsx  # 排牌階段（拖放、多選批量移入）
 │   │   │   └── ThirteenShowingView.tsx  # 比牌動畫與結算排行榜
-│   ├── lib/                         # 遊戲底層邏輯
-│   │   ├── big2Logic.ts             # 大老二：點數花色權重、牌型分析、合法性驗證
-│   │   ├── thirteenLogic.ts         # 十三支：牌型評估、倒水驗證、零和計分、Bot 理牌
+│   ├── lib/
+│   │   ├── core/                    # 所有遊戲共用的基礎資料
+│   │   │   ├── cards.ts             # Card、Suit、Rank、牌堆與洗牌
+│   │   │   └── gameMode.ts          # GameMode 遊戲模式型別
+│   │   ├── games/                   # 各遊戲的規則、Bot、狀態與模式設定
+│   │   │   ├── big2/                # 大老二邏輯與 Bot 公開入口
+│   │   │   ├── hearts/              # 傷心小棧邏輯、Bot 與狀態
+│   │   │   ├── thirteen/            # 十三支邏輯與狀態
+│   │   │   └── registry.ts          # 模式名稱、圖示、目標分數等產品設定
+│   │   ├── room/                    # 房間資料契約與房間服務公開入口
+│   │   │   ├── index.ts             # 房間模組統一入口
+│   │   │   ├── service.ts           # 房間 CRUD 與對局協調公開入口
+│   │   │   └── types.ts             # RoomState、Player 與遊戲狀態資料契約
 │   │   ├── firebase.ts              # Firebase App 初始化設定
 │   │   ├── leaderboardService.ts    # 全球排行榜服務（Firestore 累加總分與排序）
-│   │   └── roomService.ts           # 房間 CRUD、發牌、結算等 Realtime Database 讀寫服務
+│   │   └── roomService.ts           # 舊版房間服務實作相容層
 │   └── store/
 │       └── useGameStore.ts          # Zustand 全域狀態管理與 Toast 排程
 ├── scratch/

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card as CardType } from '@/lib/big2Logic';
+import type { Card as CardType } from '@/lib/core/cards';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 

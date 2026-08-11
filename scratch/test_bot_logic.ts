@@ -1,6 +1,7 @@
-import { Card, evaluateHand, Suit, Rank } from '../src/lib/big2Logic';
-import { selectBotAction } from '../src/lib/botLogic';
-import { Player, RoomState } from '../src/lib/roomService';
+import type { Card, Suit, Rank } from '../src/lib/core/cards';
+import { evaluateHand } from '../src/lib/games/big2/logic';
+import { selectBotAction } from '../src/lib/games/big2/bot';
+import type { Player, RoomState } from '../src/lib/room/types';
 import { Timestamp } from 'firebase/firestore';
 
 // Helper to make a card

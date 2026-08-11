@@ -3,7 +3,7 @@
 // 涵蓋牌型判斷、比大小、倒水驗證、計分以及人機 AI
 // ====================================================
 
-import { Card, Rank } from './big2Logic';
+import type { Card, Rank } from './core/cards';
 
 // ── 十三支點數權重 (2 最小，A 最大) ───────────────────
 export const THIRTEEN_RANK_WEIGHT: Record<Rank, number> = {

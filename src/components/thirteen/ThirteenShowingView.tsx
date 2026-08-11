@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { RoomState, restartWholeGame, showThirteenLeaderboard, getAssetPath } from "@/lib/roomService";
+import { restartWholeGame, showThirteenLeaderboard, getAssetPath } from "@/lib/room/service";
+import type { RoomState } from "@/lib/room/types";
 import { PlayingCard } from "@/components/ui/Card";
-import { evaluateThirteenHand, THIRTEEN_HAND_LABELS, compareThirteenHands } from "@/lib/thirteenLogic";
+import { evaluateThirteenHand, THIRTEEN_HAND_LABELS, compareThirteenHands } from "@/lib/games/thirteen/logic";
 
 interface ThirteenShowingViewProps {
   room: RoomState;

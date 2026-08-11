@@ -7,8 +7,8 @@ import {
   buildRoundSettlementWithPlayers,
   getActivePlayerUids,
   getNextActiveUid
-} from "../src/lib/roomService";
-import { Card } from "../src/lib/big2Logic";
+} from "../src/lib/room/service";
+import type { Card } from "../src/lib/core/cards";
 
 // Mock helper to create cards with unique suits based on player index to allow beating previous cards
 function makeCards(count: number, playerIndex = 0): Card[] {

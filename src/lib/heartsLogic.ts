@@ -1,15 +1,7 @@
-import { Card, Suit, Rank } from './big2Logic';
+import type { Card, Rank, Suit } from './core/cards';
+import type { CompletedTrick, TrickCard } from './games/hearts/types';
 
-export interface TrickCard {
-  uid: string;
-  card: Card;
-}
-
-export interface CompletedTrick {
-  cards: TrickCard[];
-  winnerUid: string;
-  leadSuit: Suit;
-}
+export type { CompletedTrick, TrickCard } from './games/hearts/types';
 
 // 傷心小棧點數權重 (2 最小，A 最大)
 export const HEARTS_RANK_WEIGHT: Record<Rank, number> = {

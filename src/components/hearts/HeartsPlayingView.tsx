@@ -1,15 +1,15 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { RoomState, HeartsState, HeartsPlayingState } from "@/lib/roomService";
+import type { RoomState, HeartsState, HeartsPlayingState } from "@/lib/room/types";
 import {
   getPlayableHeartsCardIds,
   sortHeartsHand,
   isHeartsScoreCard,
-} from "@/lib/heartsLogic";
+} from "@/lib/games/hearts/logic";
 import { PlayingCard } from "@/components/ui/Card";
-import { Card, Suit } from "@/lib/big2Logic";
-import { getAssetPath } from "@/lib/roomService";
+import type { Card, Suit } from "@/lib/core/cards";
+import { getAssetPath } from "@/lib/room/service";
 
 // ── 介面定義 ────────────────────────────────────────────
 interface HeartsPlayingViewProps {
