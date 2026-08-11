@@ -20,17 +20,15 @@
 │   ├── app/                         # 頁面路由與佈局
 │   │   ├── page.tsx                 # 首頁（Google 登入與暱稱設定）
 │   │   ├── lobby/                   # 遊戲大廳（建房、搜房、過期房間自動清理）
-│   │   ├── room/                    # 核心遊戲房間（整合大老二、十三支、橋牌三大遊戲切換）
-│   │   └── *-tutorial/              # 三大遊戲的規則教學頁面
+│   │   ├── room/                    # 核心遊戲房間（整合大老二、十三支與傷心小棧遊戲切換）
+│   │   └── *-tutorial/              # 遊戲規則教學頁面
 │   ├── components/                  # UI 組件
 │   │   ├── thirteen/                # 十三支子組件：ThirteenPlayingView (理牌), ThirteenShowingView (比牌/結算)
-│   │   ├── bridge/                  # 橋牌子組件：BridgeBiddingView (叫牌), BridgePlayingView (打牌)
 │   │   ├── ui/                      # 共享卡牌 (Card.tsx) 與 Toast 容器
 │   │   └── CapybaraLoader.tsx       # 水豚載入動畫組件
 │   ├── lib/                         # 核心遊戲邏輯
 │   │   ├── big2Logic.ts             # 大老二出牌規則、牌型強度、壓牌驗證
 │   │   ├── thirteenLogic.ts         # 十三支理牌評估、倒水驗證、兩兩對決零和計分、AI Bot理牌算法
-│   │   ├── bridgeLogic.ts           # 橋牌叫牌限制、打牌合約完成判斷、吃墩與 Vulnerable 計分
 │   │   ├── firebase.ts              # Firebase 初始化設定
 │   │   └── roomService.ts           # 房間管理 CRUD、發牌、積分原子更新、斷線重連機制
 │   └── store/
@@ -47,7 +45,7 @@
 本專案使用 Firebase Spark (免費版) 方案，為防止額度超支並確保安全性，資料結構與寫入邏輯特化如下：
 
 ### 3.1 房間文檔 Schema (`/rooms/{roomId}`)
-所有遊戲狀態（包含大老二、十三支、橋牌）均集中儲存於單一 Rooms 文檔中，以最省的 `onSnapshot` 監聽整個房間更新：
+所有遊戲狀態（包含大老二與十三支）均集中儲存於單一 Rooms 文檔中，以最省的 `onSnapshot` 監聽整個房間更新：
 *   `status`：`waiting` (大廳待機), `playing` (大老二進行中), `arranging` (十三支排牌中), `showing` (十三支比牌中), `finished` (單局結算), `gameOver` (達到目標積分，整局結束)。
 *   `players`：`Record<string, Player>` (玩家 Map)。包含 `isReady`、`cards`、`wins`、`points` 等。
 *   `playerOrder`：`string[]` (玩家出牌順序 / 排位)，嚴格限制最大長度 4。
@@ -93,7 +91,7 @@
 ## 🎨 5. 前端 UI 排版防防錯指南
 
 ### 5.1 動態手牌重疊 (防止擠壓爆版)
-*   大老二與橋牌手牌數量較多時，使用 `ResizeObserver` 實時監聽容器寬度，動態調整卡片重疊間距，保證在手機、平板與電腦端手牌 100% 收納不跑版。
+*   大老二手牌數量較多時，使用 `ResizeObserver` 實時監聽容器寬度，動態調整卡片重疊間距，保證在手機、平板與電腦端手牌 100% 收納不跑版。
 
 ### 5.2 Flex 佈局防爆三守則
 1.  **左側主文字區**：必須設定 `minWidth: 0`、`flex: 1` 且 `overflow: hidden`，內部文字加上 `textOverflow: ellipsis` 進行超長截斷。
@@ -132,8 +130,8 @@
 *   **修復步驟**：在 `roomService.ts` 內的所有 `runTransaction` 判定中，利用 `result.snapshot` 區分錯誤：若 `!result.committed` 且 `result.snapshot` 不存在（`!result.snapshot.exists()`），說明該節點在伺服器端確實是 `null`，此時拋出精確的 `"房間不存在"` 錯誤，以供前端正確進入建房流程。
 
 ### 6.4 遷移 RTDB 後重置遊戲時拋出 Data returned contains undefined 錯誤
-*   **Bug 症狀**：在重置十三支或橋牌對局時（例如十三支比牌完按下「再玩一局」），控制台拋出 `transaction failed: Data returned contains undefined in property 'rooms.[RoomID].thirteenState'`。
-*   **發現技巧**：此錯誤只會在進行對局重置或清除對局專屬狀態（如 `thirteenState`、`bridgeBidding`）時觸發。
+*   **Bug 症狀**：在重置十三支對局時（例如十三支比牌完按下「再玩一局」），控制台拋出 `transaction failed: Data returned contains undefined in property 'rooms.[RoomID].thirteenState'`。
+*   **發現技巧**：此錯誤只會在進行對局重置或清除遊戲專屬狀態（如 `thirteenState`）時觸發。
 *   **原因分析**：在 Firebase Realtime Database 事務的 updater 中，回傳的物件內部**絕對不可包含任何 `undefined` 值**。原 Firestore 代碼在清除狀態時會將屬性賦值為 `undefined`（如 `roomData.thirteenState = undefined;`），這會導致 RTDB 序列化失敗並終止事務。
 *   **修復步驟**：在 `roomService.ts` 內的所有 `runTransaction` 中，將所有將屬性設為 `undefined` 的地方，改為使用 JavaScript 的 **`delete` 關鍵字**（如 `delete roomData.thirteenState;`），直接將該屬性鍵自對象中完全移除。
 

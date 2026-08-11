@@ -273,12 +273,11 @@ export default function Home() {
           <div>
             <div style={{ marginBottom: "20px" }}>
               <p className="text-gray-600 font-bold mb-4 text-sm leading-relaxed">
-                支援大老二、十三支、橋牌三種紙牌遊戲，開局就上手。以 Google 帳號登入，即可跨裝置與朋友即時對戰。
+                支援大老二、十三支與傷心小棧三種紙牌遊戲，開局就上手。以 Google 帳號登入，即可跨裝置與朋友即時對戰。
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "4px" }}>
                 <span style={{ background: "#fef9c3", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃏 大老二</span>
                 <span style={{ background: "#dcfce7", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃍 十三支</span>
-                <span style={{ background: "#dbeafe", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🌈 橋牌</span>
               </div>
             </div>
 

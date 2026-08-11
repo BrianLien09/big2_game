@@ -6,18 +6,14 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, getRoomExpirationTimestamp, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startBridgeGame, submitBridgeBid, submitBridgeCard, resetBridgeRound, contractToString, BRIDGE_SUIT_LABELS, getVulnerability, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode, resetBig2Round } from "@/lib/roomService";
+import { RoomState, GameMode, subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode, resetBig2Round } from "@/lib/roomService";
 import HeartsPlayingView from "@/components/hearts/HeartsPlayingView";
 
 import { PlayingCard } from "@/components/ui/Card";
-import { ref, update } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { updateMyLeaderboard } from "@/lib/leaderboardService";
 import { sendRoomBubble } from "@/lib/roomService";
 import { Card, getCardName, PlayedHand } from "@/lib/big2Logic";
-import { evaluateThirteenHand, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
-import BridgeBiddingView from "@/components/bridge/BridgeBiddingView";
-import BridgePlayingView from "@/components/bridge/BridgePlayingView";
 import ThirteenPlayingView from "@/components/thirteen/ThirteenPlayingView";
 import ThirteenShowingView from "@/components/thirteen/ThirteenShowingView";
 
@@ -787,7 +783,7 @@ function RoomContent() {
             if (gameModeParam) {
               const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
               const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
-              const resolvedMode = (gameModeParam === 'BRIDGE' ? 'BRIDGE' : gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : gameModeParam === 'HEARTS' ? 'HEARTS' : 'BIG2') as GameMode;
+              const resolvedMode = (gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : gameModeParam === 'HEARTS' ? 'HEARTS' : 'BIG2') as GameMode;
               try {
                 await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode);
                 isCreator = true;
@@ -934,17 +930,6 @@ function RoomContent() {
     const isBot = room.players?.[roomTurnUid]?.isBot ?? false;
     if (isBot) return roomTurnUid;
     
-    // 橋牌夢家回合：當前是夢家回合，且莊家是 Bot，由莊家代出
-    if (room.gameMode === "BRIDGE" && room.bridgeBidding?.finalContract) {
-      const contract = room.bridgeBidding.finalContract;
-      if (roomTurnUid === contract.dummyUid) {
-        const declarer = room.players?.[contract.declarerUid];
-        if (declarer && declarer.isBot) {
-          return contract.declarerUid;
-        }
-      }
-    }
-    
     return null;
   }, [roomTurnUid, room]);
 
@@ -1060,14 +1045,7 @@ function RoomContent() {
       return;
     }
     try {
-      if (room.gameMode === 'BRIDGE') {
-        // 橋牌需要恰好 4 位玩家
-        if (room.playerOrder.length !== 4) {
-          addToast("橋牌需要恰好 4 位玩家！", "warning");
-          return;
-        }
-        await startBridgeGame(roomId);
-      } else if (room.gameMode === 'THIRTEEN') {
+      if (room.gameMode === 'THIRTEEN') {
         await startThirteenGame(roomId);
       } else if (room.gameMode === 'HEARTS') {
         // 傷心小棧需要恰好 4 位玩家
@@ -1135,7 +1113,7 @@ function RoomContent() {
   const handleCopyInviteLink = () => {
     if (typeof window === "undefined" || !roomId || !uid) return;
     const inviterName = room?.players[uid]?.nickname || "你的朋友";
-    const gameModeLabel = room?.gameMode === 'BRIDGE' ? '橋牌' : room?.gameMode === 'THIRTEEN' ? '十三支' : '大老二';
+    const gameModeLabel = room?.gameMode === 'THIRTEEN' ? '十三支' : room?.gameMode === 'HEARTS' ? '傷心小棧' : '大老二';
     const inviteText = `【CardDuel 紙牌對戰】
 ${inviterName} 邀請你加入 ${gameModeLabel} 房間！
 房間代碼：${roomId}
@@ -1423,9 +1401,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             </span>
             {me?.isHost ? (
               <div style={{ display: "flex", gap: 6 }}>
-                {(room.gameMode === 'BRIDGE' 
-                  ? [500, 1000, 1500] 
-                  : room.gameMode === 'HEARTS' 
+                {(room.gameMode === 'HEARTS'
                     ? [30, 50, 100] 
                     : [10, 15, 20]
                 ).map((pts) => {
@@ -1462,7 +1438,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               </div>
             ) : (
               <span style={{ fontSize: "0.85rem", fontWeight: 900, color: "#b45309" }}>
-                🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}
+                🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}
               </span>
             )}
           </div>
@@ -1576,9 +1552,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   </div>
                   {me?.isHost ? (
                     <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                      {(room.gameMode === 'BRIDGE' 
-                        ? [500, 1000, 1500] 
-                        : room.gameMode === 'HEARTS' 
+                      {(room.gameMode === 'HEARTS'
                           ? [30, 50, 100] 
                           : [10, 15, 20]
                       ).map((pts) => {
@@ -1617,7 +1591,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     </div>
                   ) : (
                     <span className="comic-badge" style={{ background: "#f3f4f6", color: "#000", padding: "6px 16px", border: "2px solid #000", fontWeight: 900, borderRadius: 8, display: "inline-block" }}>
-                      🏆 {room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}結束
+                      🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}結束
                     </span>
                   )}
                 </div>
@@ -1702,7 +1676,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   // ---- 整場遊戲結束畫面 (Game Over) ----
   const isThirteenGameOverShowLeaderboard = room.gameMode === "THIRTEEN" && (room.thirteenState?.showLeaderboard ?? false);
   if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard) && (room.gameMode === "THIRTEEN" || showFinishedView)) {
-    const target = room.targetPoints || (room.gameMode === 'BRIDGE' ? 1000 : room.gameMode === 'HEARTS' ? 50 : 15);
+    const target = room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15);
     const reachedPlayers = Object.values(room.players).filter(p => p && (p.points ?? 0) >= target);
     const sortedPlayers = [...Object.values(room.players)]
       .filter(p => p !== null && p !== undefined)
@@ -1887,73 +1861,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>{isWinner ? "🎉" : "🥺"}</div>
           <h1 style={{ fontSize: "2.5rem", fontWeight: 900, marginBottom: "0.5rem" }}>{isWinner ? "你贏了！" : "遊戲結束"}</h1>
           <p style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "1rem" }}>
-            {room.gameMode === 'BRIDGE' && room.bridgeBidding?.finalContract
-              ? `合約方：${room.players[room.bridgeBidding.finalContract.declarerUid]?.nickname}`
-              : `贏家：${room.players[room.winnerUid!]?.nickname}`
-            }
+            {`贏家：${room.players[room.winnerUid!]?.nickname}`}
           </p>
-
-          {/* 橋牌計分卡（只在橋牌模式下顯示） */}
-          {room.gameMode === 'BRIDGE' && room.bridgeScore && room.bridgeBidding?.finalContract && (() => {
-            const sc = room.bridgeScore.result;
-            const contract = room.bridgeBidding.finalContract!;
-            const vuln = getVulnerability((room.gameRound ?? 1) - 1); // 剛結束的那局
-            const declarerIdx = room.playerOrder.indexOf(contract.declarerUid);
-            const isDeclarerNS = declarerIdx === 0 || declarerIdx === 2;
-            const isDeclarerVul = isDeclarerNS ? vuln.nsVulnerable : vuln.ewVulnerable;
-            return (
-              <div style={{
-                margin: "0 auto 1.5rem",
-                width: "100%",
-                maxWidth: 420,
-                background: sc.isContractMade ? "#f0fdf4" : "#fef2f2",
-                border: `3px solid ${sc.isContractMade ? "#16a34a" : "#dc2626"}`,
-                borderRadius: 14,
-                boxShadow: `3px 3px 0 ${sc.isContractMade ? "#16a34a" : "#dc2626"}`,
-                padding: "16px 18px",
-                textAlign: "left",
-              }}>
-                <div style={{ fontWeight: 900, fontSize: "1.1rem", marginBottom: 10, textAlign: "center" }}>
-                  🃏 {contractToString(contract)}
-                  {isDeclarerVul ? <span style={{ marginLeft: 8, fontSize: "0.7rem", background: "#dc2626", color: "#fff", padding: "1px 7px", borderRadius: 999, fontWeight: 800 }}>有身家</span> : ""}
-                  <span style={{ marginLeft: 8, fontSize: "0.85rem", color: sc.isContractMade ? "#16a34a" : "#dc2626", fontWeight: 900 }}>
-                    {sc.isContractMade ? "✓ 達成" : "✗ 倒牌"}
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: "0.82rem", fontWeight: 700 }}>
-                  <div>🎯 目標吃圈：<strong>{sc.targetTricks}</strong></div>
-                  <div>✅ 實際吃圈：<strong>{sc.tricksMade}</strong></div>
-                  {sc.isContractMade ? (
-                    <>
-                      <div>📊 線位分：<strong style={{ color: "#2563eb" }}>+{sc.bidTrickScore}</strong></div>
-                      <div>🏆 成局獎分：<strong style={{ color: "#2563eb" }}>+{sc.gameBonusScore}</strong></div>
-                      {sc.overtrickScore > 0 && <div>💰 超圈獎分：<strong style={{ color: "#16a34a" }}>+{sc.overtrickScore}</strong></div>}
-                      {sc.slamBonusScore > 0 && <div>⭐ 滿貫獎分：<strong style={{ color: "#7c3aed" }}>+{sc.slamBonusScore}</strong></div>}
-                    </>
-                  ) : (
-                    <div style={{ gridColumn: "1/-1" }}>
-                      ⚠️ 倒牌罰分（防守方得）：<strong style={{ color: "#dc2626" }}>+{sc.defenderTotalScore}</strong>
-                    </div>
-                  )}
-                </div>
-                <div style={{
-                  marginTop: 12,
-                  paddingTop: 10,
-                  borderTop: "2px solid currentColor",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontWeight: 900,
-                  fontSize: "1rem",
-                }}>
-                  <span>{sc.isContractMade ? "進攻方得分" : "防守方得分"}</span>
-                  <span style={{ color: sc.isContractMade ? "#16a34a" : "#dc2626", fontSize: "1.3rem" }}>
-                    {sc.isContractMade ? sc.declarerTotalScore : sc.defenderTotalScore} 分
-                  </span>
-                </div>
-              </div>
-            );
-          })()}
-
           {/* 結算名次與積分表 */}
           <div style={{
             margin: "0.5rem auto 2rem",
@@ -2039,8 +1948,6 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                  try {
                     if (room.gameMode === 'THIRTEEN') {
                       await resetThirteenRound(roomId);
-                    } else if (room.gameMode === 'BRIDGE') {
-                     await resetBridgeRound(roomId);
                     } else if (room.gameMode === 'HEARTS') {
                       await resetHeartsRound(roomId);
                    } else {
@@ -2123,47 +2030,6 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
     }
   }
 
-  // ── 橋牌模式分路 ──────────────────────────────────────
-  if (room.gameMode === 'BRIDGE') {
-    // 叫牌階段
-    if (room.bridgeBidding && room.bridgeBidding.status === 'active') {
-      return (
-        <>
-          <BridgeBiddingView
-            key="bridge-bidding-view"
-            room={room}
-            uid={uid}
-            isMobile={isMobile}
-            onBid={async (bid) => {
-              await submitBridgeBid(roomId, uid, bid);
-            }}
-            onLeave={handleLeaveRoom}
-          />
-          <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
-        </>
-      );
-    }
-    // 打牌階段（叫牌完成且有 bridgePlaying）
-    if (room.bridgeBidding?.status === 'completed' && room.bridgePlaying) {
-      return (
-        <>
-          <BridgePlayingView
-            key="bridge-playing-view"
-            room={room}
-            uid={uid}
-            isMobile={isMobile}
-            onPlayCard={async (cardId) => {
-              await submitBridgeCard(roomId, uid, cardId);
-            }}
-            onLeave={handleLeaveRoom}
-          />
-          <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} isMobile={isMobile} />
-        </>
-      );
-    }
-  }
-
-  // ── 傷心小棧模式分路 ──────────────────────────────────────
   if (room.gameMode === 'HEARTS') {
     return (
       <>

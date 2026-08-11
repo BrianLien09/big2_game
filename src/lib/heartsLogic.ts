@@ -1,5 +1,15 @@
 import { Card, Suit, Rank } from './big2Logic';
-import { TrickCard, CompletedTrick } from './bridgeLogic';
+
+export interface TrickCard {
+  uid: string;
+  card: Card;
+}
+
+export interface CompletedTrick {
+  cards: TrickCard[];
+  winnerUid: string;
+  leadSuit: Suit;
+}
 
 // 傷心小棧點數權重 (2 最小，A 最大)
 export const HEARTS_RANK_WEIGHT: Record<Rank, number> = {

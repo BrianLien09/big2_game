@@ -28,7 +28,7 @@ const basePath = isGitHubPages ? '/big2_game' : '';
 
 export const metadata: Metadata = {
   title: "CardDuel — 線上多人紙牌對戰平台",
-  description: "支援大老二、十三支、橋牌三種紙牌遊戲，即時多人對戰、跨裝置支援。",
+  description: "支援大老二、十三支與傷心小棧三種紙牌遊戲，即時多人對戰、跨裝置支援。",
   manifest: `${basePath}/manifest.json?v=2`, // 加上版本號以打破 manifest 快取
   appleWebApp: {
     capable: true,

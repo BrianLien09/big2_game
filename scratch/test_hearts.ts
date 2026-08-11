@@ -1,5 +1,5 @@
 import { Card, Suit, Rank } from '../src/lib/big2Logic';
-import { TrickCard, CompletedTrick } from '../src/lib/bridgeLogic';
+import { TrickCard, CompletedTrick } from '../src/lib/heartsLogic';
 import {
   HEARTS_RANK_WEIGHT,
   sortHeartsHand,

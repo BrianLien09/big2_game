@@ -19,7 +19,7 @@ export default function Lobby() {
   const [joinRoomId, setJoinRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [targetPoints, setTargetPoints] = useState<number>(15);
-  const [gameMode, setGameMode] = useState<'BIG2' | 'BRIDGE' | 'THIRTEEN' | 'HEARTS'>('BIG2');
+  const [gameMode, setGameMode] = useState<'BIG2' | 'THIRTEEN' | 'HEARTS'>('BIG2');
 
   // Firebase 使用者與載入狀態
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -118,7 +118,7 @@ export default function Lobby() {
     e.preventDefault();
     await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-    const roomTypeLabel = gameMode === 'BRIDGE' ? '橋牌' : gameMode === 'THIRTEEN' ? '十三支' : gameMode === 'HEARTS' ? '傷心小棧' : '大老二';
+    const roomTypeLabel = gameMode === 'THIRTEEN' ? '十三支' : gameMode === 'HEARTS' ? '傷心小棧' : '大老二';
     const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的${roomTypeLabel}對局`);
     router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}&gameMode=${gameMode}`);
   };
@@ -195,7 +195,7 @@ export default function Lobby() {
           Card<span className="text-[#dc2626]">Duel</span>
         </h1>
         <p className="text-sm md:text-base font-bold tracking-widest text-gray-600" style={{ marginBottom: "40px" }}>
-          🃏 大老二  ·  🃍 十三支  ·  🌈 橋牌  ·  即時多人對戰
+          🃏 大老二  ·  🃍 十三支  ·  💔 傷心小棧  ·  即時多人對戰
         </p>
 
         {/* 快速重連橫幅 */}
@@ -360,18 +360,18 @@ export default function Lobby() {
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>遊戲模式</label>
                 <div style={{ display: "flex", gap: "12px" }}>
-                  {(["BIG2", "THIRTEEN", "BRIDGE", "HEARTS"] as const).map((mode) => {
+                  {(["BIG2", "THIRTEEN", "HEARTS"] as const).map((mode) => {
                     const isSelected = gameMode === mode;
-                    const modeBg = mode === 'BRIDGE' ? "#3b82f6" : mode === 'THIRTEEN' ? "#b87e6b" : mode === 'HEARTS' ? "#ef4444" : "#fbbf24";
-                    const modeColor = mode === 'BRIDGE' || mode === 'THIRTEEN' || mode === 'HEARTS' ? "#fff" : "#000";
-                    const modeBorder = mode === 'BRIDGE' ? "#2563eb" : mode === 'THIRTEEN' ? "#a66a58" : mode === 'HEARTS' ? "#b91c1c" : "#000";
+                    const modeBg = mode === 'THIRTEEN' ? "#b87e6b" : mode === 'HEARTS' ? "#ef4444" : "#fbbf24";
+                    const modeColor = mode === 'THIRTEEN' || mode === 'HEARTS' ? "#fff" : "#000";
+                    const modeBorder = mode === 'THIRTEEN' ? "#a66a58" : mode === 'HEARTS' ? "#b91c1c" : "#000";
                     return (
                       <button
                         key={mode}
                         type="button"
                         onClick={() => {
                           setGameMode(mode);
-                          setTargetPoints(mode === 'BRIDGE' ? 1000 : mode === 'HEARTS' ? 50 : 15);
+                          setTargetPoints(mode === 'HEARTS' ? 50 : 15);
                         }}
                         className="comic-btn"
                         style={{
@@ -388,7 +388,7 @@ export default function Lobby() {
                           transition: "all 0.15s ease",
                         }}
                       >
-                        {mode === 'BIG2' ? '🂡 大老二' : mode === 'THIRTEEN' ? '🃎 十三支' : mode === 'BRIDGE' ? '🃏 橋牌' : '💔 傷心小棧'}
+                        {mode === 'BIG2' ? '🂡 大老二' : mode === 'THIRTEEN' ? '🃎 十三支' : '💔 傷心小棧'}
                       </button>
                     );
                   })}
@@ -422,7 +422,7 @@ export default function Lobby() {
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>目標結束積分</label>
                 <div style={{ display: "flex", gap: "12px" }}>
-                  {(gameMode === 'BRIDGE' ? [500, 1000, 1500] : gameMode === 'HEARTS' ? [30, 50, 100] : [10, 15, 20]).map((pts) => {
+                  {(gameMode === 'HEARTS' ? [30, 50, 100] : [10, 15, 20]).map((pts) => {
                     const isSelected = targetPoints === pts;
                     return (
                       <button
@@ -560,22 +560,6 @@ export default function Lobby() {
                 }}
               >
                 🂡 大老二規則與實操
-              </button>
-              <button
-                className="comic-btn"
-                style={{
-                  background: "#3b82f6",
-                  color: "#fff",
-                  padding: "14px 0",
-                  fontSize: "1.05rem",
-                  border: "3px solid #2563eb",
-                }}
-                onClick={() => {
-                  setShowTutorialModal(false);
-                  router.push('/bridge-tutorial');
-                }}
-              >
-                🃏 橋牌規則與計分
               </button>
               <button
                 className="comic-btn"
