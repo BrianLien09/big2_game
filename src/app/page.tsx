@@ -256,13 +256,13 @@ export default function Home() {
   }
 
   return (
-    <main className="page-shell flex items-center justify-center min-h-screen p-4 bg-[#f8f9fa]" style={{
+    <main className="page-shell page-shell--animated flex items-center justify-center min-h-screen p-4 bg-[#f8f9fa]" style={{
       backgroundImage: "linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px)",
       backgroundSize: "30px 30px",
     }}>
-      <div className="comic-panel comic-panel--halftone w-full max-w-md relative z-10" style={{ padding: "32px" }}>
+      <div className="comic-panel comic-panel--halftone home-panel w-full max-w-md relative z-10" style={{ padding: "32px" }}>
         <h1 className="text-4xl font-black mb-2 flex items-center gap-3 flex-wrap">
-          <span className="bg-[#fbbf24] px-3 py-1 border-[3px] border-black rounded-lg transform -rotate-2 inline-block">CardDuel</span>
+          <span className="brand-sticker bg-[#fbbf24] px-3 py-1 border-[3px] border-black rounded-lg transform -rotate-2 inline-block">CardDuel</span>
         </h1>
         <p style={{ fontWeight: 700, color: "#6b7280", fontSize: "0.85rem", marginBottom: "24px", letterSpacing: "0.02em" }}>
           線上多人紙牌對戰平台
@@ -276,8 +276,9 @@ export default function Home() {
                 支援大老二、十三支與傷心小棧三種紙牌遊戲，開局就上手。以 Google 帳號登入，即可跨裝置與朋友即時對戰。
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "4px" }}>
-                <span style={{ background: "#fef9c3", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃏 大老二</span>
-                <span style={{ background: "#dcfce7", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃍 十三支</span>
+                <span className="game-mode-chip" style={{ background: "#fef9c3", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃏 大老二</span>
+                <span className="game-mode-chip" style={{ background: "#dcfce7", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>🃍 十三支</span>
+                <span className="game-mode-chip" style={{ background: "#fee2e2", border: "2px solid #000", borderRadius: 999, padding: "3px 12px", fontSize: "0.78rem", fontWeight: 800 }}>💔 傷心小棧</span>
               </div>
             </div>
 
