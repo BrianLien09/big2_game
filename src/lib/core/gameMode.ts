@@ -1,1 +1,1 @@
-export type GameMode = 'BIG2' | 'THIRTEEN' | 'HEARTS';
+export type GameMode = 'BIG2' | 'THIRTEEN' | 'HEARTS' | 'LANDLORD';

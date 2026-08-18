@@ -3,6 +3,7 @@ import type { GameMode } from '../core/gameMode';
 import type { Card } from '../core/cards';
 import type { HeartsState } from '../games/hearts/types';
 import type { ThirteenState } from '../games/thirteen/types';
+import type { LandlordPlayedHand, LandlordState } from '../games/landlord/types';
 
 export type {
   HeartsPlayerState,
@@ -13,6 +14,7 @@ export type {
   ThirteenPlayerState,
   ThirteenState,
 } from '../games/thirteen/types';
+export type { LandlordPlayedHand, LandlordState } from '../games/landlord/types';
 
 export interface Player {
   uid: string;
@@ -25,6 +27,7 @@ export interface Player {
   avatarUrl?: string;
   isBot: boolean;
   points?: number;
+  chips?: number;
 }
 
 export interface ChatBubble {
@@ -34,13 +37,18 @@ export interface ChatBubble {
   timestamp: number;
 }
 
+export interface LandlordRoomSettings {
+  startingChips: number;
+  baseStake: number;
+}
+
 export interface RoomState {
   id: string;
   name: string;
   players: Record<string, Player>;
-  status: 'waiting' | 'playing' | 'finished' | 'gameOver';
+  status: 'waiting' | 'bidding' | 'playing' | 'finished' | 'gameOver';
   turnUid: string | null;
-  lastPlayedHand: PlayedHand | null;
+  lastPlayedHand: PlayedHand | LandlordPlayedHand | null;
   lastPlayedUid: string | null;
   passCount: number;
   playerOrder: string[];
@@ -57,11 +65,14 @@ export interface RoomState {
     isBot: boolean;
   }>;
   roundScores?: Record<string, number>;
+  roundMoneyChanges?: Record<string, number>;
   targetPoints?: number;
   gameMode?: GameMode;
   thirteenState?: ThirteenState;
   isThirteenPassingMode?: boolean;
   thirteenRoundNumber?: number;
   heartsState?: HeartsState;
+  landlordState?: LandlordState;
+  landlordSettings?: LandlordRoomSettings;
   chatBubble?: ChatBubble;
 }

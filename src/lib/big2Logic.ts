@@ -9,12 +9,12 @@ export { createDeck, shuffleDeck } from './core/cards';
 // 權重計算（用於比較大小）
 const rankWeight: Record<Rank, number> = {
   '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
-  'J': 11, 'Q': 12, 'K': 13, 'A': 14, '2': 15
+  'J': 11, 'Q': 12, 'K': 13, 'A': 14, '2': 15, small_joker: 16, big_joker: 17
 };
 
 // 黑桃 > 紅心 > 方塊 > 梅花 (依台灣常見規則，黑桃最大)
 const suitWeight: Record<Suit, number> = {
-  'clubs': 1, 'diamonds': 2, 'hearts': 3, 'spades': 4
+  'clubs': 1, 'diamonds': 2, 'hearts': 3, 'spades': 4, joker: 5
 };
 
 // 比較單張牌大小：先比點數，點數相同比花色

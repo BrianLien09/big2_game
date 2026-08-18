@@ -6,7 +6,7 @@ import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import CapybaraLoader from "@/components/CapybaraLoader";
-import { subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode, resetBig2Round, QUICK_TEXT_BUBBLES, QUICK_EMOJI_BUBBLES } from "@/lib/room/service";
+import { subscribeToRoom, createRoom, joinRoom, toggleReady, startGame, leaveRoom, cleanupExpiredRoomsIfNeeded, addBot, removeBot, commitPlayerPlay, commitPlayerPass, executeBotTurn, getAssetPath, updateTargetPoints, restartWholeGame, startThirteenGame, confirmThirteenArrangement, resetThirteenRound, startHeartsGame, confirmHeartsPassCards, submitHeartsCard, resetHeartsRound, confirmThirteenPassCards, toggleThirteenPassingMode, resetBig2Round, startLandlordGame, submitLandlordBid, updateLandlordSettings, QUICK_TEXT_BUBBLES, QUICK_EMOJI_BUBBLES } from "@/lib/room/service";
 import type { RoomState } from "@/lib/room/types";
 import HeartsPlayingView from "@/components/hearts/HeartsPlayingView";
 
@@ -15,11 +15,13 @@ import { db } from "@/lib/firebase";
 import { updateMyLeaderboard } from "@/lib/leaderboardService";
 import { sendRoomBubble } from "@/lib/room/service";
 import type { Card } from "@/lib/core/cards";
-import { getCardName, PlayedHand } from "@/lib/games/big2/logic";
+import { getCardName } from "@/lib/games/big2/logic";
+import { LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS } from "@/lib/games/landlord/logic";
 import type { GameMode } from "@/lib/core/gameMode";
 import ThirteenPlayingView from "@/components/thirteen/ThirteenPlayingView";
 import ThirteenShowingView from "@/components/thirteen/ThirteenShowingView";
 import QuickReaction from "@/components/QuickReaction";
+import LandlordWaitingRoom from "@/components/landlord/LandlordWaitingRoom";
 
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false);
@@ -368,8 +370,12 @@ function RoomContent() {
   const searchParams = useSearchParams();
   const [activeBubbles, setActiveBubbles] = useState<Record<string, { content: string; type: 'text' | 'emoji'; timestamp: number }>>({});
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [showLandlordTips, setShowLandlordTips] = useState(false);
+  const [landlordBottomCardPhase, setLandlordBottomCardPhase] = useState<'idle' | 'reveal' | 'dealing'>('idle');
   const lastBubbleTimeRef = useRef<number>(0);
   const isFirstCallbackRef = useRef(true);
+  const hasSeenLandlordStateRef = useRef(false);
+  const previousLandlordStateRef = useRef<{ status: 'bidding' | 'playing'; landlordUid: string | null } | null>(null);
 
   // 取得玩家相對於我的視角的位置 ('bottom' | 'top' | 'left' | 'right')
   const getPlayerViewportPosition = useCallback((pUid: string): 'bottom' | 'top' | 'left' | 'right' => {
@@ -400,7 +406,7 @@ function RoomContent() {
   // 監聽一圈結束收牌動畫
   const [exitingHand, setExitingHand] = useState<{ cards: Card[]; uid: string; keyCardId?: string } | null>(null);
   const [exitingWinnerPosition, setExitingWinnerPosition] = useState<'bottom' | 'top' | 'left' | 'right' | null>(null);
-  const prevLastPlayedHandRef = useRef<PlayedHand | null>(null);
+  const prevLastPlayedHandRef = useRef<RoomState['lastPlayedHand']>(null);
   const prevLastPlayedUidRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -485,6 +491,45 @@ function RoomContent() {
       setFinalExitingWinnerPosition(null);
     }
   }, [room?.status, room?.lastPlayedHand, room?.lastPlayedUid, room?.gameMode, getPlayerViewportPosition]);
+
+  useEffect(() => {
+    const landlordState = room?.landlordState;
+    if (room?.gameMode !== 'LANDLORD' || !landlordState) {
+      hasSeenLandlordStateRef.current = false;
+      previousLandlordStateRef.current = null;
+      setLandlordBottomCardPhase('idle');
+      return;
+    }
+
+    const currentState = {
+      status: landlordState.status,
+      landlordUid: landlordState.landlordUid,
+    };
+
+    if (!hasSeenLandlordStateRef.current) {
+      hasSeenLandlordStateRef.current = true;
+      previousLandlordStateRef.current = currentState;
+      return;
+    }
+
+    const previousState = previousLandlordStateRef.current;
+    previousLandlordStateRef.current = currentState;
+    const hasSelectedLandlord = previousState?.status === 'bidding'
+      && currentState.status === 'playing'
+      && currentState.landlordUid !== null;
+
+    if (!hasSelectedLandlord) return;
+
+    setSelectedCards([]);
+    setLandlordBottomCardPhase('reveal');
+    const dealingTimer = window.setTimeout(() => setLandlordBottomCardPhase('dealing'), 1300);
+    const completeTimer = window.setTimeout(() => setLandlordBottomCardPhase('idle'), 2550);
+
+    return () => {
+      window.clearTimeout(dealingTimer);
+      window.clearTimeout(completeTimer);
+    };
+  }, [room?.gameMode, room?.landlordState?.status, room?.landlordState?.landlordUid]);
 
   // 透過使用者互動 (點擊/觸摸) 喚醒 Web Audio API，解決瀏覽器自動播放限制 (Autoplay Policy)
   useEffect(() => {
@@ -736,7 +781,7 @@ function RoomContent() {
             if (gameModeParam) {
               const nameParam = searchParams.get("name") || `${finalNickname}的對局`;
               const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
-              const resolvedMode = (gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : gameModeParam === 'HEARTS' ? 'HEARTS' : 'BIG2') as GameMode;
+              const resolvedMode = (gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : gameModeParam === 'HEARTS' ? 'HEARTS' : gameModeParam === 'LANDLORD' ? 'LANDLORD' : 'BIG2') as GameMode;
               try {
                 await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode);
                 isCreator = true;
@@ -889,7 +934,7 @@ function RoomContent() {
   // 執行人機回合 (所有在線真人玩家均可驅動，依靠 Firestore Transaction 的冪等性與預約時間差確保只執行一次)
   useEffect(() => {
     if (!uid || !hasCurrentMe) return;
-    if (roomStatus !== "playing") return;
+    if (roomStatus !== "playing" && !(room?.gameMode === 'LANDLORD' && roomStatus === 'bidding')) return;
     if (currentMeIsBot === true) return;
     if (!expectedBotUidToExecute) return;
 
@@ -1007,6 +1052,12 @@ function RoomContent() {
           return;
         }
         await startHeartsGame(roomId);
+      } else if (room.gameMode === 'LANDLORD') {
+        if (room.playerOrder.length !== 3) {
+          addToast("鬥地主需要恰好 3 位玩家！", "warning");
+          return;
+        }
+        await startLandlordGame(roomId);
       } else {
         await startGame(roomId);
       }
@@ -1066,7 +1117,7 @@ function RoomContent() {
   const handleCopyInviteLink = () => {
     if (typeof window === "undefined" || !roomId || !uid) return;
     const inviterName = room?.players[uid]?.nickname || "你的朋友";
-    const gameModeLabel = room?.gameMode === 'THIRTEEN' ? '十三支' : room?.gameMode === 'HEARTS' ? '傷心小棧' : '大老二';
+    const gameModeLabel = room?.gameMode === 'THIRTEEN' ? '十三支' : room?.gameMode === 'HEARTS' ? '傷心小棧' : room?.gameMode === 'LANDLORD' ? '鬥地主' : '大老二';
     const inviteText = `【CardDuel 紙牌對戰】
 ${inviterName} 邀請你加入 ${gameModeLabel} 房間！
 房間代碼：${roomId}
@@ -1076,6 +1127,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   };
 
   const handleToggleCard = (card: Card) => {
+    if (room?.gameMode === 'LANDLORD' && (room.status !== 'playing' || landlordBottomCardPhase !== 'idle')) return;
     setSelectedCards(prev =>
       prev.find(c => c.id === card.id)
         ? prev.filter(c => c.id !== card.id)
@@ -1086,6 +1138,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   const handlePlayCard = async () => {
     if (!uid || !room || !db) return;
     if (room.turnUid !== uid) return;
+    if (room.gameMode === 'LANDLORD' && (room.status !== 'playing' || landlordBottomCardPhase !== 'idle')) return;
 
     try {
       // 玩家自己出牌時，立即播放出牌音效以提供即時反饋
@@ -1101,6 +1154,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   const handlePass = async () => {
     if (!uid || !room || !db) return;
     if (room.turnUid !== uid) return;
+    if (room.gameMode === 'LANDLORD' && (room.status !== 'playing' || landlordBottomCardPhase !== 'idle')) return;
 
     try {
       // 玩家自己按 Pass 時，立即播放 Pass 音效以提供即時反饋
@@ -1111,6 +1165,87 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
       const errMsg = err instanceof Error ? err.message : String(err);
       addToast(errMsg || "Pass 失敗！", "error", 4000);
     }
+  };
+
+  const handleLandlordSettings = async (startingChips: number, baseStake: number) => {
+    if (!uid || !roomId) return;
+    try {
+      await updateLandlordSettings(roomId, uid, startingChips, baseStake);
+      addToast("地主房間設定已更新", "success");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addToast(errMsg || "更新地主房間設定失敗", "error");
+      throw err;
+    }
+  };
+
+  const renderLandlordTipsButton = () => {
+    if (room?.gameMode !== 'LANDLORD') return null;
+
+    const hands = [
+      ['火箭', '大王 + 小王，最大牌型', '#7c3aed'],
+      ['炸彈', '4 張相同點數，可壓一般牌型', '#dc2626'],
+      ['三帶', '三條可帶 1 張或 1 對', '#d97706'],
+      ['順子', '至少 5 張連號，不含 2 與王', '#2563eb'],
+      ['連對', '至少 3 組連續對子', '#059669'],
+      ['飛機', '至少 2 組連續三條，可帶翅膀', '#0f766e'],
+      ['四帶二', '四條帶 2 單張或 2 對', '#475569'],
+    ] as const;
+
+    return (
+      <div style={{ position: 'relative' }}>
+        <button
+          className="comic-btn"
+          style={{
+            background: showLandlordTips ? '#fbbf24' : '#fff',
+            color: '#000',
+            padding: '7px 10px',
+            fontSize: '0.78rem',
+            fontWeight: 900,
+            border: '2px solid #000',
+            whiteSpace: 'nowrap',
+          }}
+          onClick={() => setShowLandlordTips((shown) => !shown)}
+          aria-expanded={showLandlordTips}
+        >
+          💡 牌型
+        </button>
+        {showLandlordTips && (
+          <>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setShowLandlordTips(false)} />
+            <div style={{
+              position: 'absolute',
+              right: 0,
+              bottom: 'calc(100% + 8px)',
+              zIndex: 999,
+              width: isMobile ? 'min(92vw, 320px)' : '320px',
+              background: '#fff',
+              border: '3px solid #000',
+              borderRadius: '12px',
+              boxShadow: '4px 4px 0 #000',
+              padding: '14px 16px',
+              fontSize: '0.78rem',
+              textAlign: 'left',
+            }}>
+              <div style={{ fontWeight: 900, fontSize: '0.92rem', marginBottom: 10, borderBottom: '2px dashed #000', paddingBottom: 6 }}>
+                🃏 鬥地主牌型提示
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {hands.map(([label, description, color]) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ minWidth: 44, color, fontWeight: 900 }}>{label}</span>
+                    <span style={{ color: '#4b5563', fontWeight: 700 }}>{description}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12, background: '#fef9c3', border: '1.5px solid #fbbf24', borderRadius: 8, padding: '7px 9px', color: '#92400e', fontSize: '0.72rem', fontWeight: 800 }}>
+                ⚠️ 一般牌必須牌型與張數相同且更大；炸彈與火箭可跨牌型壓制。
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
   };
 
   // ---- 錯誤 / 載入 ----
@@ -1137,8 +1272,126 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   const me = room.players[uid];
   const isMyTurn = room.turnUid === uid;
   const tableCardSize = isMobile ? "mobile" : isTablet ? "tablet" : "desktop";
+  const landlordState = room.gameMode === 'LANDLORD' ? room.landlordState : undefined;
+  const isLandlordBidding = room.gameMode === 'LANDLORD' && room.status === 'bidding' && Boolean(landlordState);
+  const landlordControlsLocked = isLandlordBidding || landlordBottomCardPhase !== 'idle';
+  const canBid = isLandlordBidding && isMyTurn && !me?.isBot;
+  const visibleHandCards = landlordBottomCardPhase !== 'idle' && landlordState?.landlordUid === uid
+    ? me?.cards.filter((card) => !landlordState.bottomCards.some((bottomCard) => bottomCard.id === card.id)) ?? []
+    : me?.cards ?? [];
+  const landlordRevealTarget = landlordState?.landlordUid
+    ? getPlayerViewportPosition(landlordState.landlordUid)
+    : 'top';
+
+  const handleLandlordBid = async (score: number) => {
+    if (!canBid) return;
+    try {
+      await submitLandlordBid(roomId, uid, score);
+    } catch (bidError) {
+      addToast(bidError instanceof Error ? bidError.message : '叫分失敗', 'error');
+    }
+  };
+
+  const renderLandlordBiddingTable = () => {
+    if (!isLandlordBidding || !landlordState) return null;
+    const highestBidder = landlordState.landlordUid ? room.players[landlordState.landlordUid] : null;
+
+    return (
+      <div className="landlord-bidding-table" aria-live="polite">
+        <span className="landlord-bidding-title">🃏 叫地主</span>
+        <strong>{isMyTurn ? '輪到你叫分！' : `等待 ${room.players[room.turnUid || '']?.nickname?.replace('🤖 ', '') || '玩家'} 叫分…`}</strong>
+        <div className="landlord-bid-buttons">
+          {[1, 2, 3].map((score) => {
+            const disabled = !canBid || score <= landlordState.highestBid;
+            return (
+              <button
+                key={score}
+                className="comic-btn"
+                disabled={disabled}
+                onClick={() => handleLandlordBid(score)}
+                style={{ backgroundColor: score === 3 ? '#fbbf24' : '#fff', opacity: disabled ? 0.45 : 1 }}
+              >
+                叫 {score} 分
+              </button>
+            );
+          })}
+          <button className="comic-btn" disabled={!canBid} onClick={() => handleLandlordBid(0)} style={{ backgroundColor: '#e5e7eb', opacity: canBid ? 1 : 0.45 }}>
+            不叫
+          </button>
+        </div>
+        <div className="landlord-bidding-detail">
+          <span>最高：{landlordState.highestBid > 0 ? `${landlordState.highestBid} 分` : '尚無人叫分'}</span>
+          <span>{highestBidder ? `暫定地主：${highestBidder.nickname.replace('🤖 ', '')}` : '三張底牌已保留'}</span>
+        </div>
+        <div className="landlord-bottom-card-backs" aria-label="三張底牌尚未翻開">
+          <span>🂠</span><span>🂠</span><span>🂠</span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderLandlordBottomCardTransition = () => {
+    if (landlordBottomCardPhase === 'idle' || !landlordState?.landlordUid) return null;
+    const flight = landlordRevealTarget === 'bottom'
+      ? { x: '0px', y: isMobile ? '250px' : '300px', rotate: '0deg' }
+      : landlordRevealTarget === 'left'
+        ? { x: isMobile ? '-130px' : '-330px', y: '40px', rotate: '-30deg' }
+        : landlordRevealTarget === 'right'
+          ? { x: isMobile ? '130px' : '330px', y: '40px', rotate: '30deg' }
+          : { x: '0px', y: isMobile ? '-170px' : '-240px', rotate: '180deg' };
+    const landlordName = room.players[landlordState.landlordUid]?.nickname.replace('🤖 ', '') || '地主';
+
+    return (
+      <div className="landlord-bottom-card-transition" aria-live="assertive">
+        <strong>{landlordBottomCardPhase === 'reveal' ? '✨ 三張底牌揭曉！' : `👑 底牌交給 ${landlordName}`}</strong>
+        <div className="landlord-bottom-card-reveal">
+          {landlordState.bottomCards.map((card, index) => (
+            <div
+              key={card.id}
+              className={landlordBottomCardPhase === 'dealing' ? 'landlord-bottom-card landlord-bottom-card--dealing' : 'landlord-bottom-card landlord-bottom-card--revealing'}
+              style={{
+                '--landlord-card-x': flight.x,
+                '--landlord-card-y': flight.y,
+                '--landlord-card-rotate': flight.rotate,
+                animationDelay: `${index * 110}ms`,
+                zIndex: index + 1,
+              } as React.CSSProperties}
+            >
+              <PlayingCard card={card} size={isMobile ? 'mobile' : 'tablet'} className="playing-card" />
+            </div>
+          ))}
+        </div>
+        <span>{landlordBottomCardPhase === 'reveal' ? '底牌已翻開，準備交付地主…' : '地主獲得 3 張底牌！'}</span>
+      </div>
+    );
+  };
 
   // ---- 等待大廳 ----
+  if (room.status === "waiting" && room.gameMode === "LANDLORD") {
+    return (
+      <>
+        <LandlordWaitingRoom
+          room={room}
+          roomId={roomId}
+          uid={uid}
+          copied={copied}
+          loadingBot={loadingBot}
+          onCopyRoomId={() => copyToClipboard(roomId, "id")}
+          onCopyInviteLink={handleCopyInviteLink}
+          onAddBot={handleAddBot}
+          onRemoveBot={handleKickBot}
+          onToggleReady={handleToggleReady}
+          onStart={handleStart}
+          onLeave={handleLeaveRoom}
+          onUpdateSettings={handleLandlordSettings}
+          getAvatarAnimClass={getAvatarAnimClass}
+          renderReaction={(playerUid) => renderBubbleAndEmoji(playerUid, "top")}
+        />
+        <CapyChatOverlay roomId={roomId} uid={uid} activeBubbles={activeBubbles} isChatOpen={isChatOpen} setIsChatOpen={setIsChatOpen} room={room} />
+      </>
+    );
+  }
+
   if (room.status === "waiting") {
     // 共用的玩家列表 JSX，手機版與桌機版都會用到
     const renderPlayerList = (compact?: boolean) => (
@@ -1206,7 +1459,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   </span>
                 </div>
                 <div style={{ fontSize: "12px", fontWeight: 800, color: "#b45309", marginTop: compact ? 0 : 2 }}>
-                  🪙 積分: {p.points ?? 0}
+                  🪙 {room.gameMode === 'LANDLORD' ? `籌碼: ${p.chips ?? LANDLORD_STARTING_CHIPS}` : `積分: ${p.points ?? 0}`}
                 </div>
               </div>
               {me?.isHost && p.isBot && (
@@ -1355,8 +1608,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             {me?.isHost ? (
               <div style={{ display: "flex", gap: 6 }}>
                 {(room.gameMode === 'HEARTS'
-                    ? [30, 50, 100] 
-                    : [10, 15, 20]
+                    ? [30, 50, 100]
+                    : room.gameMode === 'LANDLORD' ? [20, 30, 50] : [10, 15, 20]
                 ).map((pts) => {
                   const isSelected = room.targetPoints === pts;
                   return (
@@ -1391,7 +1644,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               </div>
             ) : (
               <span style={{ fontSize: "0.85rem", fontWeight: 900, color: "#b45309" }}>
-                🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}
+                🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : room.gameMode === 'LANDLORD' ? 30 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}
               </span>
             )}
           </div>
@@ -1506,8 +1759,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   {me?.isHost ? (
                     <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                       {(room.gameMode === 'HEARTS'
-                          ? [30, 50, 100] 
-                          : [10, 15, 20]
+                          ? [30, 50, 100]
+                          : room.gameMode === 'LANDLORD' ? [20, 30, 50] : [10, 15, 20]
                       ).map((pts) => {
                         const isSelected = room.targetPoints === pts;
                         return (
@@ -1544,7 +1797,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     </div>
                   ) : (
                     <span className="comic-badge" style={{ background: "#f3f4f6", color: "#000", padding: "6px 16px", border: "2px solid #000", fontWeight: 900, borderRadius: 8, display: "inline-block" }}>
-                      🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}結束
+                      🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : room.gameMode === 'LANDLORD' ? 30 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}結束
                     </span>
                   )}
                 </div>
@@ -1629,7 +1882,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   // ---- 整場遊戲結束畫面 (Game Over) ----
   const isThirteenGameOverShowLeaderboard = room.gameMode === "THIRTEEN" && (room.thirteenState?.showLeaderboard ?? false);
   if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard) && (room.gameMode === "THIRTEEN" || showFinishedView)) {
-    const target = room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15);
+    const target = room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : room.gameMode === 'LANDLORD' ? 30 : 15);
     const reachedPlayers = Object.values(room.players).filter(p => p && (p.points ?? 0) >= target);
     const sortedPlayers = [...Object.values(room.players)]
       .filter(p => p !== null && p !== undefined)
@@ -1717,7 +1970,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             }}>
               <div>名次</div>
               <div>玩家</div>
-              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '最終負分' : '最終總分'}</div>
+              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '最終負分' : room.gameMode === 'LANDLORD' ? '最終籌碼' : '最終總分'}</div>
             </div>
             {sortedPlayers.map((player, index) => {
               const isMe = player.uid === uid;
@@ -1749,7 +2002,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800, fontSize: isMobile ? "0.92rem" : "0.95rem" }}>{player.nickname}</span>
                   </div>
                   <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.9rem" : "1rem" }}>
-                    {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {player.points ?? 0}
+                    {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {room.gameMode === 'LANDLORD' ? player.chips ?? LANDLORD_STARTING_CHIPS : player.points ?? 0}
                   </div>
                 </div>
               );
@@ -1839,21 +2092,28 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             }}>
               <div>名次</div>
               <div>玩家</div>
-              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '本局負分' : '本局積分'}</div>
-              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '累計負分' : '累計總分'}</div>
+              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '本局負分' : room.gameMode === 'LANDLORD' ? '本局籌碼' : '本局積分'}</div>
+              <div style={{ textAlign: "center" }}>{room.gameMode === 'HEARTS' ? '累計負分' : room.gameMode === 'LANDLORD' ? '剩餘籌碼' : '累計總分'}</div>
             </div>
             {(() => {
               const displayOrder = room.gameMode === 'HEARTS'
                 ? [...room.playerOrder].sort((a, b) => (room.players[a]?.points ?? 0) - (room.players[b]?.points ?? 0))
-                : (room.finishedOrder && room.finishedOrder.length > 0
-                    ? room.finishedOrder
-                    : [...room.playerOrder].sort((a, b) => (room.players[b]?.points ?? 0) - (room.players[a]?.points ?? 0))
-                  );
+                : room.gameMode === 'LANDLORD'
+                  ? [
+                      ...(room.finishedOrder ?? []),
+                      ...room.playerOrder.filter((playerUid) => !(room.finishedOrder ?? []).includes(playerUid)),
+                    ]
+                  : (room.finishedOrder && room.finishedOrder.length > 0
+                      ? room.finishedOrder
+                      : [...room.playerOrder].sort((a, b) => (room.players[b]?.points ?? 0) - (room.players[a]?.points ?? 0))
+                    );
               
               return displayOrder.map((pUid, index) => {
                 const player = room.players[pUid];
                 if (!player) return null;
                 const roundScore = room.roundScores?.[pUid] ?? 0;
+                const roundMoneyChange = room.roundMoneyChanges?.[pUid] ?? 0;
+                const displayRoundChange = room.gameMode === 'LANDLORD' ? roundMoneyChange : roundScore;
                 const isMe = pUid === uid;
                 
                 const placementEmojis = ["🥇", "🥈", "🥉", "💩"];
@@ -1882,14 +2142,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                       )}
                       <span className="truncate" style={{ color: isMe ? "#2563eb" : "#000", fontWeight: isMe ? 900 : 800, fontSize: isMobile ? "0.92rem" : "0.95rem" }}>{player.nickname}</span>
                     </div>
-                    <div style={{ textAlign: "center", color: roundScore > 0 ? "#16a34a" : "#6b7280", fontWeight: 900, fontSize: isMobile ? "0.88rem" : "inherit" }}>
-                      <span key={`round-score-${pUid}-${roundScore}`} className="score-pop">
-                        {roundScore > 0 ? `+${roundScore}` : `${roundScore}`}
+                    <div style={{ textAlign: "center", color: displayRoundChange > 0 ? "#16a34a" : displayRoundChange < 0 ? "#dc2626" : "#6b7280", fontWeight: 900, fontSize: isMobile ? "0.88rem" : "inherit" }}>
+                      <span key={`round-score-${pUid}-${displayRoundChange}`} className="score-pop">
+                        {displayRoundChange > 0 ? `+${displayRoundChange}` : `${displayRoundChange}`}
                       </span>
                     </div>
                     <div style={{ textAlign: "center", color: "#b45309", fontWeight: 900, fontSize: isMobile ? "0.88rem" : "inherit" }}>
-                      <span key={`total-score-${pUid}-${player.points ?? 0}`} className="score-pop">
-                        {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {player.points ?? 0}
+                      <span key={`total-score-${pUid}-${room.gameMode === 'LANDLORD' ? player.chips ?? LANDLORD_STARTING_CHIPS : player.points ?? 0}`} className="score-pop">
+                        {room.gameMode === 'HEARTS' ? '💔' : '🪙'} {room.gameMode === 'LANDLORD' ? player.chips ?? LANDLORD_STARTING_CHIPS : player.points ?? 0}
                       </span>
                     </div>
                   </div>
@@ -2028,6 +2288,55 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
     topPlayer = room.players[room.playerOrder[(myIndex + 2) % 4]];
     leftPlayer = room.players[room.playerOrder[(myIndex + 3) % 4]];
   }
+
+  const landlordUid = room.gameMode === 'LANDLORD' ? room.landlordState?.landlordUid : null;
+  const renderLandlordBadge = (playerUid: string) => {
+    if (playerUid !== landlordUid) return null;
+    return (
+      <span
+        className="comic-badge"
+        style={{
+          backgroundColor: '#fbbf24',
+          border: '2px solid #000',
+          boxShadow: '2px 2px 0 #000',
+          color: '#7c2d12',
+          fontSize: '0.7rem',
+          fontWeight: 900,
+          lineHeight: 1,
+          padding: '4px 7px',
+          transform: 'rotate(-3deg)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        👑 地主
+      </span>
+    );
+  };
+
+  const renderLandlordChips = (playerUid: string) => {
+    if (room.gameMode !== 'LANDLORD') return null;
+    const player = room.players[playerUid];
+    if (!player) return null;
+
+    return (
+      <span
+        className="comic-badge"
+        style={{
+          backgroundColor: '#fef3c7',
+          border: '2px solid #b45309',
+          boxShadow: '2px 2px 0 #b45309',
+          color: '#92400e',
+          fontSize: '0.68rem',
+          fontWeight: 900,
+          lineHeight: 1,
+          padding: '4px 6px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        🪙 {player.chips ?? LANDLORD_STARTING_CHIPS}
+      </span>
+    );
+  };
 
   return (
     <div key="game-play-view" className="game-page select-none">
@@ -2458,8 +2767,128 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
         }
         @media (prefers-reduced-motion: reduce) {
           .turn-banner,
-          .score-pop {
+          .score-pop,
+          .landlord-bottom-card--revealing,
+          .landlord-bottom-card--dealing {
             animation: none !important;
+          }
+        }
+        .landlord-bidding-table,
+        .landlord-bottom-card-transition {
+          width: min(100%, 520px);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 9px;
+          background: #fff;
+          border: 3px solid #000;
+          border-radius: 16px;
+          box-shadow: 4px 4px 0 #000;
+          padding: 16px;
+          box-sizing: border-box;
+          text-align: center;
+          font-size: 0.85rem;
+          font-weight: 800;
+        }
+        .landlord-bidding-title {
+          padding: 5px 11px;
+          border: 2px solid #000;
+          border-radius: 999px;
+          background: #fbbf24;
+          box-shadow: 2px 2px 0 #000;
+          font-size: 1rem;
+          font-weight: 900;
+          transform: rotate(-2deg);
+        }
+        .landlord-bid-buttons {
+          display: flex;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 7px;
+        }
+        .landlord-bid-buttons .comic-btn {
+          min-width: 72px;
+          padding: 8px 10px;
+          font-size: 0.82rem;
+        }
+        .landlord-bidding-detail {
+          width: 100%;
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 5px 12px;
+          border-top: 2px dashed #000;
+          padding-top: 9px;
+          color: #475569;
+        }
+        .landlord-bottom-card-backs {
+          display: flex;
+          gap: 7px;
+          color: #fff;
+          font-size: 1.35rem;
+          letter-spacing: 0;
+          text-shadow: 1px 1px 0 #000;
+        }
+        .landlord-bottom-card-transition {
+          min-height: 164px;
+          justify-content: center;
+          overflow: visible;
+          color: #92400e;
+        }
+        .landlord-bottom-card-reveal {
+          display: flex;
+          justify-content: center;
+          align-items: flex-end;
+          min-height: 92px;
+          overflow: visible;
+          perspective: 600px;
+        }
+        .landlord-bottom-card {
+          position: relative;
+          margin-left: -18px;
+          transform-origin: center bottom;
+        }
+        .landlord-bottom-card:first-child {
+          margin-left: 0;
+        }
+        .landlord-bottom-card--revealing {
+          animation: landlord-bottom-card-reveal 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.2) both;
+        }
+        .landlord-bottom-card--dealing {
+          animation: landlord-bottom-card-deal 0.95s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+        }
+        @keyframes landlord-bottom-card-reveal {
+          0% { opacity: 0; transform: translateY(-35px) scale(0.55) rotateY(110deg); }
+          70% { opacity: 1; transform: translateY(4px) scale(1.06) rotateY(-8deg); }
+          100% { opacity: 1; transform: translateY(0) scale(1) rotateY(0deg); }
+        }
+        @keyframes landlord-bottom-card-deal {
+          0% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+          100% { opacity: 0; transform: translate3d(var(--landlord-card-x), var(--landlord-card-y), 0) scale(0.42) rotate(var(--landlord-card-rotate)); }
+        }
+        @media (max-width: 600px) {
+          .landlord-bidding-table,
+          .landlord-bottom-card-transition {
+            padding: 12px;
+            gap: 7px;
+            font-size: 0.75rem;
+          }
+          .landlord-bid-buttons {
+            gap: 5px;
+          }
+          .landlord-bid-buttons .comic-btn {
+            min-width: 58px;
+            padding: 7px 8px;
+            font-size: 0.72rem;
+          }
+          .landlord-bottom-card-transition {
+            min-height: 128px;
+          }
+          .landlord-bottom-card-reveal {
+            min-height: 68px;
+          }
+          .landlord-bottom-card {
+            margin-left: -22px;
           }
         }
         .animate-card-appear {
@@ -2736,6 +3165,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             width: 100%;
             max-width: 980px;
             margin: -32px auto 0;
+          }
+          .desktop-tablet-hand.landlord-hand {
+            max-width: 1800px;
           }
           .mobile-hand-scroll {
             display: none;
@@ -3497,6 +3929,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             >
               {topPlayer.nickname.replace("🤖 ", "")}
             </div>
+            {renderLandlordBadge(topPlayer.uid)}
+            {renderLandlordChips(topPlayer.uid)}
             {room.turnUid === topPlayer.uid && topPlayer.isBot && (
               <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] ml-1 animate-pulse">
                 思考中…
@@ -3567,6 +4001,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               >
                 {leftPlayer.nickname.replace("🤖 ", "")}
               </div>
+              {renderLandlordBadge(leftPlayer.uid)}
+              {renderLandlordChips(leftPlayer.uid)}
               {room.turnUid === leftPlayer.uid && leftPlayer.isBot && (
                 <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] animate-pulse">
                   思考中…
@@ -3592,7 +4028,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
         {/* 中央出牌區 */}
         <div className="table-center">
-          {finalExitingHand ? (
+          {isLandlordBidding ? renderLandlordBiddingTable() : landlordBottomCardPhase !== 'idle' ? renderLandlordBottomCardTransition() : finalExitingHand ? (
             <div className="flex flex-col items-center gap-1 w-full" style={{ paddingBottom: "10px" }}>
               <span className="font-bold text-gray-500 text-[11px] sm:text-xs text-center mb-1">
                 【{(room.players[finalExitingHand.uid]?.nickname || "").replace("🤖 ", "")}】 收牌
@@ -3700,6 +4136,24 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               等待出牌
             </div>
           )}
+          {room.gameMode === 'LANDLORD' && room.landlordState?.status === 'playing' && (
+            <div
+              className="comic-badge"
+              style={{
+                backgroundColor: '#fef3c7',
+                border: '2px solid #b45309',
+                boxShadow: '2px 2px 0 #b45309',
+                color: '#92400e',
+                fontSize: isMobile ? '0.68rem' : '0.75rem',
+                fontWeight: 900,
+                marginTop: '4px',
+                padding: '5px 8px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🪙 底注 {room.landlordState.baseStake || LANDLORD_BASE_STAKE} ・ 倍率 ×{room.landlordState.multiplier} ・ 單家 {((room.landlordState.baseStake || LANDLORD_BASE_STAKE) * room.landlordState.multiplier)}
+            </div>
+          )}
           {/* 房號浮水印 (採用 Flex 自然排版，避免因高度被 overflow: hidden 切除，並加深對比) */}
           <div style={{
             fontSize: "11px",
@@ -3755,6 +4209,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               >
                 {rightPlayer.nickname.replace("🤖 ", "")}
               </div>
+              {renderLandlordBadge(rightPlayer.uid)}
+              {renderLandlordChips(rightPlayer.uid)}
               {room.turnUid === rightPlayer.uid && rightPlayer.isBot && (
                 <span className="text-[10px] font-black text-blue-600 bg-blue-50 border-[1.5px] border-blue-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[3deg] animate-pulse">
                   思考中…
@@ -3829,6 +4285,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   {renderBubbleAndEmoji(uid || "", "bottom")}
                 </div>
                 <span className="self-name comic-badge" style={{ fontSize: "0.9rem" }}>{me.nickname}</span>
+                {renderLandlordBadge(uid)}
+                {renderLandlordChips(uid)}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button className="comic-btn" onClick={handleLeaveRoom} style={{ padding: "8px 16px", fontSize: "0.9rem" }}>回到大廳</button>
@@ -3881,6 +4339,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   {renderBubbleAndEmoji(uid || "", "bottom")}
                 </div>
                 <span className="self-name comic-badge">{me?.nickname}</span>
+                {renderLandlordBadge(uid)}
+                {renderLandlordChips(uid)}
                 <div className="turn-indicator-row">
                   {isMyTurn && (
                     <span className="animate-pulse turn-badge">
@@ -3896,12 +4356,13 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               </div>
 
               <div className="action-buttons">
+                {room.gameMode === 'LANDLORD' && renderLandlordTipsButton()}
                 <button
                   className="comic-btn pass-button"
                   style={{
-                    opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
+                    opacity: (!isMyTurn || landlordControlsLocked || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
                   }}
-                  disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
+                  disabled={!isMyTurn || landlordControlsLocked || !room.lastPlayedUid || room.lastPlayedUid === uid}
                   onClick={handlePass}
                 >
                   Pass
@@ -3909,9 +4370,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 <button
                   className="comic-btn play-button"
                   style={{
-                    opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
+                    opacity: (!isMyTurn || landlordControlsLocked || selectedCards.length === 0) ? 0.45 : 1,
                   }}
-                  disabled={!isMyTurn || selectedCards.length === 0}
+                  disabled={!isMyTurn || landlordControlsLocked || selectedCards.length === 0}
                   onClick={handlePlayCard}
                 >
                   出牌
@@ -3924,9 +4385,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <button
                 className="comic-btn pass-button"
                 style={{
-                  opacity: (!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
+                  opacity: (!isMyTurn || landlordControlsLocked || !room.lastPlayedUid || room.lastPlayedUid === uid) ? 0.45 : 1,
                 }}
-                disabled={!isMyTurn || !room.lastPlayedUid || room.lastPlayedUid === uid}
+                disabled={!isMyTurn || landlordControlsLocked || !room.lastPlayedUid || room.lastPlayedUid === uid}
                 onClick={handlePass}
               >
                 Pass
@@ -3947,14 +4408,16 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                   {renderBubbleAndEmoji(uid || "", "bottom")}
                 </div>
                 <span className="self-name comic-badge">{me?.nickname}</span>
+                {renderLandlordBadge(uid)}
+                {renderLandlordChips(uid)}
               </div>
 
               <button
                 className="comic-btn play-button"
                 style={{
-                  opacity: (!isMyTurn || selectedCards.length === 0) ? 0.45 : 1,
+                  opacity: (!isMyTurn || landlordControlsLocked || selectedCards.length === 0) ? 0.45 : 1,
                 }}
-                disabled={!isMyTurn || selectedCards.length === 0}
+                disabled={!isMyTurn || landlordControlsLocked || selectedCards.length === 0}
                 onClick={handlePlayCard}
               >
                 出牌
@@ -3962,6 +4425,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             </div>
 
             <div className="turn-hint-row mobile-only">
+              {room.gameMode === 'LANDLORD' && renderLandlordTipsButton()}
               {isMyTurn && (
                 <span className="animate-pulse turn-badge">👉 你的回合</span>
               )}
@@ -3974,11 +4438,12 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             <div ref={handContainerRef} className="hand-container-wrapper">
 
               {/* 桌機與平板版：絕對定位重疊 */}
-              <div className="desktop-tablet-hand">
-                {me?.cards.map((card, i) => {
-                  const total = me.cards.length;
+              <div className={`desktop-tablet-hand ${room.gameMode === 'LANDLORD' ? 'landlord-hand' : ''}`}>
+                {visibleHandCards.map((card, i) => {
+                  const total = visibleHandCards.length;
                   const cardWidth = isTablet ? 64 : 84;
-                  const maxHandWidth = isTablet ? 720 : 980;
+                  const isLandlordHand = room.gameMode === 'LANDLORD';
+                  const maxHandWidth = isTablet ? 720 : isLandlordHand ? 1800 : 980;
                   const selectedLift = isTablet ? 14 : 18;
 
                   const availableWidth = Math.min(
@@ -3988,13 +4453,15 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
 
                   const maxSpan = Math.max(
                     0,
-                    availableWidth - cardWidth - 24
+                    availableWidth - cardWidth - (isLandlordHand ? 8 : 24)
                   );
 
-                  const cardSpacing =
-                    total > 1
-                      ? Math.min(cardWidth * 0.68, maxSpan / (total - 1))
-                      : 0;
+                  // 地主取得底牌後會有 20 張；保留約五成覆蓋，兼顧牌面辨識與收納寬度。
+                  const cardSpacing = total > 1
+                    ? isLandlordHand && !isTablet
+                      ? cardWidth * 0.5
+                      : Math.min(cardWidth * 0.68, maxSpan / (total - 1))
+                    : 0;
 
                   const offset = total > 1 ? (i - (total - 1) / 2) * cardSpacing : 0;
                   const isSelected = selectedCards.some(c => c.id === card.id);
@@ -4021,7 +4488,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               {/* 手機版：橫向滑動 */}
               <div className="mobile-hand-scroll">
                 <div className="mobile-hand-cards">
-                  {me?.cards.map((card, i) => {
+                  {visibleHandCards.map((card, i) => {
                     const isSelected = selectedCards.some(c => c.id === card.id);
                     return (
                       <div

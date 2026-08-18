@@ -18,6 +18,8 @@ export const HEARTS_RANK_WEIGHT: Record<Rank, number> = {
   'Q': 12,
   'K': 13,
   'A': 14,
+  small_joker: 15,
+  big_joker: 16,
 };
 
 // 排序 Hearts 手牌：♣ -> ♦ -> ♥ -> ♠，同花色由小到大
@@ -27,6 +29,7 @@ export const sortHeartsHand = (cards: Card[]): Card[] => {
     diamonds: 1,
     hearts: 2,
     spades: 3,
+    joker: 4,
   };
   return [...cards].sort((a, b) => {
     if (a.suit !== b.suit) {
@@ -89,6 +92,7 @@ export const validateHeartsPlay = (
       hearts: '♥紅心',
       diamonds: '♦方塊',
       clubs: '♣梅花',
+      joker: '🃏鬼牌',
     };
     return { valid: false, reason: `手中還有 ${suitLabels[leadSuit]}，必須跟花色` };
   }

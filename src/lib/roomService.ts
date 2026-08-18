@@ -2,12 +2,15 @@ import { db } from './firebase';
 import { 
   ref, set as rtdbSet, get, update, runTransaction, onValue, query, orderByChild, endAt, limitToFirst
 } from 'firebase/database';
-import { createDeck, shuffleDeck } from './core/cards';
+import { createDeck, createLandlordDeck, shuffleDeck } from './core/cards';
 import type { Card } from './core/cards';
 import { sortCards, compareSingleCard, validatePlay, evaluateHand } from './games/big2/logic';
 import type { PlayedHand } from './games/big2/logic';
 import type { GameMode } from './core/gameMode';
 import { selectBotAction } from './games/big2/bot';
+import { selectLandlordBid, selectLandlordBotAction } from './games/landlord/bot';
+import { calculateLandlordChipChanges, evaluateLandlordHand, LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS, sortLandlordCards, validateLandlordPlay } from './games/landlord/logic';
+import type { LandlordPlayedHand } from './games/landlord/types';
 import { selectHeartsPassCards, selectHeartsCardPlay } from './games/hearts/bot';
 import { sortHeartsHand, validateHeartsPlay, getHeartsTrickWinner, calculateHeartsScores, getPassDirection, type CompletedTrick, type TrickCard } from './games/hearts/logic';
 import type { HeartsPlayerState, HeartsPlayingState, HeartsState } from './games/hearts/types';
@@ -24,6 +27,12 @@ import {
 
 export type { GameMode } from './core/gameMode';
 export type { ChatBubble, HeartsPlayerState, HeartsPlayingState, HeartsState, Player, RoomState, ThirteenPlayerState, ThirteenState } from './room/types';
+
+const getLandlordStartingChips = (room: Pick<RoomState, 'landlordSettings'>): number =>
+  room.landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS;
+
+const getLandlordBaseStake = (room: Pick<RoomState, 'landlordSettings'>): number =>
+  room.landlordSettings?.baseStake ?? LANDLORD_BASE_STAKE;
 
 
 
@@ -136,7 +145,8 @@ export const createRoom = async (
         wins: 0,
         points: 0, // 初始化積分
         avatarUrl: hostAvatarUrl,
-        isBot: false // 真人玩家明確設定
+        isBot: false, // 真人玩家明確設定
+        ...(gameMode === 'LANDLORD' ? { chips: LANDLORD_STARTING_CHIPS } : {})
       }
     },
     status: 'waiting',
@@ -148,7 +158,13 @@ export const createRoom = async (
     createdAt: now,
     updatedAt: now,
     expiresAt: now + ROOM_EXPIRE_MS,
-    winnerUid: null
+    winnerUid: null,
+    ...(gameMode === 'LANDLORD' ? {
+      landlordSettings: {
+        startingChips: LANDLORD_STARTING_CHIPS,
+        baseStake: LANDLORD_BASE_STAKE,
+      },
+    } : {}),
   };
   
   await rtdbSet(roomRef, initialRoom);
@@ -182,6 +198,9 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
       if (roomData.players && roomData.players[uid]) {
         roomData.players[uid].nickname = nickname;
         roomData.players[uid].avatarUrl = avatarUrl;
+        if (roomData.gameMode === 'LANDLORD' && roomData.players[uid].chips === undefined) {
+          roomData.players[uid].chips = getLandlordStartingChips(roomData);
+        }
         roomData.updatedAt = Date.now();
         roomData.expiresAt = Date.now() + ROOM_EXPIRE_MS;
         isNewJoin = false;
@@ -193,8 +212,9 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
       }
       
       if (!roomData.playerOrder) roomData.playerOrder = [];
-      if (roomData.playerOrder.length >= 4) {
-        throw new Error("房間已滿 (最多4人)");
+      const playerLimit = roomData.gameMode === 'LANDLORD' ? 3 : 4;
+      if (roomData.playerOrder.length >= playerLimit) {
+        throw new Error(`房間已滿 (最多${playerLimit}人)`);
       }
       
       const newPlayer: Player = {
@@ -207,7 +227,8 @@ export const joinRoom = async (roomId: string, uid: string, nickname: string, av
         wins: 0,
         points: 0, // 初始化積分
         avatarUrl,
-        isBot: false // 真人玩家明確設定
+        isBot: false, // 真人玩家明確設定
+        ...(roomData.gameMode === 'LANDLORD' ? { chips: getLandlordStartingChips(roomData) } : {})
       };
       
       if (!roomData.players) roomData.players = {};
@@ -244,6 +265,54 @@ export const toggleReady = async (roomId: string, uid: string, isReady: boolean)
     updatedAt: Date.now(),
     expiresAt: Date.now() + ROOM_EXPIRE_MS
   });
+};
+
+// 房主只能在開局前調整地主局設定，並同步重設在場玩家的虛擬籌碼。
+export const updateLandlordSettings = async (
+  roomId: string,
+  hostUid: string,
+  startingChips: number,
+  baseStake: number,
+): Promise<void> => {
+  if (!db) throw new Error('Firebase DB not initialized');
+  if (!Number.isInteger(startingChips) || startingChips < 100 || startingChips > 100000) {
+    throw new Error('初始籌碼需為 100 至 100000 的整數');
+  }
+  if (!Number.isInteger(baseStake) || baseStake < 1 || baseStake > startingChips) {
+    throw new Error('底注需為 1 至初始籌碼之間的整數');
+  }
+
+  const roomRef = ref(db, 'rooms/' + roomId);
+  let settingsError: string | null = null;
+  const result = await runTransaction(roomRef, (currentData) => {
+    if (currentData === null) return {} as RoomState;
+    const roomData = sanitizeRoomState(currentData as RoomState);
+    const host = roomData.players[hostUid];
+    if (roomData.gameMode !== 'LANDLORD') {
+      settingsError = '這不是鬥地主房間';
+      return;
+    }
+    if (!host?.isHost) {
+      settingsError = '只有房主可以調整房間設定';
+      return;
+    }
+    if (roomData.status !== 'waiting') {
+      settingsError = '遊戲開始後不能調整籌碼與底注';
+      return;
+    }
+
+    roomData.landlordSettings = { startingChips, baseStake };
+    roomData.playerOrder.forEach((uid) => {
+      const player = roomData.players[uid];
+      if (player) player.chips = startingChips;
+    });
+    roomData.updatedAt = Date.now();
+    roomData.expiresAt = getRoomExpirationTimestamp();
+    return roomData;
+  });
+
+  if (settingsError) throw new Error(settingsError);
+  if (!result.committed) throw new Error(result.snapshot?.exists() ? '更新失敗' : '房間不存在');
 };
 
 // 開始遊戲 (合併時間更新，無額外寫入)
@@ -330,6 +399,101 @@ export const startGame = async (roomId: string) => {
     updatedAt: Date.now(),
     expiresAt: Date.now() + ROOM_EXPIRE_MS
   });
+};
+
+// 開始鬥地主：三人各 17 張，保留 3 張底牌後進入輪流叫分。
+export const startLandlordGame = async (roomId: string): Promise<void> => {
+  if (!db) throw new Error('Firebase DB not initialized');
+  const roomRef = ref(db, 'rooms/' + roomId);
+  let startError: string | null = null;
+  const result = await runTransaction(roomRef, (currentData) => {
+    if (currentData === null) return {} as RoomState;
+    const roomData = sanitizeRoomState(currentData as RoomState);
+    if (roomData.gameMode !== 'LANDLORD') {
+      startError = '這不是鬥地主房間';
+      return;
+    }
+    if (roomData.status !== 'waiting') {
+      startError = '遊戲已經開始';
+      return;
+    }
+    if (roomData.playerOrder.length !== 3) {
+      startError = '鬥地主需要恰好 3 位玩家';
+      return;
+    }
+    if (!roomData.playerOrder.every((uid) => roomData.players[uid]?.isReady)) {
+      startError = '仍有玩家尚未準備';
+      return;
+    }
+    roomData.playerOrder.forEach((uid) => {
+      const player = roomData.players[uid];
+      if (player && player.chips === undefined) player.chips = getLandlordStartingChips(roomData);
+    });
+    dealLandlordCards(roomData);
+    roomData.roundParticipants = [...roomData.playerOrder];
+    roomData.updatedAt = Date.now();
+    roomData.expiresAt = getRoomExpirationTimestamp();
+    return roomData;
+  });
+  if (startError) throw new Error(startError);
+  if (!result.committed) throw new Error(result.snapshot?.exists() ? '更新失敗' : '房間不存在');
+};
+
+const submitLandlordBidTx = (roomData: RoomState, playerUid: string, bid: number): void => {
+  const state = roomData.landlordState;
+  if (roomData.status !== 'bidding' || !state || state.status !== 'bidding') throw new Error('目前不是叫地主階段');
+  if (roomData.turnUid !== playerUid) throw new Error('不是該玩家的叫分回合');
+  if (!roomData.players[playerUid]) throw new Error('玩家不存在於此房間');
+  if (!Number.isInteger(bid) || bid < 0 || bid > 3) throw new Error('叫分必須介於 0 至 3 分');
+  if (bid > 0 && bid <= state.highestBid) throw new Error('叫分必須高於目前最高分');
+
+  state.bids[playerUid] = bid;
+  state.bidCount += 1;
+  if (bid > state.highestBid) {
+    state.highestBid = bid;
+    state.landlordUid = playerUid;
+  }
+
+  const isBidFinished = bid === 3 || state.bidCount >= roomData.playerOrder.length;
+  if (!isBidFinished) {
+    roomData.turnUid = getNextActiveUid(roomData.playerOrder, roomData.players, playerUid);
+  } else if (!state.landlordUid) {
+    // 全員不叫時重新洗牌，並由下一位先叫，避免房間卡在無地主狀態。
+    const nextUid = getNextActiveUid(roomData.playerOrder, roomData.players, playerUid) ?? roomData.playerOrder[0];
+    dealLandlordCards(roomData, nextUid);
+  } else {
+    const landlord = roomData.players[state.landlordUid];
+    if (!landlord) throw new Error('地主玩家不存在');
+    landlord.cards = sortLandlordCards([...landlord.cards, ...state.bottomCards]);
+    state.status = 'playing';
+    state.multiplier = state.highestBid;
+    roomData.status = 'playing';
+    roomData.turnUid = state.landlordUid;
+    roomData.lastPlayedHand = null;
+    roomData.lastPlayedUid = null;
+    roomData.passCount = 0;
+  }
+  roomData.updatedAt = Date.now();
+  roomData.expiresAt = getRoomExpirationTimestamp();
+};
+
+export const submitLandlordBid = async (roomId: string, playerUid: string, bid: number): Promise<void> => {
+  if (!db) throw new Error('Firebase DB not initialized');
+  const roomRef = ref(db, 'rooms/' + roomId);
+  let bidError: string | null = null;
+  const result = await runTransaction(roomRef, (currentData) => {
+    if (currentData === null) return {} as RoomState;
+    const roomData = sanitizeRoomState(currentData as RoomState);
+    try {
+      submitLandlordBidTx(roomData, playerUid, bid);
+      return roomData;
+    } catch (error) {
+      bidError = error instanceof Error ? error.message : String(error);
+      return;
+    }
+  });
+  if (bidError) throw new Error(bidError);
+  if (!result.committed) throw new Error(result.snapshot?.exists() ? '更新失敗' : '房間不存在');
 };
 
 // 離開房間 (使用 Transaction，防範併發退出造成空房殘留，更新合併至單次寫入/刪除)
@@ -594,8 +758,9 @@ export const addBot = async (
 
       // 3. 檢查玩家數限制
       if (!roomData.playerOrder) roomData.playerOrder = [];
-      if (roomData.playerOrder.length >= 4) {
-        throw new Error("房間已滿 (最多4人)");
+      const playerLimit = roomData.gameMode === 'LANDLORD' ? 3 : 4;
+      if (roomData.playerOrder.length >= playerLimit) {
+        throw new Error(`房間已滿 (最多${playerLimit}人)`);
       }
 
       // 4. 決定暱稱，防重複
@@ -635,7 +800,8 @@ export const addBot = async (
         isPassed: false,
         cards: [],
         wins: 0,
-        points: 0
+        points: 0,
+        ...(roomData.gameMode === 'LANDLORD' ? { chips: getLandlordStartingChips(roomData) } : {})
       };
 
       if (!roomData.players) roomData.players = {};
@@ -814,12 +980,171 @@ export function buildRoundSettlementWithPlayers(
   room.turnUid = null;
 }
 
+const dealLandlordCards = (roomData: RoomState, startUid?: string): void => {
+  const order = roomData.playerOrder;
+  if (order.length !== 3) throw new Error('鬥地主需要恰好 3 位玩家');
+
+  const deck = shuffleDeck(createLandlordDeck());
+  const bottomCards = deck.slice(51);
+  const bids: Record<string, number> = {};
+  const playCounts: Record<string, number> = {};
+  order.forEach((uid, index) => {
+    const player = roomData.players[uid];
+    if (!player) return;
+    player.cards = sortLandlordCards(deck.slice(index * 17, (index + 1) * 17));
+    player.isPassed = false;
+    bids[uid] = 0;
+    playCounts[uid] = 0;
+  });
+
+  const firstUid = startUid && order.includes(startUid)
+    ? startUid
+    : order[Math.floor(Math.random() * order.length)];
+  roomData.status = 'bidding';
+  roomData.turnUid = firstUid;
+  roomData.lastPlayedHand = null;
+  roomData.lastPlayedUid = null;
+  roomData.passCount = 0;
+  roomData.winnerUid = null;
+  roomData.finishedOrder = [];
+  roomData.roundScores = {};
+  roomData.roundMoneyChanges = {};
+  roomData.firstPlayRequiredCardId = null;
+  roomData.landlordState = {
+    status: 'bidding',
+    bottomCards,
+    bids,
+    bidCount: 0,
+    highestBid: 0,
+    landlordUid: null,
+    baseStake: getLandlordBaseStake(roomData),
+    multiplier: 1,
+    bombCount: 0,
+    playCounts,
+  };
+};
+
+const settleLandlordRound = (roomData: RoomState, winnerUid: string): void => {
+  const state = roomData.landlordState;
+  if (!state?.landlordUid) throw new Error('地主資訊遺失');
+  const landlordWon = winnerUid === state.landlordUid;
+  const landlordPlayCount = state.playCounts[state.landlordUid] ?? 0;
+  const spring = landlordWon ? roomData.playerOrder.filter((uid) => uid !== state.landlordUid)
+    .every((uid) => (state.playCounts[uid] ?? 0) === 0) : landlordPlayCount <= 1;
+  const multiplier = state.multiplier * (spring ? 2 : 1);
+  const roundScores: Record<string, number> = {};
+  const roundMoneyChanges: Record<string, number> = {};
+  roomData.playerOrder.forEach((uid) => {
+    const score = uid === state.landlordUid
+      ? (landlordWon ? multiplier * 2 : -multiplier * 2)
+      : (landlordWon ? -multiplier : multiplier);
+    roundScores[uid] = score;
+    const player = roomData.players[uid];
+    if (player) player.points = (player.points ?? 0) + score;
+  });
+
+  const chipBalances: Record<string, number> = {};
+  roomData.playerOrder.forEach((uid) => {
+    chipBalances[uid] = roomData.players[uid]?.chips ?? getLandlordStartingChips(roomData);
+  });
+  const chipChanges = calculateLandlordChipChanges(
+    roomData.playerOrder,
+    state.landlordUid,
+    landlordWon,
+    chipBalances,
+    (state.baseStake || getLandlordBaseStake(roomData)) * multiplier,
+  );
+
+  roomData.playerOrder.forEach((uid) => {
+    const player = roomData.players[uid];
+    if (!player) return;
+    const change = chipChanges[uid] ?? 0;
+    player.chips = Math.max(0, (chipBalances[uid] ?? getLandlordStartingChips(roomData)) + change);
+    roundMoneyChanges[uid] = change;
+  });
+
+  roomData.roundScores = roundScores;
+  roomData.roundMoneyChanges = roundMoneyChanges;
+  roomData.finishedOrder = [winnerUid, ...roomData.playerOrder.filter((uid) => uid !== winnerUid)];
+  roomData.winnerUid = winnerUid;
+  roomData.turnUid = null;
+  roomData.landlordState = { ...state, multiplier, status: 'playing' };
+  roomData.status = Object.values(roomData.players).some((player) => (player.points ?? 0) >= (roomData.targetPoints || 30))
+    ? 'gameOver'
+    : 'finished';
+};
+
+const commitLandlordPlayTx = (roomData: RoomState, playerUid: string, cards: Card[]): void => {
+  const state = roomData.landlordState;
+  if (roomData.status !== 'playing' || state?.status !== 'playing') throw new Error('鬥地主尚未開始出牌');
+  if (roomData.turnUid !== playerUid) throw new Error('不是該玩家的回合');
+  const player = roomData.players[playerUid];
+  if (!player) throw new Error('玩家不存在於此房間');
+  if (cards.some((card) => !player.cards.some((ownedCard) => ownedCard.id === card.id))) {
+    throw new Error('選取了不在手中的卡牌');
+  }
+  const previous = roomData.lastPlayedUid && roomData.lastPlayedUid !== playerUid
+    ? roomData.lastPlayedHand as LandlordPlayedHand
+    : null;
+  const validation = validateLandlordPlay(cards, previous);
+  if (!validation.allowed) throw new Error(validation.reason || '出牌不合法');
+  const hand = evaluateLandlordHand(cards);
+  if (!hand) throw new Error('無法判定牌型');
+
+  player.cards = player.cards.filter((card) => !cards.some((selected) => selected.id === card.id));
+  state.playCounts[playerUid] = (state.playCounts[playerUid] ?? 0) + 1;
+  if (hand.type === 'bomb' || hand.type === 'rocket') {
+    state.bombCount += 1;
+    state.multiplier *= 2;
+  }
+  roomData.lastPlayedHand = hand;
+  roomData.lastPlayedUid = playerUid;
+  roomData.passCount = 0;
+  roomData.playerOrder.forEach((uid) => {
+    if (roomData.players[uid]) roomData.players[uid].isPassed = false;
+  });
+  roomData.updatedAt = Date.now();
+  roomData.expiresAt = getRoomExpirationTimestamp();
+
+  if (player.cards.length === 0) {
+    settleLandlordRound(roomData, playerUid);
+    return;
+  }
+  roomData.turnUid = getNextActiveUid(roomData.playerOrder, roomData.players, playerUid);
+};
+
+const commitLandlordPassTx = (roomData: RoomState, playerUid: string): void => {
+  if (roomData.status !== 'playing' || roomData.landlordState?.status !== 'playing') throw new Error('鬥地主尚未開始出牌');
+  if (roomData.turnUid !== playerUid) throw new Error('不是該玩家的回合');
+  if (!roomData.lastPlayedUid || roomData.lastPlayedUid === playerUid) throw new Error('此輪發起人必須出牌');
+
+  roomData.players[playerUid].isPassed = true;
+  roomData.passCount += 1;
+  roomData.updatedAt = Date.now();
+  roomData.expiresAt = getRoomExpirationTimestamp();
+  const otherPlayers = roomData.playerOrder.filter((uid) => uid !== roomData.lastPlayedUid);
+  if (otherPlayers.every((uid) => roomData.players[uid]?.isPassed)) {
+    roomData.turnUid = roomData.lastPlayedUid;
+    roomData.lastPlayedHand = null;
+    roomData.passCount = 0;
+    roomData.playerOrder.forEach((uid) => {
+      if (roomData.players[uid]) roomData.players[uid].isPassed = false;
+    });
+  } else {
+    roomData.turnUid = getNextActiveUid(roomData.playerOrder, roomData.players, playerUid);
+  }
+};
+
 // 共用出牌 Transaction Helper
 export const commitPlayerPlayTx = (
   roomData: RoomState,
   playerUid: string,
   cards: Card[]
 ) => {
+  if (roomData.gameMode === 'LANDLORD') {
+    commitLandlordPlayTx(roomData, playerUid, cards);
+    return;
+  }
   if (roomData.status !== 'playing') {
     throw new Error("遊戲尚未開始或已結束");
   }
@@ -837,7 +1162,7 @@ export const commitPlayerPlayTx = (
   }
 
   // 驗證出牌合法性
-  const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== playerUid ? roomData.lastPlayedHand : null;
+  const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== playerUid ? roomData.lastPlayedHand as PlayedHand : null;
   const validation = validatePlay(cards, prevHandToCompare, roomData.firstPlayRequiredCardId);
   if (!validation.allowed) {
     throw new Error(validation.reason || "出牌不合法");
@@ -912,6 +1237,10 @@ export const commitPlayerPassTx = (
   roomData: RoomState,
   playerUid: string
 ) => {
+  if (roomData.gameMode === 'LANDLORD') {
+    commitLandlordPassTx(roomData, playerUid);
+    return;
+  }
   if (roomData.status !== 'playing') {
     throw new Error("遊戲尚未開始或已結束");
   }
@@ -1060,7 +1389,7 @@ export const executeBotTurn = async (
       return roomData;
     }
 
-    if (roomData.status !== 'playing') {
+    if (roomData.status !== 'playing' && !(roomData.gameMode === 'LANDLORD' && roomData.status === 'bidding')) {
       turnResult = 'skipped';
       return roomData;
     }
@@ -1073,6 +1402,31 @@ export const executeBotTurn = async (
     const botPlayer = roomData.players?.[botUid];
     if (!botPlayer || !botPlayer.isBot) {
       turnResult = 'skipped';
+      return roomData;
+    }
+
+    if (roomData.gameMode === 'LANDLORD') {
+      const landlordState = roomData.landlordState;
+      if (!landlordState) {
+        turnResult = 'skipped';
+        return roomData;
+      }
+      if (roomData.status === 'bidding') {
+        const bid = selectLandlordBid(botPlayer.cards, landlordState.highestBid);
+        submitLandlordBidTx(roomData, botUid, bid);
+        turnResult = 'executed';
+        return roomData;
+      }
+      const previous = roomData.lastPlayedUid && roomData.lastPlayedUid !== botUid
+        ? roomData.lastPlayedHand as LandlordPlayedHand
+        : null;
+      const action = selectLandlordBotAction(botPlayer.cards, previous);
+      if (action.type === 'play') {
+        commitLandlordPlayTx(roomData, botUid, action.cards);
+      } else {
+        commitLandlordPassTx(roomData, botUid);
+      }
+      turnResult = 'executed';
       return roomData;
     }
 
@@ -1158,7 +1512,7 @@ export const executeBotTurn = async (
       return roomData;
     }
 
-    const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== botUid ? roomData.lastPlayedHand : null;
+    const prevHandToCompare = roomData.lastPlayedUid && roomData.lastPlayedUid !== botUid ? roomData.lastPlayedHand as PlayedHand : null;
     const action = selectBotAction(botPlayer.cards, prevHandToCompare, roomData.firstPlayRequiredCardId || null);
 
     if (action.type === 'play') {
@@ -1225,13 +1579,18 @@ export const restartWholeGame = async (roomId: string) => {
     roomData.passCount = 0;
     roomData.finishedOrder = [];
     roomData.roundScores = {};
+    roomData.roundMoneyChanges = {};
     delete roomData.thirteenState;
+    delete roomData.landlordState;
     roomData.updatedAt = Date.now();
     roomData.expiresAt = Date.now() + ROOM_EXPIRE_MS;
     
     // 將所有玩家的 points 重置為 0
     Object.keys(roomData.players || {}).forEach(uid => {
       roomData.players[uid].points = 0;
+      if (roomData.gameMode === 'LANDLORD') {
+        roomData.players[uid].chips = getLandlordStartingChips(roomData);
+      }
     });
     
     return roomData;
@@ -1401,6 +1760,7 @@ export const startThirteenGame = async (roomId: string): Promise<void> => {
     roomData.firstPlayRequiredCardId = null;
     roomData.finishedOrder = [];
     roomData.roundScores = {};
+    delete roomData.landlordState;
     roomData.roundParticipants = order;
     roomData.roundPlayerSnapshots = roundPlayerSnapshots;
     roomData.thirteenState = thirteenState;
@@ -2377,6 +2737,8 @@ export const resetBig2Round = async (roomId: string): Promise<void> => {
     roomData.passCount = 0;
     roomData.finishedOrder = [];
     roomData.roundScores = {};
+    roomData.roundMoneyChanges = {};
+    delete roomData.landlordState;
     roomData.updatedAt = Date.now();
     roomData.expiresAt = Date.now() + ROOM_EXPIRE_MS;
 

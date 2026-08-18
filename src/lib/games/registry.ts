@@ -42,8 +42,17 @@ export const GAME_DEFINITIONS: Record<GameMode, GameDefinition> = {
     targetUnit: '負分',
     colors: { background: '#ef4444', border: '#b91c1c', text: '#fff' },
   },
+  LANDLORD: {
+    mode: 'LANDLORD',
+    label: '鬥地主',
+    icon: '🃏',
+    defaultTargetPoints: 30,
+    targetPoints: [20, 30, 50],
+    targetUnit: '分',
+    colors: { background: '#7c3aed', border: '#4c1d95', text: '#fff' },
+  },
 };
 
-export const GAME_MODES: GameMode[] = ['BIG2', 'THIRTEEN', 'HEARTS'];
+export const GAME_MODES: GameMode[] = ['BIG2', 'THIRTEEN', 'HEARTS', 'LANDLORD'];
 
 export const getGameDefinition = (mode: GameMode): GameDefinition => GAME_DEFINITIONS[mode];

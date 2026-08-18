@@ -22,6 +22,7 @@ const suitSymbols: Record<CardType['suit'], string> = {
   hearts: '♥',
   diamonds: '♦',
   clubs: '♣',
+  joker: '🃏',
 };
 
 const suitColors: Record<CardType['suit'], string> = {
@@ -29,6 +30,7 @@ const suitColors: Record<CardType['suit'], string> = {
   hearts: 'text-[#ef3340]',
   diamonds: 'text-[#ef3340]',
   clubs: 'text-[#111]',
+  joker: 'text-[#7c3aed]',
 };
 
 // 為了大幅提升手機端遊玩時的清晰度與操作易用性，我們將卡片尺寸從 56x84px 再次放大至 62x92px，並同步調整相關字型與佈局
@@ -72,6 +74,14 @@ const largeSuitSize = {
   'mobile-bucket': 'text-[20px] bottom-[2px] right-[4px]',
 };
 
+const jokerIconSize = {
+  desktop: 'text-[38px]',
+  tablet: 'text-[31px]',
+  mobile: 'text-[29px]',
+  'mobile-hand': 'text-[34px]',
+  'mobile-bucket': 'text-[22px]',
+};
+
 export const PlayingCard: React.FC<CardProps> = ({ 
   card, 
   size = 'medium', 
@@ -88,6 +98,8 @@ export const PlayingCard: React.FC<CardProps> = ({
     if (size === 'medium') return 'tablet';
     return size;
   })();
+  const isJoker = card.suit === 'joker';
+  const jokerLabel = card.rank === 'big_joker' ? '大王' : '小王';
 
   return (
     <div 
@@ -101,16 +113,29 @@ export const PlayingCard: React.FC<CardProps> = ({
         className
       )}
     >
-      {/* 左上角資訊：Rank + 小花色，直向排列 */}
-      <div className={cn("card-corner card-corner-top absolute flex flex-col items-center justify-start leading-[0.95]", topCornerPos[resolvedSize], suitColors[card.suit])}>
-        <span className={cn("card-rank font-[900] tracking-tighter", rankSizes[resolvedSize])}>{card.rank}</span>
-        <span className={cn("card-suit-small font-black", smallSuitSize[resolvedSize])}>{suitSymbols[card.suit]}</span>
-      </div>
+      {isJoker ? (
+        <>
+          <span className={cn("absolute font-black leading-none", topCornerPos[resolvedSize], rankSizes[resolvedSize], suitColors.joker)}>{jokerLabel}</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pointer-events-none text-[#7c3aed]">
+            <span className={cn("leading-none", jokerIconSize[resolvedSize])}>🃏</span>
+            <span className="font-black text-[0.62rem] tracking-tight">JOKER</span>
+          </div>
+          <span className={cn("absolute bottom-[5px] right-[6px] font-black leading-none", smallSuitSize[resolvedSize], suitColors.joker)}>{jokerLabel}</span>
+        </>
+      ) : (
+        <>
+          {/* 左上角資訊：Rank + 小花色，直向排列 */}
+          <div className={cn("card-corner card-corner-top absolute flex flex-col items-center justify-start leading-[0.95]", topCornerPos[resolvedSize], suitColors[card.suit])}>
+            <span className={cn("card-rank font-[900] tracking-tighter", rankSizes[resolvedSize])}>{card.rank}</span>
+            <span className={cn("card-suit-small font-black", smallSuitSize[resolvedSize])}>{suitSymbols[card.suit]}</span>
+          </div>
 
-      {/* 右下角：大型花色 */}
-      <span className={cn("card-suit-large absolute leading-none select-none pointer-events-none", largeSuitSize[resolvedSize], suitColors[card.suit])}>
-        {suitSymbols[card.suit]}
-      </span>
+          {/* 右下角：大型花色 */}
+          <span className={cn("card-suit-large absolute leading-none select-none pointer-events-none", largeSuitSize[resolvedSize], suitColors[card.suit])}>
+            {suitSymbols[card.suit]}
+          </span>
+        </>
+      )}
     </div>
   );
 };

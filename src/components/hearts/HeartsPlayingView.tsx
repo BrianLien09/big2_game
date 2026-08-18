@@ -27,6 +27,7 @@ const SUIT_SYMBOL: Record<Suit, string> = {
   hearts: "♥",
   diamonds: "♦",
   clubs: "♣",
+  joker: "🃏",
 };
 
 const SUIT_COLOR: Record<Suit, string> = {
@@ -34,6 +35,7 @@ const SUIT_COLOR: Record<Suit, string> = {
   hearts: "#ef3340",
   diamonds: "#ef3340",
   clubs: "#2d6a4f",
+  joker: "#7c3aed",
 };
 
 // ── 玩家位置卡 ──────────────────────────────────────────
