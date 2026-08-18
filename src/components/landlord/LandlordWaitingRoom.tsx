@@ -72,6 +72,7 @@ export default function LandlordWaitingRoom({
   return (
     <main
       key="landlord-waiting-room"
+      className="landlord-room-page"
       style={{
         minHeight: "100dvh",
         boxSizing: "border-box",
@@ -83,18 +84,18 @@ export default function LandlordWaitingRoom({
       }}
     >
       <div style={{ maxWidth: 1440, margin: "0 auto" }}>
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
+        <header className="landlord-room-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 50, height: 50, display: "grid", placeItems: "center", fontSize: "1.55rem", border: "3px solid #000", borderRadius: 14, backgroundColor: "#e9d5ff", boxShadow: "3px 3px 0 #000" }}>🃏</span>
-            <div>
+            <div className="landlord-room-title">
               <div style={{ fontWeight: 950, fontSize: "clamp(1.1rem, 2vw, 1.4rem)" }}>鬥地主・三人對局房</div>
             </div>
           </div>
-          <button className="comic-btn" onClick={onLeave} style={{ backgroundColor: "#ef4444", color: "#fff", padding: "10px 18px", fontWeight: 900 }}>🚪 離開房間</button>
+          <button className="comic-btn landlord-room-exit" onClick={onLeave} style={{ backgroundColor: "#ef4444", color: "#fff", padding: "10px 18px", fontWeight: 900 }}>🚪 離開房間</button>
         </header>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 400px) minmax(0, 1fr)", gap: "clamp(22px, 4vw, 56px)", alignItems: "start" }} className="landlord-room-layout">
-          <aside style={{ ...panelStyle, padding: "clamp(16px, 2vw, 22px)" }}>
+          <aside className="landlord-room-sidebar" style={{ ...panelStyle, padding: "clamp(16px, 2vw, 22px)" }}>
             <div style={{ textAlign: "center", paddingBottom: 12, borderBottom: "3px dashed #000" }}>
               <div style={{ display: "inline-block", backgroundColor: "#fbbf24", border: "3px solid #000", borderRadius: 999, padding: "6px 14px", boxShadow: "3px 3px 0 #000", fontWeight: 950 }}>{room.name || "鬥地主對局"}</div>
               <div style={{ color: "#6b7280", marginTop: 10, fontWeight: 800 }}>房間 ID</div>
@@ -152,7 +153,7 @@ export default function LandlordWaitingRoom({
                 const player = playerUid ? room.players[playerUid] : undefined;
                 if (!player) {
                   return (
-                    <div key={`empty-seat-${index}`} style={{ minHeight: 228, border: "3px dashed #c8cdd6", borderRadius: 22, backgroundColor: "rgba(255,255,255,.55)", display: "grid", placeItems: "center", alignContent: "center", gap: 12, padding: 16, textAlign: "center" }}>
+                    <div key={`empty-seat-${index}`} className="landlord-empty-seat" style={{ minHeight: 228, border: "3px dashed #c8cdd6", borderRadius: 22, backgroundColor: "rgba(255,255,255,.55)", display: "grid", placeItems: "center", alignContent: "center", gap: 12, padding: 16, textAlign: "center" }}>
                       <span style={{ width: 62, height: 62, display: "grid", placeItems: "center", border: "3px dashed #9ca3af", borderRadius: "50%", color: "#9ca3af", fontSize: "2rem", fontWeight: 900 }}>+</span>
                       <strong style={{ color: "#6b7280" }}>等待玩家加入</strong>
                       {isHost && <button className="comic-btn" disabled={loadingBot} onClick={onAddBot} style={{ backgroundColor: "#3b82f6", color: "#fff", padding: "7px 12px", fontWeight: 900 }}>{loadingBot ? "加入中…" : "🤖 加入人機"}</button>}
@@ -161,7 +162,7 @@ export default function LandlordWaitingRoom({
                 }
                 const isMe = playerUid === uid;
                 return (
-                  <article key={playerUid} style={{ minHeight: 228, ...panelStyle, padding: 16, backgroundColor: isMe ? "#fef9c3" : "#fff", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+                  <article key={playerUid} className="landlord-seat-card" style={{ minHeight: 228, ...panelStyle, padding: 16, backgroundColor: isMe ? "#fef9c3" : "#fff", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
                     <div className={`quick-reaction-host ${getAvatarAnimClass(playerUid)}`} style={{ width: 76, height: 76, overflow: "visible", border: "3px solid #000", borderRadius: "50%", backgroundColor: "#f3f4f6", display: "grid", placeItems: "center", fontSize: "1.7rem", fontWeight: 950, position: "relative" }}>
                       {player.avatarUrl ? <img src={getAssetPath(player.avatarUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : player.nickname.slice(0, 1).toUpperCase()}
                       {renderReaction(playerUid)}
@@ -188,8 +189,29 @@ export default function LandlordWaitingRoom({
           .landlord-room-layout { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 640px) {
-          .landlord-seat-grid { grid-template-columns: 1fr !important; }
+          .landlord-room-page { padding: 12px !important; font-size: 0.82rem !important; }
+          .landlord-room-header { margin-bottom: 14px !important; gap: 10px !important; flex-wrap: nowrap !important; }
+          .landlord-room-header > div:first-child { gap: 8px !important; min-width: 0; }
+          .landlord-room-header > div:first-child > span { width: 42px !important; height: 42px !important; font-size: 1.25rem !important; border-width: 2.5px !important; }
+          .landlord-room-title { min-width: 0; overflow: hidden; }
+          .landlord-room-title > div { font-size: 1rem !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .landlord-room-exit { padding: 8px 10px !important; font-size: 0.78rem !important; white-space: nowrap; flex-shrink: 0; }
+          .landlord-room-sidebar { border-width: 3px !important; border-radius: 20px !important; box-shadow: 4px 4px 0 #000 !important; }
           .landlord-settings-fields { grid-template-columns: 1fr !important; }
+          .landlord-seat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+          .landlord-seat-card,
+          .landlord-empty-seat { min-height: 166px !important; padding: 10px !important; border-radius: 16px !important; box-shadow: 3px 3px 0 #000 !important; gap: 0; }
+          .landlord-seat-card > div:first-child { width: 58px !important; height: 58px !important; font-size: 1.2rem !important; border-width: 2.5px !important; }
+          .landlord-seat-card > div:nth-child(2) { margin-top: 7px !important; font-size: 0.82rem !important; }
+          .landlord-seat-card > div:nth-child(3) { margin-top: 6px !important; gap: 3px !important; }
+          .landlord-seat-card > div:nth-child(4),
+          .landlord-seat-card > div:nth-child(5) { margin-top: 6px !important; font-size: 0.78rem !important; }
+          .landlord-empty-seat > span { width: 46px !important; height: 46px !important; font-size: 1.5rem !important; border-width: 2.5px !important; }
+          .landlord-empty-seat > strong { font-size: 0.8rem; }
+          .landlord-empty-seat .comic-btn { font-size: 0.76rem !important; padding: 6px 8px !important; }
+        }
+        @media (max-width: 360px) {
+          .landlord-seat-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </main>

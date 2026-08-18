@@ -2339,7 +2339,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   };
 
   return (
-    <div key="game-play-view" className="game-page select-none">
+    <div key="game-play-view" className={`game-page select-none ${room.gameMode === 'LANDLORD' ? 'landlord-game-page' : ''}`}>
       {room.status === "finished" && !showFinishedView && (
         <div style={{
           position: "fixed",
@@ -3871,6 +3871,55 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             width: 100%;
             max-width: 100%;
             overflow: hidden;
+          }
+          .landlord-game-page .game-table {
+            padding-left: 8px;
+            padding-right: 8px;
+          }
+          .landlord-game-page .opponent-left {
+            left: 10px;
+          }
+          .landlord-game-page .opponent-right {
+            right: 10px;
+          }
+          .landlord-game-page .action-main-row {
+            grid-template-columns: 64px minmax(0, 1fr) 64px;
+            gap: 5px;
+            padding-left: 6px;
+            padding-right: 6px;
+          }
+          .landlord-game-page .pass-button,
+          .landlord-game-page .play-button {
+            width: 64px;
+            min-width: 64px;
+            max-width: 64px;
+            height: 45px;
+            font-size: 14px;
+          }
+          .landlord-game-page .self-player-summary {
+            max-width: 232px;
+            gap: 4px;
+          }
+          .landlord-game-page .self-name {
+            max-width: 72px;
+            padding-left: 6px;
+            padding-right: 6px;
+            font-size: 11px;
+          }
+          .landlord-game-page .self-player-summary .comic-badge {
+            padding: 3px 4px !important;
+            font-size: 0.62rem !important;
+          }
+          .landlord-game-page .turn-hint-row {
+            padding-left: 8px;
+            justify-content: center;
+          }
+          .landlord-game-page .mobile-hand-scroll {
+            padding-top: 9px;
+          }
+          .landlord-game-page .mobile-hand-cards {
+            padding-left: 18px;
+            padding-right: 18px;
           }
         }
       `}} />
