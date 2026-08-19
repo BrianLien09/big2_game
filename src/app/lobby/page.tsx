@@ -11,6 +11,7 @@ import { cleanupExpiredRoomsIfNeeded, leaveRoom } from "@/lib/room/service";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/leaderboardService";
 import { GAME_DEFINITIONS, GAME_MODES } from "@/lib/games/registry";
 import type { GameMode } from "@/lib/core/gameMode";
+import { LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS } from "@/lib/games/landlord/logic";
 
 export default function Lobby() {
   const router = useRouter();
@@ -22,6 +23,8 @@ export default function Lobby() {
   const [roomName, setRoomName] = useState("");
   const [targetPoints, setTargetPoints] = useState<number>(15);
   const [gameMode, setGameMode] = useState<GameMode>('BIG2');
+  const [landlordStartingChips, setLandlordStartingChips] = useState(LANDLORD_STARTING_CHIPS);
+  const [landlordBaseStake, setLandlordBaseStake] = useState(LANDLORD_BASE_STAKE);
 
   // Firebase 使用者與載入狀態
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -118,11 +121,24 @@ export default function Lobby() {
 
   const handleCreateRoomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (gameMode === 'LANDLORD') {
+      if (!Number.isInteger(landlordStartingChips) || landlordStartingChips < 100 || landlordStartingChips > 100000) {
+        addToast("初始籌碼需為 100 至 100000 的整數", "error");
+        return;
+      }
+      if (!Number.isInteger(landlordBaseStake) || landlordBaseStake < 1 || landlordBaseStake > landlordStartingChips) {
+        addToast("底注需為 1 至初始籌碼之間的整數", "error");
+        return;
+      }
+    }
     await cleanupExpiredRoomsIfNeeded().catch(err => console.error(err));
     const newRoomId = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
     const roomTypeLabel = GAME_DEFINITIONS[gameMode].label;
     const encodedName = encodeURIComponent(roomName.trim() || `${nickname}的${roomTypeLabel}對局`);
-    router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}&gameMode=${gameMode}`);
+    const landlordParams = gameMode === 'LANDLORD'
+      ? `&startingChips=${landlordStartingChips}&baseStake=${landlordBaseStake}`
+      : '';
+    router.push(`/room?id=${newRoomId}&name=${encodedName}&targetPoints=${targetPoints}&gameMode=${gameMode}${landlordParams}`);
   };
 
   const handleJoinRoom = async (e: React.FormEvent) => {
@@ -361,7 +377,7 @@ export default function Lobby() {
               {/* 遊戲模式選擇 */}
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>遊戲模式</label>
-                <div style={{ display: "flex", gap: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "8px" }}>
                   {GAME_MODES.map((mode) => {
                     const isSelected = gameMode === mode;
                     const definition = GAME_DEFINITIONS[mode];
@@ -375,9 +391,11 @@ export default function Lobby() {
                         }}
                         className="comic-btn"
                         style={{
-                          flex: 1,
-                          padding: "12px 4px",
-                          fontSize: "0.86rem",
+                          minWidth: 0,
+                          padding: "12px 2px",
+                          fontSize: "clamp(0.72rem, 3.2vw, 0.86rem)",
+                          lineHeight: 1.2,
+                          whiteSpace: "nowrap",
                           background: isSelected ? definition.colors.background : "#fff",
                           color: isSelected ? definition.colors.text : "#6b7280",
                           border: `3px solid ${isSelected ? definition.colors.border : "#e5e7eb"}`,
@@ -388,7 +406,7 @@ export default function Lobby() {
                           transition: "all 0.15s ease",
                         }}
                       >
-                        {definition.icon} {definition.label}
+                        {definition.label}
                       </button>
                     );
                   })}
@@ -419,37 +437,71 @@ export default function Lobby() {
                 />
               </div>
               
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>目標結束積分</label>
-                <div style={{ display: "flex", gap: "12px" }}>
-                  {GAME_DEFINITIONS[gameMode].targetPoints.map((pts) => {
-                    const isSelected = targetPoints === pts;
-                    return (
-                      <button
-                        key={pts}
-                        type="button"
-                        onClick={() => setTargetPoints(pts)}
-                        className="comic-btn"
-                        style={{
-                          flex: 1,
-                          padding: "10px 0",
-                          fontSize: "1.1rem",
-                          background: isSelected ? "#fbbf24" : "#fff",
-                          border: "3px solid #000",
-                          borderRadius: "12px",
-                          boxShadow: isSelected ? "2px 2px 0px #000" : "none",
-                          transform: isSelected ? "translate(-2px, -2px)" : "none",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        {pts} {GAME_DEFINITIONS[gameMode].targetUnit}
-                      </button>
-                    );
-                  })}
+              {gameMode === 'LANDLORD' ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>鬥地主籌碼設定</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px" }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.9rem", fontWeight: 800, color: "#4b5563" }}>
+                      初始籌碼
+                      <input
+                        aria-label="初始籌碼"
+                        type="number"
+                        min="100"
+                        max="100000"
+                        step="100"
+                        value={landlordStartingChips}
+                        onChange={(event) => setLandlordStartingChips(Number(event.target.value))}
+                        style={{ width: "100%", boxSizing: "border-box", border: "3px solid #000", borderRadius: "12px", background: "#f3f4f6", fontSize: "1rem", fontWeight: 900, padding: "12px" }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.9rem", fontWeight: 800, color: "#4b5563" }}>
+                      底注
+                      <input
+                        aria-label="底注"
+                        type="number"
+                        min="1"
+                        max={landlordStartingChips || undefined}
+                        step="1"
+                        value={landlordBaseStake}
+                        onChange={(event) => setLandlordBaseStake(Number(event.target.value))}
+                        style={{ width: "100%", boxSizing: "border-box", border: "3px solid #000", borderRadius: "12px", background: "#f3f4f6", fontSize: "1rem", fontWeight: 900, padding: "12px" }}
+                      />
+                    </label>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <label style={{ fontWeight: 800, color: "#4b5563", fontSize: "0.95rem" }}>目標結束積分</label>
+                  <div style={{ display: "flex", gap: "12px" }}>
+                    {GAME_DEFINITIONS[gameMode].targetPoints.map((pts) => {
+                      const isSelected = targetPoints === pts;
+                      return (
+                        <button
+                          key={pts}
+                          type="button"
+                          onClick={() => setTargetPoints(pts)}
+                          className="comic-btn"
+                          style={{
+                            flex: 1,
+                            padding: "10px 0",
+                            fontSize: "1.1rem",
+                            background: isSelected ? "#fbbf24" : "#fff",
+                            border: "3px solid #000",
+                            borderRadius: "12px",
+                            boxShadow: isSelected ? "2px 2px 0px #000" : "none",
+                            transform: isSelected ? "translate(-2px, -2px)" : "none",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {pts} {GAME_DEFINITIONS[gameMode].targetUnit}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <button 
                 type="submit" 
                 className="comic-btn"

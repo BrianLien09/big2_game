@@ -15,7 +15,7 @@ import { selectHeartsPassCards, selectHeartsCardPlay } from './games/hearts/bot'
 import { sortHeartsHand, validateHeartsPlay, getHeartsTrickWinner, calculateHeartsScores, getPassDirection, type CompletedTrick, type TrickCard } from './games/hearts/logic';
 import type { HeartsPlayerState, HeartsPlayingState, HeartsState } from './games/hearts/types';
 import type { ThirteenPlayerState, ThirteenState } from './games/thirteen/types';
-import type { ChatBubble, Player, RoomState } from './room/types';
+import type { ChatBubble, LandlordRoomSettings, Player, RoomState } from './room/types';
 
 import {
   autoArrangeThirteen,
@@ -123,9 +123,25 @@ export const createRoom = async (
   roomName: string = "大老二對局",
   hostAvatarUrl: string = "",
   targetPoints: number = 15,
-  gameMode: GameMode = 'BIG2'
+  gameMode: GameMode = 'BIG2',
+  landlordSettings?: LandlordRoomSettings,
 ) => {
   if (!db) throw new Error("Firebase DB not initialized");
+
+  const resolvedLandlordSettings = gameMode === 'LANDLORD'
+    ? {
+        startingChips: landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS,
+        baseStake: landlordSettings?.baseStake ?? LANDLORD_BASE_STAKE,
+      }
+    : undefined;
+  if (resolvedLandlordSettings) {
+    if (!Number.isInteger(resolvedLandlordSettings.startingChips) || resolvedLandlordSettings.startingChips < 100 || resolvedLandlordSettings.startingChips > 100000) {
+      throw new Error('初始籌碼需為 100 至 100000 的整數');
+    }
+    if (!Number.isInteger(resolvedLandlordSettings.baseStake) || resolvedLandlordSettings.baseStake < 1 || resolvedLandlordSettings.baseStake > resolvedLandlordSettings.startingChips) {
+      throw new Error('底注需為 1 至初始籌碼之間的整數');
+    }
+  }
   
   const roomRef = ref(db, 'rooms/' + roomId);
   const now = Date.now();
@@ -146,7 +162,7 @@ export const createRoom = async (
         points: 0, // 初始化積分
         avatarUrl: hostAvatarUrl,
         isBot: false, // 真人玩家明確設定
-        ...(gameMode === 'LANDLORD' ? { chips: LANDLORD_STARTING_CHIPS } : {})
+        ...(resolvedLandlordSettings ? { chips: resolvedLandlordSettings.startingChips } : {})
       }
     },
     status: 'waiting',
@@ -159,12 +175,7 @@ export const createRoom = async (
     updatedAt: now,
     expiresAt: now + ROOM_EXPIRE_MS,
     winnerUid: null,
-    ...(gameMode === 'LANDLORD' ? {
-      landlordSettings: {
-        startingChips: LANDLORD_STARTING_CHIPS,
-        baseStake: LANDLORD_BASE_STAKE,
-      },
-    } : {}),
+    ...(resolvedLandlordSettings ? { landlordSettings: resolvedLandlordSettings } : {}),
   };
   
   await rtdbSet(roomRef, initialRoom);

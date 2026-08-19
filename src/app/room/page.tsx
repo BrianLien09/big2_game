@@ -783,7 +783,14 @@ function RoomContent() {
               const targetPointsParam = parseInt(searchParams.get("targetPoints") || "15", 10);
               const resolvedMode = (gameModeParam === 'THIRTEEN' ? 'THIRTEEN' : gameModeParam === 'HEARTS' ? 'HEARTS' : gameModeParam === 'LANDLORD' ? 'LANDLORD' : 'BIG2') as GameMode;
               try {
-                await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode);
+                const startingChipsParam = Number.parseInt(searchParams.get("startingChips") || "", 10);
+                const baseStakeParam = Number.parseInt(searchParams.get("baseStake") || "", 10);
+                const landlordSettings = resolvedMode === 'LANDLORD'
+                  && Number.isInteger(startingChipsParam)
+                  && Number.isInteger(baseStakeParam)
+                  ? { startingChips: startingChipsParam, baseStake: baseStakeParam }
+                  : undefined;
+                await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode, landlordSettings);
                 isCreator = true;
                 // 成功創建房間後，才解除加入狀態
                 isJoiningRef.current = false;
