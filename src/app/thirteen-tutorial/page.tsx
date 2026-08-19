@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PlayingCard } from "@/components/ui/Card";
 import type { Card } from "@/lib/core/cards";
+import { evaluateThirteenHand, isArrangementValid, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
 
 // ── 分頁定義 ──────────────────────────────────────────
 type Tab = "intro" | "arranging" | "ranks" | "scoring" | "practice";
@@ -230,6 +231,15 @@ function ScoringTab() {
 
 // ── 理牌工具 ─────────────────────────────────────────
 function PracticeTab() {
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const cards = (entries: [Card["suit"], Card["rank"]][]): Card[] => entries.map(([suit, rank]) => ({ id: `${suit}-${rank}`, suit, rank }));
+  const choices = [
+    { label: "A", front: cards([["clubs", "A"], ["hearts", "A"], ["spades", "K"]]), middle: cards([["clubs", "3"], ["diamonds", "4"], ["hearts", "5"], ["spades", "6"], ["clubs", "7"]]), back: cards([["clubs", "9"], ["diamonds", "9"], ["hearts", "9"], ["spades", "9"], ["clubs", "2"]]) },
+    { label: "B", front: cards([["clubs", "Q"], ["hearts", "Q"], ["spades", "Q"]]), middle: cards([["clubs", "3"], ["diamonds", "3"], ["hearts", "3"], ["spades", "6"], ["clubs", "6"]]), back: cards([["clubs", "4"], ["diamonds", "5"], ["hearts", "6"], ["spades", "7"], ["clubs", "8"]]) },
+    { label: "C", front: cards([["clubs", "4"], ["hearts", "4"], ["spades", "K"]]), middle: cards([["clubs", "5"], ["diamonds", "5"], ["hearts", "8"], ["spades", "8"], ["clubs", "J"]]), back: cards([["clubs", "9"], ["diamonds", "10"], ["hearts", "J"], ["spades", "Q"], ["clubs", "K"]]) },
+  ];
+  const answer = selectedAnswer === null ? null : isArrangementValid(choices[selectedAnswer].front, choices[selectedAnswer].middle, choices[selectedAnswer].back);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <Section title="理牌操作技巧" emoji="🖱️">
@@ -250,6 +260,20 @@ function PracticeTab() {
         <div style={{ ...rowCard, background: "#f0fdf4", borderColor: "#86efac", marginTop: 10 }}>
           💡 <strong>自動按點數排序</strong>：一鍵理牌功能會立即將您未分配的撲克牌，按照十三支的點數大小（A 最大、2 最小）進行排序，讓您能一眼看清手牌結構，方便手動點選分墩！
         </div>
+      </Section>
+
+      <Section title="立即練習：找出不倒水的分墩" emoji="🎯">
+        <p style={pStyle}>每一組都已放滿 3／5／5 張。點選你認為「後墩 ≥ 中墩 ≥ 前墩」的安排，系統會用實際遊戲判定告訴你結果。</p>
+        <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
+          {choices.map((choice, index) => {
+            const validation = isArrangementValid(choice.front, choice.middle, choice.back);
+            return <button key={choice.label} onClick={() => setSelectedAnswer(index)} style={{ textAlign: "left", cursor: "pointer", background: selectedAnswer === index ? (validation.valid ? "#dcfce7" : "#fee2e2") : "#fff", border: "3px solid #000", borderRadius: 14, padding: 14, boxShadow: "3px 3px 0 #000" }}>
+              <strong>方案 {choice.label}</strong>
+              {[{ name: "前墩", hand: choice.front }, { name: "中墩", hand: choice.middle }, { name: "後墩", hand: choice.back }].map(({ name, hand }) => <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 9 }}><span style={{ width: 42, fontWeight: 900 }}>{name}</span>{hand.map((card) => <PlayingCard key={card.id} card={card} size="mobile-bucket" />)}<span style={{ fontWeight: 800, color: "#4b5563" }}>{THIRTEEN_HAND_LABELS[evaluateThirteenHand(hand).type]}</span></div>)}
+            </button>;
+          })}
+        </div>
+        {answer && <InfoBox type={answer.valid ? "tip" : "warning"}>{answer.valid ? <><strong>答對！</strong>這組由弱到強排列，確認後不會倒水。</> : <><strong>這組會倒水。</strong>{answer.reason}；再看看其他方案。</>}</InfoBox>}
       </Section>
     </div>
   );

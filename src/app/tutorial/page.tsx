@@ -1,26 +1,47 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PlayingCard } from "@/components/ui/Card";
 import type { Card } from "@/lib/core/cards";
-import { createDeck, shuffleDeck } from "@/lib/core/cards";
-import { sortCards, evaluateHand, PlayedHand } from "@/lib/games/big2/logic";
+import { sortCards, validatePlay, PlayedHand } from "@/lib/games/big2/logic";
 
-const TYPE_NAMES: Record<string, string> = {
-  single: "單張",
-  pair: "對子",
-  straight: "順子",
-  fullhouse: "葫蘆",
-  four_of_a_kind: "鐵支",
-  straight_flush: "同花順",
-};
+const getPracticeCard = (suit: Card["suit"], rank: Card["rank"]): Card => ({ id: `${suit}-${rank}`, suit, rank });
+
+const BIG2_CHALLENGES: { title: string; hint: string; opponent: Card[]; hand: Card[] }[] = [
+  {
+    title: "第 1 題：用更大的單張壓過對手",
+    hint: "對手出 ♠A；大老二中 2 最大，點數相同才比較花色。",
+    opponent: [getPracticeCard("spades", "A")],
+    hand: [getPracticeCard("clubs", "3"), getPracticeCard("hearts", "A"), getPracticeCard("diamonds", "2"), getPracticeCard("clubs", "7")],
+  },
+  {
+    title: "第 2 題：牌型與張數要相符",
+    hint: "對手出一對 10。請選一對更大的牌；單張 2 不能直接壓對子。",
+    opponent: [getPracticeCard("clubs", "10"), getPracticeCard("hearts", "10")],
+    hand: [getPracticeCard("spades", "J"), getPracticeCard("diamonds", "J"), getPracticeCard("spades", "2"), getPracticeCard("clubs", "9")],
+  },
+  {
+    title: "第 3 題：怪物牌可跨張數壓制",
+    hint: "對手出順子；鐵支或同花順屬怪物牌，可以直接壓過一般牌型。",
+    opponent: [getPracticeCard("clubs", "5"), getPracticeCard("diamonds", "6"), getPracticeCard("hearts", "7"), getPracticeCard("spades", "8"), getPracticeCard("clubs", "9")],
+    hand: [getPracticeCard("clubs", "Q"), getPracticeCard("diamonds", "Q"), getPracticeCard("hearts", "Q"), getPracticeCard("spades", "Q"), getPracticeCard("hearts", "3"), getPracticeCard("clubs", "K")],
+  },
+];
+
+const INITIAL_CHALLENGE = BIG2_CHALLENGES[0];
+const getOpponentHand = (opponent: Card[]): PlayedHand => ({
+  type: opponent.length === 1 ? "single" : opponent.length === 2 ? "pair" : "straight",
+  cards: opponent,
+  keyCard: opponent[opponent.length - 1],
+});
 
 export default function TutorialPage() {
   const router = useRouter();
-  const [hand, setHand] = useState<Card[]>([]);
+  const [hand, setHand] = useState<Card[]>(() => sortCards(INITIAL_CHALLENGE.hand));
   const [selectedCards, setSelectedCards] = useState<Card[]>([]);
-  const [lastPlayed, setLastPlayed] = useState<PlayedHand | null>(null);
+  const [lastPlayed, setLastPlayed] = useState<PlayedHand | null>(() => getOpponentHand(INITIAL_CHALLENGE.opponent));
+  const [challengeIndex, setChallengeIndex] = useState(0);
   const [message, setMessage] = useState("");
   const [msgType, setMsgType] = useState<"ok" | "err" | "">("");
 
@@ -28,19 +49,15 @@ export default function TutorialPage() {
   const pointerStartX = useRef(0);
   const didDrag = useRef(false);
 
-  const dealCards = () => {
-    setHand(sortCards(shuffleDeck(createDeck()).slice(0, 13)));
-    setLastPlayed(null);
+  const dealCards = (index = (challengeIndex + 1) % BIG2_CHALLENGES.length) => {
+    const challenge = BIG2_CHALLENGES[index];
+    setChallengeIndex(index);
+    setHand(sortCards(challenge.hand));
+    setLastPlayed(getOpponentHand(challenge.opponent));
     setSelectedCards([]);
     setMessage("");
     setMsgType("");
   };
-
-  useEffect(() => {
-    setTimeout(() => {
-      dealCards();
-    }, 0);
-  }, []);
 
   const toggleCard = (card: Card) => {
     setSelectedCards(prev =>
@@ -51,23 +68,21 @@ export default function TutorialPage() {
   };
 
   const handlePlay = () => {
-    const evaluated = evaluateHand(selectedCards);
-    if (!evaluated) {
-      setMessage("不合法的牌型！請重新選擇。");
+    const validation = validatePlay(selectedCards, lastPlayed);
+    if (!validation.allowed) {
+      setMessage(validation.reason || "這組牌無法壓過對手，請再試一次。");
       setMsgType("err");
       return;
     }
-    setLastPlayed(evaluated);
-    setHand(h => h.filter(c => !selectedCards.find(sc => sc.id === c.id)));
+    setHand(h => h.filter(c => !selectedCards.some(sc => sc.id === c.id)));
     setSelectedCards([]);
-    setMessage(`出牌成功！牌型：${TYPE_NAMES[evaluated.type]}`);
+    setMessage("答對了！你成功壓過對手，按「下一題」繼續挑戰。");
     setMsgType("ok");
   };
 
   const handlePass = () => {
-    setLastPlayed(null);
     setSelectedCards([]);
-    setMessage("Pass！桌面清空，輪到你重新出牌。");
+    setMessage("此題先略過。記住：Pass 後要等其他玩家出牌，不能立刻重出。");
     setMsgType("ok");
   };
 
@@ -554,7 +569,7 @@ export default function TutorialPage() {
 
         {/* 1. 標題列 */}
         <div className="tutorial-header">
-          <h1 className="tutorial-title">實操練習</h1>
+          <h1 className="tutorial-title">大老二壓牌練習</h1>
           <button
             onClick={() => router.back()}
             className="tutorial-close-button"
@@ -564,10 +579,10 @@ export default function TutorialPage() {
         {/* 2. 簡短說明 */}
         <div className="tutorial-description">
           <span className="desktop-desc">
-            點擊下方手牌選取組合，點「出牌」驗證牌型，或點「Pass」清空桌面。
+            {BIG2_CHALLENGES[challengeIndex].title}：{BIG2_CHALLENGES[challengeIndex].hint}
           </span>
           <span className="mobile-desc">
-            選取手牌後按「出牌驗證」；按 Pass 可清空桌面。
+            {BIG2_CHALLENGES[challengeIndex].hint}
           </span>
         </div>
 
@@ -647,8 +662,8 @@ export default function TutorialPage() {
         {/* 5. 操作按鈕列 */}
         {/* 桌機版操作按鈕 */}
         <div className="desktop-actions">
-          <button className="comic-btn" style={{ background: "#fff", padding: "10px 24px", cursor: "pointer" }} onClick={dealCards}>
-            重新發牌
+          <button className="comic-btn" style={{ background: "#fff", padding: "10px 24px", cursor: "pointer" }} onClick={() => dealCards()}>
+            下一題
           </button>
           <button
             className="comic-btn"
@@ -672,7 +687,7 @@ export default function TutorialPage() {
           </button>
           <button
             className="tutorial-play-button"
-            onClick={hand.length === 0 ? dealCards : handlePlay}
+            onClick={hand.length === 0 ? () => dealCards() : handlePlay}
             disabled={hand.length > 0 && selectedCards.length === 0}
             style={{
               opacity: (hand.length > 0 && selectedCards.length === 0) ? 0.45 : 1,
@@ -680,7 +695,7 @@ export default function TutorialPage() {
               color: hand.length === 0 ? "#fff" : "#111",
             }}
           >
-            {hand.length === 0 ? "重新發牌" : "出牌驗證"}
+            {hand.length === 0 ? "下一題" : "出牌驗證"}
           </button>
         </div>
 

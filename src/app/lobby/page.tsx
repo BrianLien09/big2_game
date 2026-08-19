@@ -243,7 +243,7 @@ export default function Lobby() {
               </p>
             </div>
             <div style={{ display: "flex", gap: "12px", width: "100%" }}>
-              <button 
+              <button
                 onClick={handleReconnect}
                 className="comic-btn"
                 style={{
@@ -628,6 +628,22 @@ export default function Lobby() {
                 }}
               >
                 🃎 十三支規則與實操
+              </button>
+              <button
+                className="comic-btn"
+                style={{
+                  background: "#7c3aed",
+                  color: "#fff",
+                  padding: "14px 0",
+                  fontSize: "1.05rem",
+                  border: "3px solid #5b21b6",
+                }}
+                onClick={() => {
+                  setShowTutorialModal(false);
+                  router.push('/landlord-tutorial');
+                }}
+              >
+                🃏 鬥地主規則與練習
               </button>
             </div>
             <button
