@@ -568,6 +568,11 @@ body {
         font-size: 14px;
     }
 
+    /* Lobby 主按鈕保留左右留白，避免手機上橫向延伸過滿。 */
+    .lobby-actions > .comic-btn {
+        width: min(100%, 320px);
+    }
+
     /* 遊戲底部操作欄：讓資訊列與按鈕列更緊湊 */
     .bottom-panel {
         padding: 8px 10px !important;
