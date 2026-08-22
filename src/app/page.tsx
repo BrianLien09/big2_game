@@ -256,13 +256,13 @@ export default function Home() {
   }
 
   return (
-    <main className="page-shell page-shell--animated flex items-center justify-center min-h-screen p-4 bg-[#f8f9fa]" style={{
+    <main className="page-shell flex items-center justify-center min-h-screen p-4 bg-[#f8f9fa]" style={{
       backgroundImage: "linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px)",
       backgroundSize: "30px 30px",
     }}>
       <div className="comic-panel comic-panel--halftone home-panel w-full max-w-md relative z-10" style={{ padding: "32px" }}>
-        <h1 className="text-4xl font-black mb-2 flex items-center gap-3 flex-wrap">
-          <span className="brand-sticker bg-[#fbbf24] px-3 py-1 border-[3px] border-black rounded-lg transform -rotate-2 inline-block">CardDuel</span>
+        <h1 className="text-4xl font-black mb-2 tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+          Card<span className="text-[#dc2626]">Duel</span>
         </h1>
         <p style={{ fontWeight: 700, color: "#6b7280", fontSize: "0.85rem", marginBottom: "24px", letterSpacing: "0.02em" }}>
           線上多人紙牌對戰平台
@@ -312,7 +312,8 @@ export default function Home() {
                     fontSize: "1.1rem",
                     padding: "16px 0",
                     marginTop: "8px",
-                    background: "#fbbf24",
+                    background: "#dc2626",
+                    color: "#fff",
                     fontWeight: 900
                   }}
                 >
@@ -326,8 +327,8 @@ export default function Home() {
                     width: "100%",
                     fontSize: "1.1rem",
                     padding: "16px 0",
-                    background: "#5f7186",
-                    color: "#f0ece1",
+                    background: "#fff",
+                    color: "#000",
                     fontWeight: 900
                   }}
                 >
@@ -376,7 +377,7 @@ export default function Home() {
                   outline: "none",
                   transition: "border-color 0.2s"
                 }}
-                onFocus={(e) => e.target.style.borderColor = "#fbbf24"}
+                onFocus={(e) => e.target.style.borderColor = "#dc2626"}
                 onBlur={(e) => e.target.style.borderColor = "#000"}
               />
             </div>
@@ -390,7 +391,7 @@ export default function Home() {
                 fontSize: "1.1rem",
                 padding: "16px 0",
                 marginTop: "8px",
-                background: nicknameInput.trim() ? "#3b82f6" : "#e5e7eb",
+                background: nicknameInput.trim() ? "#dc2626" : "#e5e7eb",
                 color: nicknameInput.trim() ? "#fff" : "#9ca3af",
                 opacity: nicknameInput.trim() ? 1 : 0.6
               }}
