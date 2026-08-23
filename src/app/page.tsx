@@ -49,43 +49,43 @@ export default function Home() {
   // 監聽 Firebase 登入狀態與處理重導向結果
   useEffect(() => {
     if (!auth) {
-      setTimeout(() => setAuthLoading(false), 0);
+      setAuthLoading(false);
       return;
     }
 
-    // [檢查點 1] 印出 Firebase SDK 初始化設定（排除敏感 Key 值），協助 Debug 網域與環境變數設定
-    console.log("[Firebase Auth 檢查點 1] 初始化設定:", {
-      authDomain: auth.app.options.authDomain,
-      projectId: auth.app.options.projectId,
-      databaseURL: auth.app.options.databaseURL
-    });
-
-    // 處理重導向登入的結果（捕捉可能發生的錯誤）
-    const handleRedirectResult = async () => {
-      try {
-        console.log("[Firebase Auth 檢查點 2] 開始檢查重導向登入結果...");
-        const result = await getRedirectResult(auth!);
-        if (result) {
-          console.log("[Firebase Auth 檢查點 3] 重導向登入成功，使用者:", result.user.email);
-        } else {
-          console.log("[Firebase Auth 檢查點 3] 無重導向登入結果（非重導向返回或已處理完畢）");
+    // 安全超時防護：若 2.5 秒內 Firebase Auth 因 iframe 代理握手延遲未完成狀態回調，強制解除全頁遮罩，避免卡死在水豚畫面
+    const timeoutTimer = setTimeout(() => {
+      setAuthLoading((prev) => {
+        if (prev) {
+          console.warn("[Firebase Auth] 連線確認超時，強制解除載入遮罩。");
+          return false;
         }
-      } catch (error: any) {
-        console.error("[Firebase Auth 檢查點 3] 重導向登入發生錯誤:", error);
-        setErrorMsg(`重導向驗證失敗: ${error.message} (${error.code})。請確認您的 Vercel 網域已加入 Firebase 控制台的「授權網域」列表。`);
-        addToast(`登入失敗: ${error.code}`, "error");
-      }
-    };
-    
-    handleRedirectResult();
+        return prev;
+      });
+    }, 2500);
+
+    // 處理重導向登入的結果（在背景非同步執行，不阻礙頁面呈現）
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log("[Firebase Auth] 重導向登入成功，使用者:", result.user.email);
+        }
+      })
+      .catch((error: any) => {
+        if (error?.code && error.code !== 'auth/null-user') {
+          console.warn("[Firebase Auth] 重導向檢查提示:", error);
+        }
+      });
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log("[Firebase Auth 檢查點 4] 認證狀態變更 (onAuthStateChanged):", user ? `已登入 (${user.email || user.uid})` : "未登入 (null)");
+      clearTimeout(timeoutTimer);
+      console.log("[Firebase Auth] 認證狀態變更 (onAuthStateChanged):", user ? `已登入 (${user.email || user.uid})` : "未登入 (null)");
       setCurrentUser(user);
       
       if (user) {
-        // 如果已經做過初始暱稱檢查，就不要重複執行，防範輸入字元時重複載入
+        // 如果已經做過初始暱稱檢查，就不要重複執行，但確保載入狀態已解除
         if (hasCheckedRef.current) {
+          setAuthLoading(false);
           return;
         }
         
@@ -94,7 +94,7 @@ export default function Home() {
         // 1. 若本地已有暱稱，直接處理跳轉
         const savedNickname = localStorage.getItem("big2_nickname");
         if (savedNickname) {
-          console.log("[Firebase Auth 檢查點 5] 找到本地儲存之暱稱:", savedNickname);
+          console.log("[Firebase Auth] 找到本地儲存之暱稱:", savedNickname);
           setNickname(savedNickname);
           addToast(`登入成功，歡迎回來 ${savedNickname}！`, "success");
           
@@ -118,8 +118,7 @@ export default function Home() {
         // 2. 若本地無暱稱，嘗試從 Firestore 雲端同步
         if (firestoreDb) {
           try {
-            console.log("[Firebase Auth 檢查點 6] 嘗試自雲端 Firestore 撈取暱稱...");
-            setAuthLoading(true); // 顯示水豚載入動畫，避免畫面閃爍
+            console.log("[Firebase Auth] 嘗試自雲端 Firestore 撈取暱稱...");
             const userDocRef = doc(firestoreDb, "users", user.uid);
             const userDocSnap = await getDoc(userDocRef);
             
@@ -127,7 +126,7 @@ export default function Home() {
               const userData = userDocSnap.data();
               if (userData && userData.nickname) {
                 const cloudName = userData.nickname;
-                console.log("[Firebase Auth 檢查點 7] 成功從雲端同步暱稱:", cloudName);
+                console.log("[Firebase Auth] 成功從雲端同步暱稱:", cloudName);
                 // 同步寫入本地
                 localStorage.setItem("big2_nickname", cloudName);
                 setNickname(cloudName);
@@ -149,13 +148,10 @@ export default function Home() {
                 return;
               }
             }
-            console.log("[Firebase Auth 檢查點 7] 雲端無此使用者的暱稱紀錄");
+            console.log("[Firebase Auth] 雲端無此使用者的暱稱紀錄");
           } catch (error) {
-            console.error("[Firebase Auth 檢查點 6] 嘗試從 Firestore 獲取暱稱失敗:", error);
-            // 雲端撈取失敗時不中斷，交由下方流程讓使用者手動輸入
+            console.error("[Firebase Auth] 嘗試從 Firestore 獲取暱稱失敗:", error);
           }
-        } else {
-          console.warn("[Firebase Auth 檢查點 6] Firestore 資料庫未初始化，跳過雲端暱稱同步");
         }
         
         // 3. 若皆無暱稱，預設預填 Google displayName
@@ -166,7 +162,10 @@ export default function Home() {
       setAuthLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timeoutTimer);
+      unsubscribe();
+    };
   }, [router, setNickname, addToast]);
 
   // Google 登入處理
