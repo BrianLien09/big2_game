@@ -66,9 +66,11 @@ export default function RootLayout({
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('${basePath}/sw.js')
+                  navigator.serviceWorker.register('${basePath}/sw.js?v=4')
                     .then(function(reg) {
                       console.log('ServiceWorker 註冊成功，範圍為: ', reg.scope);
+                      // 主動觸發更新檢查
+                      reg.update();
                     })
                     .catch(function(err) {
                       console.error('ServiceWorker 註冊失敗: ', err);

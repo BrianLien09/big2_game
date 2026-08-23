@@ -256,3 +256,14 @@
 *   **修復步驟**：重構 `handleLeaveRoom` 為兩個分支：
     1. **等待大廳（`status === "waiting"`）**：執行完整退出流程——清除 `last_joined_room_id`、取消 `onDisconnect` 監聽、呼叫 `leaveRoom` 移出房間、跳轉 lobby。
     2. **遊戲進行中（`status !== "waiting"`，含 `playing`、`finished`、`arranging`、`showing`）**：**不清除** `last_joined_room_id`、**不呼叫** `leaveRoom`（玩家仍保留在房間中），只取消 `onDisconnect` 監聽後直接跳轉 lobby。到大廳後，重連卡片正常出現，玩家可選擇「快速重連」回到對局，或點「放棄重連」才由 `handleIgnoreReconnect` 真正呼叫 `leaveRoom` 移出房間並清除 key。
+
+### 6.21 ServiceWorker Cache-First 快取 HTML 首頁導致 Next.js ChunkLoadError 404 卡死水豚畫面
+*   **Bug 症狀**：使用者在瀏覽器打開首頁 `/` 時，每次都會卡在水豚畫面「正在確認連線狀態...」，必須手動按 F5 刷新才能正常進入；但直接打開 `/lobby` 卻永遠秒開正常。打開 F12 控制台可見大量紅色 `Failed to load resource: 404 (/_next/static/chunks/xxxx.js)` 與 `Uncaught (in promise) ChunkLoadError` 錯誤。
+*   **發現技巧**：打開控制台可見 ServiceWorker 註冊成功，但緊接著伴隨多個 Next.js chunk 404 報錯。
+*   **原因分析**：`sw.js` 原先在 `ASSETS_TO_CACHE` 中將 `"./"`（首頁 HTML）加入靜態快取，並對所有快取資產採用 **Cache-First（快取優先）** 策略。每當 Vercel 重新部署時，Next.js 生成的 chunk hash 檔名會改變，舊檔在伺服器上會被清除。然而使用者的 Service Worker 依然直接從本地 CacheStorage 返回「舊版 HTML」，舊 HTML 試圖載入已不存在的舊版 JS chunks，觸發 404 與 `ChunkLoadError`，導致 React 啟動階段直接中斷崩潰，JavaScript 停止執行，畫面凍結在初始 SSR 水豚畫面。按 F5 刷新時因瀏覽器繞過快取抓到新 HTML 才能正常。
+*   **修復步驟**：
+    1.  修改 `sw.js`，將 `"./"` 徹底移出快取清單，Service Worker **僅快取 icons 與 manifest**。
+    2.  在 `fetch` 攔截中，若為導航請求（`request.mode === 'navigate'`，即 HTML 文件），**強制走網路 (Network-First)**。
+    3.  將 `CACHE_NAME` 升級為 `v4`，並在 `activate` 事件中主動刪除所有舊版包含 HTML 的快取。
+    4.  在 `layout.tsx` 的 ServiceWorker 註冊路徑加上版本查詢字串（`${basePath}/sw.js?v=4`）並調用 `reg.update()`，強制瀏覽器即刻更新 Service Worker。
+

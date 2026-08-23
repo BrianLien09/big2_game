@@ -1,19 +1,16 @@
-// 緩存名稱與靜態資源清單
-// 每次更新應用程式或快取策略時，變更版本號可以強制瀏覽器清理舊有快取，防止過期頁面殘留
-const CACHE_NAME = "big2-pwa-cache-v3";
+// 緩存名稱與靜態資源清單（嚴格排除 HTML 首頁，防止 Next.js 部署後 chunk hash 不匹配導致 ChunkLoadError 404）
+const CACHE_NAME = "big2-pwa-cache-v4";
 const ASSETS_TO_CACHE = [
-  "./",
   "manifest.json?v=2",
   "icons/icon-192x192.png?v=2",
   "icons/icon-512x512.png?v=2",
   "icons/apple-touch-icon.png?v=2"
 ];
 
-// 安裝事件：快取所有基礎靜態資源
+// 安裝事件：僅快取 icons 與 manifest
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // 確保在 PWA 啟動前基本資源均已下載完畢，保證離線可用性
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
@@ -21,50 +18,54 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// 啟用事件：清理舊版快取，避免過期資源殘留
+// 啟用事件：清理所有舊版快取（徹底清除先前被快取的舊 HTML 首頁）
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cache) => {
           if (cache !== CACHE_NAME) {
-            // 刪除舊的 v1 快取，這會徹底清空先前被不當快取的 /lobby 或 /room 靜態頁面
+            console.log("[ServiceWorker] 清理過期快取:", cache);
             return caches.delete(cache);
           }
         })
       );
     })
   );
-  // 讓啟用的 Service Worker 立即控制所有開啟的客戶端頁面，不需等待頁面重整
+  // 讓啟用的 Service Worker 立即控制所有開啟的客戶端頁面
   self.clients.claim();
 });
 
-// 擷取事件：僅處理靜態外殼資源的載入與離線存取，其餘請求放行以避免干擾即時對局與連線
+// 擷取事件：HTML 頁面一律強制走網路 (Network-First)，杜絕 Chunk 404
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
+    return;
+  }
+
+  // 若為頁面導航（HTML 文件請求），一律走網路獲取最新 HTML
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
     return;
   }
 
   try {
     const url = new URL(event.request.url);
 
-    // 判斷請求的資源是否在 ASSETS_TO_CACHE 靜態快取清單中
+    // 判斷請求的資源是否在 ASSETS_TO_CACHE 靜態快取清單中（icons, manifest）
     const isStaticAsset = ASSETS_TO_CACHE.some((asset) => {
       const assetUrl = new URL(asset, self.location.origin);
       return url.pathname === assetUrl.pathname;
     });
 
-    // 僅快取靜態外殼（首頁進入點、Manifest、Icons）
     if (isStaticAsset) {
       event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
-          // 若有快取就用快取，否則從網路下載
           return cachedResponse || fetch(event.request);
         })
       );
     }
-    // 所有非靜態外殼資源（如遊戲房間 /room, 大廳 /lobby, 開發熱重載 chunks, 以及 Firebase api）
-    // 一律不進行攔截與快取，直接走網路以避免卡死或無限重連
   } catch (err) {
     // 容錯防呆：解析 URL 失敗時直接走網路
   }
