@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, User, getRedirectResult } from "firebase/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, loginWithGoogle, loginAnonymously, firestoreDb } from "@/lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { useGameStore } from "@/store/useGameStore";
@@ -46,14 +46,23 @@ export default function Home() {
     };
   }, []);
 
-  // 監聽 Firebase 登入狀態與處理重導向結果
+  // 監聽 Firebase 登入狀態
   useEffect(() => {
     if (!auth) {
       setAuthLoading(false);
       return;
     }
 
-    // 安全超時防護：若 2.5 秒內 Firebase Auth 因 iframe 代理握手延遲未完成狀態回調，強制解除全頁遮罩，避免卡死在水豚畫面
+    // 1. 若本地已有暱稱且記憶體中已有 currentUser，秒速跳轉大廳，零延遲
+    const savedNickname = typeof window !== 'undefined' ? localStorage.getItem("big2_nickname") : null;
+    if (auth.currentUser && savedNickname) {
+      setNickname(savedNickname);
+      router.replace("/lobby");
+      setAuthLoading(false);
+      return;
+    }
+
+    // 2. 安全超時防護：若 1.5 秒內 Firebase Auth 未能完成狀態回調，強制解除載入遮罩，直接顯示登入介面
     const timeoutTimer = setTimeout(() => {
       setAuthLoading((prev) => {
         if (prev) {
@@ -62,20 +71,7 @@ export default function Home() {
         }
         return prev;
       });
-    }, 2500);
-
-    // 處理重導向登入的結果（在背景非同步執行，不阻礙頁面呈現）
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-          console.log("[Firebase Auth] 重導向登入成功，使用者:", result.user.email);
-        }
-      })
-      .catch((error: any) => {
-        if (error?.code && error.code !== 'auth/null-user') {
-          console.warn("[Firebase Auth] 重導向檢查提示:", error);
-        }
-      });
+    }, 1500);
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       clearTimeout(timeoutTimer);
@@ -92,11 +88,11 @@ export default function Home() {
         hasCheckedRef.current = true;
 
         // 1. 若本地已有暱稱，直接處理跳轉
-        const savedNickname = localStorage.getItem("big2_nickname");
-        if (savedNickname) {
-          console.log("[Firebase Auth] 找到本地儲存之暱稱:", savedNickname);
-          setNickname(savedNickname);
-          addToast(`登入成功，歡迎回來 ${savedNickname}！`, "success");
+        const currentSavedNickname = localStorage.getItem("big2_nickname");
+        if (currentSavedNickname) {
+          console.log("[Firebase Auth] 找到本地儲存之暱稱:", currentSavedNickname);
+          setNickname(currentSavedNickname);
+          addToast(`登入成功，歡迎回來 ${currentSavedNickname}！`, "success");
           
           // 檢查是否有特定的導向房間 ID (Deep Link 流程)
           const redirectSearch = sessionStorage.getItem("redirect_room_search");
