@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="title desc">
+  <title id="title">CardDuel 對局流程</title>
+  <desc id="desc">從登入、大廳、房間到四種遊戲模式與排行榜的產品流程示意。</desc>
+
+  <rect x="8" y="8" width="1184" height="374" rx="26" fill="#fffdf8" stroke="#0b0b0b" stroke-width="8"/>
+  <text x="54" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif" font-size="34" font-weight="900" fill="#0b0b0b">一局遊戲怎麼走？</text>
+  <text x="54" y="94" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" fill="#dc2626" letter-spacing="1">PRODUCT FLOW / ROOM STATE + GAME MODULES</text>
+
+  <g id="steps" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <g transform="translate(54 128)">
+      <rect width="192" height="136" rx="18" fill="#fbbf24" stroke="#0b0b0b" stroke-width="5"/>
+      <text x="20" y="34" font-size="18" font-weight="900">01 / 登入</text>
+      <text x="20" y="78" font-size="26" font-weight="900">Google</text>
+      <text x="20" y="108" font-size="20" font-weight="700">或訪客登入</text>
+    </g>
+    <path d="M260 196H302" stroke="#0b0b0b" stroke-width="6"/>
+    <path d="M294 184L308 196L294 208" fill="none" stroke="#0b0b0b" stroke-width="6"/>
+
+    <g transform="translate(320 128)">
+      <rect width="192" height="136" rx="18" fill="#fff" stroke="#0b0b0b" stroke-width="5"/>
+      <text x="20" y="34" font-size="18" font-weight="900">02 / 大廳</text>
+      <text x="20" y="78" font-size="26" font-weight="900">建立房間</text>
+      <text x="20" y="108" font-size="20" font-weight="700">或加入房號</text>
+    </g>
+    <path d="M526 196H568" stroke="#0b0b0b" stroke-width="6"/>
+    <path d="M560 184L574 196L560 208" fill="none" stroke="#0b0b0b" stroke-width="6"/>
+
+    <g transform="translate(586 128)">
+      <rect width="192" height="136" rx="18" fill="#3b82f6" stroke="#0b0b0b" stroke-width="5"/>
+      <text x="20" y="34" font-size="18" font-weight="900" fill="#fff">03 / 房間</text>
+      <text x="20" y="78" font-size="26" font-weight="900" fill="#fff">玩家 + Bot</text>
+      <text x="20" y="108" font-size="20" font-weight="700" fill="#fff">準備、聊天、開局</text>
+    </g>
+    <path d="M792 196H834" stroke="#0b0b0b" stroke-width="6"/>
+    <path d="M826 184L840 196L826 208" fill="none" stroke="#0b0b0b" stroke-width="6"/>
+
+    <g transform="translate(852 128)">
+      <rect width="192" height="136" rx="18" fill="#dc2626" stroke="#0b0b0b" stroke-width="5"/>
+      <text x="20" y="34" font-size="18" font-weight="900" fill="#fff">04 / 對局</text>
+      <text x="20" y="78" font-size="26" font-weight="900" fill="#fff">四種模式</text>
+      <text x="20" y="108" font-size="20" font-weight="700" fill="#fff">即時同步牌局</text>
+    </g>
+  </g>
+
+  <g id="modes" transform="translate(54 300)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="800">
+    <text x="0" y="0" fill="#0b0b0b">MODES</text>
+    <rect x="86" y="-25" width="118" height="36" rx="10" fill="#fbbf24" stroke="#0b0b0b" stroke-width="3"/>
+    <text x="145" y="0" text-anchor="middle">BIG 2</text>
+    <rect x="218" y="-25" width="176" height="36" rx="10" fill="#b87e6b" stroke="#0b0b0b" stroke-width="3"/>
+    <text x="306" y="0" text-anchor="middle" fill="#fff">十三支</text>
+    <rect x="408" y="-25" width="140" height="36" rx="10" fill="#fff" stroke="#0b0b0b" stroke-width="3"/>
+    <text x="478" y="0" text-anchor="middle">HEARTS</text>
+    <rect x="562" y="-25" width="176" height="36" rx="10" fill="#7c3aed" stroke="#0b0b0b" stroke-width="3"/>
+    <text x="650" y="0" text-anchor="middle" fill="#fff">鬥地主</text>
+    <text x="782" y="0" fill="#dc2626">→ ROUND RESULT → LEADERBOARD</text>
+  </g>
+</svg>
