@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, Suspense, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGameStore } from "@/store/useGameStore";
 import { auth } from "@/lib/firebase";
@@ -1200,11 +1201,11 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
     ] as const;
 
     return (
-      <div style={{ position: 'relative' }}>
+      <div className="landlord-tips-control" style={{ position: 'relative' }}>
         <button
-          className="comic-btn"
+          className="comic-btn landlord-tips-button"
           style={{
-            background: showLandlordTips ? '#fbbf24' : '#fff',
+            backgroundColor: showLandlordTips ? '#fbbf24' : '#fff',
             color: '#000',
             padding: '7px 10px',
             fontSize: '0.78rem',
@@ -1215,17 +1216,21 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           onClick={() => setShowLandlordTips((shown) => !shown)}
           aria-expanded={showLandlordTips}
         >
-          💡 牌型
+          <span aria-hidden="true">💡</span>
+          <span className="landlord-tips-button-label"> 牌型</span>
         </button>
         {showLandlordTips && (
-          <>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={() => setShowLandlordTips(false)} />
-            <div style={{
-              position: 'absolute',
-              right: 0,
-              bottom: 'calc(100% + 8px)',
-              zIndex: 999,
-              width: isMobile ? 'min(92vw, 320px)' : '320px',
+          createPortal(
+            <>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 1498 }} onClick={() => setShowLandlordTips(false)} />
+            <div className="landlord-tips-popover" style={{
+              position: isMobile ? 'fixed' : 'absolute',
+              top: isMobile ? '68px' : 'auto',
+              right: isMobile ? '12px' : 0,
+              bottom: isMobile ? 'auto' : 'calc(100% + 8px)',
+              left: 'auto',
+              zIndex: 1499,
+              width: isMobile ? 'min(calc(100vw - 32px), 320px)' : '320px',
               background: '#fff',
               border: '3px solid #000',
               borderRadius: '12px',
@@ -1249,7 +1254,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 ⚠️ 一般牌必須牌型與張數相同且更大；炸彈與火箭可跨牌型壓制。
               </div>
             </div>
-          </>
+            </>,
+            document.body,
+          )
         )}
       </div>
     );
@@ -1281,6 +1288,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   const tableCardSize = isMobile ? "mobile" : isTablet ? "tablet" : "desktop";
   const landlordState = room.gameMode === 'LANDLORD' ? room.landlordState : undefined;
   const isLandlordBidding = room.gameMode === 'LANDLORD' && room.status === 'bidding' && Boolean(landlordState);
+  const isLandlordBottomCardTransition = room.gameMode === 'LANDLORD' && landlordBottomCardPhase !== 'idle';
   const landlordControlsLocked = isLandlordBidding || landlordBottomCardPhase !== 'idle';
   const canBid = isLandlordBidding && isMyTurn && !me?.isBot;
   const visibleHandCards = landlordBottomCardPhase !== 'idle' && landlordState?.landlordUid === uid
@@ -2772,11 +2780,25 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             padding: 6px 13px;
           }
         }
+        @keyframes room-panel-open {
+          from { opacity: 0; transform: translateY(12px) scale(0.94); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .landlord-tips-popover,
+        .chat-modal-panel {
+          animation: room-panel-open 250ms cubic-bezier(.16, 1, .3, 1) both;
+        }
+        .landlord-tips-button,
+        .chat-toggle-button {
+          transition: none !important;
+        }
         @media (prefers-reduced-motion: reduce) {
           .turn-banner,
           .score-pop,
           .landlord-bottom-card--revealing,
-          .landlord-bottom-card--dealing {
+          .landlord-bottom-card--dealing,
+          .landlord-tips-popover,
+          .chat-modal-panel {
             animation: none !important;
           }
         }
@@ -2876,6 +2898,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
         @media (max-width: 600px) {
           .landlord-bidding-table,
           .landlord-bottom-card-transition {
+            width: min(calc(100% - 32px), 380px);
             padding: 12px;
             gap: 7px;
             font-size: 0.75rem;
@@ -3016,6 +3039,13 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             font-size: 15px;
             font-weight: 800;
             box-shadow: 1px 1px 0px #000;
+          }
+          .header-tools {
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
           }
           .game-table {
             display: flex;
@@ -3301,6 +3331,13 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             font-size: 13px;
             font-weight: 800;
           }
+          .header-tools {
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+          }
           .game-table {
             display: flex;
             flex-direction: row;
@@ -3505,7 +3542,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             height: 58px;
             padding: 7px 8px;
             display: grid;
-            grid-template-columns: 68px minmax(0, 1fr) 42px;
+            grid-template-columns: 68px minmax(0, 1fr) 108px;
             align-items: center;
             gap: 6px;
             border-bottom: 3px solid #111;
@@ -3589,6 +3626,13 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             background-color: #fff;
             font-size: 12px;
             font-weight: 800;
+          }
+          .header-tools {
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
           }
           .game-table {
             display: block;
@@ -3889,6 +3933,15 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           .landlord-game-page .opponent-right {
             right: 10px;
           }
+          .landlord-game-page .game-table--landlord-bidding .table-center,
+          .landlord-game-page .game-table--landlord-bottom-card .table-center {
+            /* 叫分與底牌揭曉面板較高，向下保留左右席位的籌碼與張數空間。 */
+            top: 64%;
+          }
+          .landlord-game-page .game-table--landlord-bidding .opponent-left,
+          .landlord-game-page .game-table--landlord-bidding .opponent-right {
+            top: 10px;
+          }
           .landlord-game-page .action-main-row {
             grid-template-columns: 64px minmax(0, 1fr) 64px;
             gap: 5px;
@@ -3916,6 +3969,27 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           .landlord-game-page .self-player-summary .comic-badge {
             padding: 3px 4px !important;
             font-size: 0.62rem !important;
+          }
+          .landlord-game-page .landlord-tips-control {
+            flex: 0 0 auto;
+          }
+          .landlord-game-page .landlord-tips-button {
+            min-width: 58px;
+            height: 32px;
+            padding: 0 7px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            transition: transform 0.15s ease;
+          }
+          .landlord-game-page .landlord-tips-button-label {
+            display: inline;
+          }
+          .landlord-game-page .landlord-tips-popover {
+            max-height: calc(100dvh - 84px);
+            overflow-y: auto;
           }
           .landlord-game-page .turn-hint-row {
             padding-left: 8px;
@@ -4002,23 +4076,26 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           <div className="header-player" />
         )}
 
-        {topPlayer ? (
-          <div className="header-card-count">
-            {topPlayer.cards.length === 0 ? (
-              <span className="text-[10px] font-black text-green-600 bg-green-50 border-[1.5px] border-green-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] ml-1">
-                已出完
-              </span>
-            ) : (
-              `🂠 ${topPlayer.cards.length}`
-            )}
-          </div>
-        ) : (
-          <div className="header-card-count" style={{ opacity: 0 }} />
-        )}
+        <div className="header-tools">
+          {room.gameMode === 'LANDLORD' && renderLandlordTipsButton()}
+          {topPlayer ? (
+            <div className="header-card-count">
+              {topPlayer.cards.length === 0 ? (
+                <span className="text-[10px] font-black text-green-600 bg-green-50 border-[1.5px] border-green-600 px-1.5 py-0.5 rounded-md shadow-[1px_1px_0_#000] rotate-[-3deg] ml-1">
+                  已出完
+                </span>
+              ) : (
+                `🂠 ${topPlayer.cards.length}`
+              )}
+            </div>
+          ) : (
+            <div className="header-card-count" style={{ opacity: 0 }} />
+          )}
+        </div>
       </div>
 
       {/* 中部列：對局主畫面（左側玩家、中央出牌區、右側玩家） */}
-      <div className="game-table">
+      <div className={`game-table ${isLandlordBidding ? 'game-table--landlord-bidding' : ''} ${isLandlordBottomCardTransition ? 'game-table--landlord-bottom-card' : ''}`}>
         {/* 左側玩家 */}
         <div className="opponent opponent-left">
           {leftPlayer ? (
@@ -4412,7 +4489,6 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               </div>
 
               <div className="action-buttons">
-                {room.gameMode === 'LANDLORD' && renderLandlordTipsButton()}
                 <button
                   className="comic-btn pass-button"
                   style={{
@@ -4481,7 +4557,6 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
             </div>
 
             <div className="turn-hint-row mobile-only">
-              {room.gameMode === 'LANDLORD' && renderLandlordTipsButton()}
               {isMyTurn && (
                 <span className="animate-pulse turn-badge">👉 你的回合</span>
               )}
@@ -4647,12 +4722,12 @@ const CapyChatOverlay: React.FC<CapyChatOverlayProps> = ({
       {room.status !== 'gameOver' && (
         <>
           <button 
-            className="comic-btn"
+            className="comic-btn chat-toggle-button"
             disabled={isSending}
             style={{
               position: "fixed",
               right: "16px",
-              bottom: "160px",
+              bottom: room.gameMode === 'LANDLORD' ? "185px" : "160px",
               zIndex: 1001,
               width: "48px",
               height: "48px",
@@ -4687,7 +4762,7 @@ const CapyChatOverlay: React.FC<CapyChatOverlayProps> = ({
               onClick={() => setIsChatOpen(false)}
             >
               <div 
-                className="comic-panel"
+                className="comic-panel chat-modal-panel"
                 style={{
                   background: "#fff",
                   border: "3px solid #000",
