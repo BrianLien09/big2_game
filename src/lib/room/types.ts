@@ -40,6 +40,7 @@ export interface ChatBubble {
 export interface LandlordRoomSettings {
   startingChips: number;
   baseStake: number;
+  gameOverChips: number;
 }
 
 export interface RoomState {

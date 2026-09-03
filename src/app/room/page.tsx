@@ -17,7 +17,7 @@ import { updateMyLeaderboard } from "@/lib/leaderboardService";
 import { sendRoomBubble } from "@/lib/room/service";
 import type { Card } from "@/lib/core/cards";
 import { getCardName } from "@/lib/games/big2/logic";
-import { LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS } from "@/lib/games/landlord/logic";
+import { getLandlordGameOverChips, LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS } from "@/lib/games/landlord/logic";
 import type { GameMode } from "@/lib/core/gameMode";
 import ThirteenPlayingView from "@/components/thirteen/ThirteenPlayingView";
 import ThirteenShowingView from "@/components/thirteen/ThirteenShowingView";
@@ -375,6 +375,7 @@ function RoomContent() {
   const [landlordBottomCardPhase, setLandlordBottomCardPhase] = useState<'idle' | 'reveal' | 'dealing'>('idle');
   const lastBubbleTimeRef = useRef<number>(0);
   const isFirstCallbackRef = useRef(true);
+  const previousLandlordChipsRef = useRef<Record<string, number> | null>(null);
   const hasSeenLandlordStateRef = useRef(false);
   const previousLandlordStateRef = useRef<{ status: 'bidding' | 'playing'; landlordUid: string | null } | null>(null);
 
@@ -492,6 +493,37 @@ function RoomContent() {
       setFinalExitingWinnerPosition(null);
     }
   }, [room?.status, room?.lastPlayedHand, room?.lastPlayedUid, room?.gameMode, getPlayerViewportPosition]);
+
+  // 每個連線端都監聽同一份房間狀態，因此籌碼歸零時可同步通知房內所有玩家。
+  useEffect(() => {
+    if (!room || room.gameMode !== 'LANDLORD') {
+      previousLandlordChipsRef.current = null;
+      return;
+    }
+
+    const startingChips = room.landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS;
+    const currentChips: Record<string, number> = {};
+    room.playerOrder.forEach((playerUid) => {
+      const player = room.players[playerUid];
+      if (player) currentChips[playerUid] = player.chips ?? startingChips;
+    });
+
+    const previousChips = previousLandlordChipsRef.current;
+    if (!previousChips) {
+      previousLandlordChipsRef.current = currentChips;
+      return;
+    }
+
+    Object.entries(currentChips).forEach(([playerUid, chips]) => {
+      const previousChipsForPlayer = previousChips[playerUid] ?? startingChips;
+      if (previousChipsForPlayer > 0 && chips <= 0) {
+        const playerNickname = room.players[playerUid]?.nickname?.replace('🤖 ', '') || '玩家';
+        addToast(`玩家「${playerNickname}」籌碼歸零了，大家幫他加油！`, 'warning', 5000);
+      }
+    });
+
+    previousLandlordChipsRef.current = currentChips;
+  }, [room, addToast]);
 
   useEffect(() => {
     const landlordState = room?.landlordState;
@@ -738,6 +770,11 @@ function RoomContent() {
                   isWinner = (mePlayer.points ?? 0) === minPoints;
                   // 傷心小棧不與全域排行榜計算積分，只提交 0 分（僅記錄冠軍 wins）
                   pointsToSubmit = 0;
+                } else if (roomData.gameMode === "LANDLORD") {
+                  const startingChips = roomData.landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS;
+                  const maxChips = Math.max(...allPlayers.map(p => p.chips ?? startingChips));
+                  isWinner = (mePlayer.chips ?? startingChips) === maxChips;
+                  pointsToSubmit = mePlayer.points ?? 0;
                 } else {
                   const maxPoints = Math.max(...allPlayers.map(p => p.points ?? 0));
                   isWinner = (mePlayer.points ?? 0) === maxPoints;
@@ -789,7 +826,11 @@ function RoomContent() {
                 const landlordSettings = resolvedMode === 'LANDLORD'
                   && Number.isInteger(startingChipsParam)
                   && Number.isInteger(baseStakeParam)
-                  ? { startingChips: startingChipsParam, baseStake: baseStakeParam }
+                  ? {
+                      startingChips: startingChipsParam,
+                      baseStake: baseStakeParam,
+                      gameOverChips: getLandlordGameOverChips(startingChipsParam),
+                    }
                   : undefined;
                 await createRoom(roomId, user.uid, finalNickname, nameParam, user.photoURL || "", targetPointsParam, resolvedMode, landlordSettings);
                 isCreator = true;
@@ -1287,6 +1328,8 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   const isMyTurn = room.turnUid === uid;
   const tableCardSize = isMobile ? "mobile" : isTablet ? "tablet" : "desktop";
   const landlordState = room.gameMode === 'LANDLORD' ? room.landlordState : undefined;
+  const landlordStartingChips = room.landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS;
+  const landlordGameOverChips = room.landlordSettings?.gameOverChips ?? getLandlordGameOverChips(landlordStartingChips);
   const isLandlordBidding = room.gameMode === 'LANDLORD' && room.status === 'bidding' && Boolean(landlordState);
   const isLandlordBottomCardTransition = room.gameMode === 'LANDLORD' && landlordBottomCardPhase !== 'idle';
   const landlordControlsLocked = isLandlordBidding || landlordBottomCardPhase !== 'idle';
@@ -1624,7 +1667,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <div style={{ display: "flex", gap: 6 }}>
                 {(room.gameMode === 'HEARTS'
                     ? [30, 50, 100]
-                    : room.gameMode === 'LANDLORD' ? [20, 30, 50] : [10, 15, 20]
+                    : [10, 15, 20]
                 ).map((pts) => {
                   const isSelected = room.targetPoints === pts;
                   return (
@@ -1659,7 +1702,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               </div>
             ) : (
               <span style={{ fontSize: "0.85rem", fontWeight: 900, color: "#b45309" }}>
-                🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : room.gameMode === 'LANDLORD' ? 30 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}
+                🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}
               </span>
             )}
           </div>
@@ -1775,7 +1818,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                       {(room.gameMode === 'HEARTS'
                           ? [30, 50, 100]
-                          : room.gameMode === 'LANDLORD' ? [20, 30, 50] : [10, 15, 20]
+                          : [10, 15, 20]
                       ).map((pts) => {
                         const isSelected = room.targetPoints === pts;
                         return (
@@ -1812,7 +1855,7 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                     </div>
                   ) : (
                     <span className="comic-badge" style={{ background: "#f3f4f6", color: "#000", padding: "6px 16px", border: "2px solid #000", fontWeight: 900, borderRadius: 8, display: "inline-block" }}>
-                      🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : room.gameMode === 'LANDLORD' ? 30 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}結束
+                      🏆 {room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15)} {room.gameMode === 'HEARTS' ? '負分' : '分'}結束
                     </span>
                   )}
                 </div>
@@ -1897,15 +1940,24 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
   // ---- 整場遊戲結束畫面 (Game Over) ----
   const isThirteenGameOverShowLeaderboard = room.gameMode === "THIRTEEN" && (room.thirteenState?.showLeaderboard ?? false);
   if (room.status === "gameOver" && (room.gameMode !== "THIRTEEN" || isThirteenGameOverShowLeaderboard) && (room.gameMode === "THIRTEEN" || showFinishedView)) {
-    const target = room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : room.gameMode === 'LANDLORD' ? 30 : 15);
-    const reachedPlayers = Object.values(room.players).filter(p => p && (p.points ?? 0) >= target);
+    const startingChips = room.landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS;
+    const gameOverChips = room.landlordSettings?.gameOverChips ?? getLandlordGameOverChips(startingChips);
+    const target = room.targetPoints || (room.gameMode === 'HEARTS' ? 50 : 15);
+    const reachedPlayers = room.gameMode === 'LANDLORD'
+      ? []
+      : Object.values(room.players).filter(p => p && (p.points ?? 0) >= target);
+    const bankruptPlayers = room.gameMode === 'LANDLORD'
+      ? Object.values(room.players).filter(p => p && (p.chips ?? startingChips) <= 0)
+      : [];
     const sortedPlayers = [...Object.values(room.players)]
       .filter(p => p !== null && p !== undefined)
       .sort((a, b) => room.gameMode === 'HEARTS'
         ? (a.points ?? 0) - (b.points ?? 0)
+        : room.gameMode === 'LANDLORD'
+          ? (b.chips ?? startingChips) - (a.chips ?? startingChips)
         : (b.points ?? 0) - (a.points ?? 0)
       );
-    const isMultiWinner = reachedPlayers.length > 1;
+    const isMultiWinner = room.gameMode !== 'LANDLORD' && reachedPlayers.length > 1;
     
     return (
       <div key="gameover-view" style={{ 
@@ -1940,6 +1992,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 以最低的 {sortedPlayers[0]?.points ?? 0} 負分贏得本場對局！
               </p>
             </div>
+          ) : room.gameMode === 'LANDLORD' ? (
+            <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
+              <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜 {sortedPlayers[0]?.nickname} 獲得冠軍！</h2>
+              <p style={{ fontWeight: 800, fontSize: isMobile ? "0.9rem" : "1.1rem", marginTop: "6px", color: "#1e293b" }}>
+                以最高的 {sortedPlayers[0]?.chips ?? startingChips} 籌碼贏得本場對局！
+                {bankruptPlayers.length > 0 && ` 籌碼歸零：${bankruptPlayers.map((player) => player.nickname).join('、')}，大家幫他加油！`}
+              </p>
+            </div>
           ) : isMultiWinner ? (
             <div style={{ margin: isMobile ? "12px 0" : "1.5rem 0", padding: isMobile ? "10px 8px" : "1rem", background: "#fef9c3", border: "3px solid #000", borderRadius: "16px", boxShadow: "4px 4px 0 #000" }}>
               <h2 style={{ fontSize: isMobile ? "1.3rem" : "1.8rem", fontWeight: 900, color: "#d97706" }}>恭喜多人同時達到！</h2>
@@ -1961,7 +2021,11 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
           )}
 
           <p style={{ fontWeight: 700, fontSize: isMobile ? "0.9rem" : "1rem", color: "#475569", marginBottom: isMobile ? "12px" : "1.5rem" }}>
-            {room.gameMode === 'HEARTS' ? '負分上限：' : '目標結束積分：'}{target} {room.gameMode === 'HEARTS' ? '負分' : '分'}
+            {room.gameMode === 'HEARTS'
+              ? `負分上限：${target} 負分`
+              : room.gameMode === 'LANDLORD'
+                ? `籌碼達到 ${gameOverChips} 即結束整場遊戲`
+                : `目標結束積分：${target} 分`}
           </p>
 
           <div style={{
@@ -1991,7 +2055,9 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               const isMe = player.uid === uid;
               const placementEmojis = ["🥇", "🥈", "🥉", "💩"];
               const placementText = placementEmojis[index] || `${index + 1}`;
-              const isWinner = reachedPlayers.some(p => p.uid === player.uid);
+              const isWinner = room.gameMode === 'LANDLORD'
+                ? (player.chips ?? startingChips) === (sortedPlayers[0]?.chips ?? startingChips)
+                : reachedPlayers.some(p => p.uid === player.uid);
 
               return (
                 <div key={player.uid} style={{
@@ -2035,7 +2101,14 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
               <button className="comic-btn" style={{ background: "#fbbf24", width: isMobile ? "100%" : "auto", padding: isMobile ? "12px 0" : "12px 28px" }} onClick={async () => {
                 try {
                   await restartWholeGame(roomId);
-                  addToast(room.gameMode === 'HEARTS' ? "已重新開局，負分已重置" : "已重新開局，積分已歸零", "success");
+                  addToast(
+                    room.gameMode === 'HEARTS'
+                      ? "已重新開局，負分已重置"
+                      : room.gameMode === 'LANDLORD'
+                        ? "已重新開局，籌碼已重置"
+                        : "已重新開局，積分已歸零",
+                    "success",
+                  );
                 } catch (err) {
                    const errMsg = err instanceof Error ? err.message : String(err);
                    addToast(errMsg || "重新開局失敗", "error");
@@ -4284,7 +4357,25 @@ ${window.location.origin}${window.location.pathname}?id=${roomId}`;
                 whiteSpace: 'nowrap',
               }}
             >
-              🪙 底注 {room.landlordState.baseStake || LANDLORD_BASE_STAKE} ・ 倍率 ×{room.landlordState.multiplier} ・ 單家 {((room.landlordState.baseStake || LANDLORD_BASE_STAKE) * room.landlordState.multiplier)}
+              🪙 底注 {room.landlordState.baseStake || LANDLORD_BASE_STAKE} ・ 倍率 ×{room.landlordState.multiplier} ・ 單家 {((room.landlordState.baseStake || LANDLORD_BASE_STAKE) * room.landlordState.multiplier)} ・ 目標 {landlordGameOverChips}
+            </div>
+          )}
+          {room.gameMode === 'LANDLORD' && room.landlordState?.status === 'bidding' && (
+            <div
+              className="comic-badge"
+              style={{
+                backgroundColor: '#fef3c7',
+                border: '2px solid #b45309',
+                boxShadow: '2px 2px 0 #b45309',
+                color: '#92400e',
+                fontSize: isMobile ? '0.68rem' : '0.75rem',
+                fontWeight: 900,
+                marginTop: '4px',
+                padding: '5px 8px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🪙 達到 {landlordGameOverChips} 籌碼即結束整場
             </div>
           )}
           {/* 房號浮水印 (採用 Flex 自然排版，避免因高度被 overflow: hidden 切除，並加深對比) */}

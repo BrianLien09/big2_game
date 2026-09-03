@@ -9,7 +9,7 @@ import type { PlayedHand } from './games/big2/logic';
 import type { GameMode } from './core/gameMode';
 import { selectBotAction } from './games/big2/bot';
 import { selectLandlordBid, selectLandlordBotAction } from './games/landlord/bot';
-import { calculateLandlordChipChanges, evaluateLandlordHand, LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS, sortLandlordCards, validateLandlordPlay } from './games/landlord/logic';
+import { calculateLandlordChipChanges, evaluateLandlordHand, getLandlordGameOverChips, hasLandlordPlayerReachedGameOverTarget, LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS, sortLandlordCards, validateLandlordPlay } from './games/landlord/logic';
 import type { LandlordPlayedHand } from './games/landlord/types';
 import { selectHeartsPassCards, selectHeartsCardPlay } from './games/hearts/bot';
 import { sortHeartsHand, validateHeartsPlay, getHeartsTrickWinner, calculateHeartsScores, getPassDirection, type CompletedTrick, type TrickCard } from './games/hearts/logic';
@@ -33,6 +33,9 @@ const getLandlordStartingChips = (room: Pick<RoomState, 'landlordSettings'>): nu
 
 const getLandlordBaseStake = (room: Pick<RoomState, 'landlordSettings'>): number =>
   room.landlordSettings?.baseStake ?? LANDLORD_BASE_STAKE;
+
+const getLandlordGameOverChipsForRoom = (room: Pick<RoomState, 'landlordSettings'>): number =>
+  room.landlordSettings?.gameOverChips ?? getLandlordGameOverChips(getLandlordStartingChips(room));
 
 
 
@@ -132,6 +135,7 @@ export const createRoom = async (
     ? {
         startingChips: landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS,
         baseStake: landlordSettings?.baseStake ?? LANDLORD_BASE_STAKE,
+        gameOverChips: getLandlordGameOverChips(landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS),
       }
     : undefined;
   if (resolvedLandlordSettings) {
@@ -148,7 +152,7 @@ export const createRoom = async (
   const initialRoom: RoomState = {
     id: roomId,
     name: roomName,
-    targetPoints,
+    targetPoints: gameMode === 'LANDLORD' ? 0 : targetPoints,
     gameMode,
     players: {
       [hostUid]: {
@@ -312,7 +316,11 @@ export const updateLandlordSettings = async (
       return;
     }
 
-    roomData.landlordSettings = { startingChips, baseStake };
+    roomData.landlordSettings = {
+      startingChips,
+      baseStake,
+      gameOverChips: getLandlordGameOverChips(startingChips),
+    };
     roomData.playerOrder.forEach((uid) => {
       const player = roomData.players[uid];
       if (player) player.chips = startingChips;
@@ -1080,7 +1088,7 @@ const settleLandlordRound = (roomData: RoomState, winnerUid: string): void => {
   roomData.winnerUid = winnerUid;
   roomData.turnUid = null;
   roomData.landlordState = { ...state, multiplier, status: 'playing' };
-  roomData.status = Object.values(roomData.players).some((player) => (player.points ?? 0) >= (roomData.targetPoints || 30))
+  roomData.status = hasLandlordPlayerReachedGameOverTarget(roomData.players, getLandlordGameOverChipsForRoom(roomData))
     ? 'gameOver'
     : 'finished';
 };

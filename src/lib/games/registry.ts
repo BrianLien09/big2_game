@@ -46,9 +46,9 @@ export const GAME_DEFINITIONS: Record<GameMode, GameDefinition> = {
     mode: 'LANDLORD',
     label: '鬥地主',
     icon: '🃏',
-    defaultTargetPoints: 30,
-    targetPoints: [20, 30, 50],
-    targetUnit: '分',
+    defaultTargetPoints: 0,
+    targetPoints: [],
+    targetUnit: '籌碼',
     colors: { background: '#7c3aed', border: '#4c1d95', text: '#fff' },
   },
 };

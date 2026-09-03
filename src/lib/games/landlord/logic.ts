@@ -11,6 +11,16 @@ const NORMAL_SEQUENCE_MAX = 14;
 // 房間內虛擬籌碼設定，不涉及真實金流或跨房間帳戶。
 export const LANDLORD_STARTING_CHIPS = 1000;
 export const LANDLORD_BASE_STAKE = 50;
+// 依預設初始 1000、目標 2500 的比例，讓不同初始籌碼仍維持相同遊戲長度。
+export const LANDLORD_GAME_OVER_MULTIPLIER = 2.5;
+
+export const getLandlordGameOverChips = (startingChips: number): number =>
+  Math.round(startingChips * LANDLORD_GAME_OVER_MULTIPLIER);
+
+export const hasLandlordPlayerReachedGameOverTarget = (
+  players: Record<string, { chips?: number }>,
+  targetChips: number,
+): boolean => Object.values(players).some(({ chips }) => (chips ?? 0) >= targetChips);
 
 export const calculateLandlordChipChanges = (
   playerOrder: string[],

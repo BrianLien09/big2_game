@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import type { Card, Rank, Suit } from '../src/lib/core/cards';
-import { calculateLandlordChipChanges, canBeatLandlordHand, evaluateLandlordHand, validateLandlordPlay } from '../src/lib/games/landlord/logic';
+import { calculateLandlordChipChanges, canBeatLandlordHand, evaluateLandlordHand, getLandlordGameOverChips, hasLandlordPlayerReachedGameOverTarget, validateLandlordPlay } from '../src/lib/games/landlord/logic';
 import { selectLandlordBotAction } from '../src/lib/games/landlord/bot';
 
 const card = (id: string): Card => {
@@ -47,5 +47,12 @@ const farmerWinChanges = calculateLandlordChipChanges(
   20,
 );
 assert.deepEqual(farmerWinChanges, { landlord: -24, 'farmer-a': 12, 'farmer-b': 12 });
+
+assert.equal(getLandlordGameOverChips(500), 1250);
+assert.equal(getLandlordGameOverChips(1000), 2500);
+assert.equal(getLandlordGameOverChips(2000), 5000);
+assert.equal(hasLandlordPlayerReachedGameOverTarget({ landlord: { chips: 2499 } }, getLandlordGameOverChips(1000)), false);
+assert.equal(hasLandlordPlayerReachedGameOverTarget({ landlord: { chips: 2500 } }, getLandlordGameOverChips(1000)), true);
+assert.equal(hasLandlordPlayerReachedGameOverTarget({ landlord: {} }, getLandlordGameOverChips(1000)), false);
 
 console.log('鬥地主規則、人機與籌碼結算基本測試通過');

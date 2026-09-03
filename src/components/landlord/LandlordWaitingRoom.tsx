@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { getAssetPath } from "@/lib/room/service";
 import type { RoomState } from "@/lib/room/types";
-import { LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS } from "@/lib/games/landlord/logic";
+import { getLandlordGameOverChips, LANDLORD_BASE_STAKE, LANDLORD_STARTING_CHIPS } from "@/lib/games/landlord/logic";
 
 interface LandlordWaitingRoomProps {
   room: RoomState;
@@ -54,6 +54,7 @@ export default function LandlordWaitingRoom({
   const isHost = !!me?.isHost;
   const startingChips = room.landlordSettings?.startingChips ?? LANDLORD_STARTING_CHIPS;
   const baseStake = room.landlordSettings?.baseStake ?? LANDLORD_BASE_STAKE;
+  const gameOverChips = room.landlordSettings?.gameOverChips ?? getLandlordGameOverChips(startingChips);
   const [isSaving, setIsSaving] = useState(false);
   const playerCount = room.playerOrder.length;
   const readyCount = room.playerOrder.filter((playerUid) => room.players[playerUid]?.isReady).length;
@@ -171,9 +172,10 @@ export default function LandlordWaitingRoom({
           ) : (
             <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#4b5563" }}>本局籌碼設定</span>
-              <span style={{ color: "#92400e", fontWeight: 900, fontSize: "0.8rem", whiteSpace: "nowrap" }}>初始 {startingChips} ・底注 {baseStake}</span>
+              <span style={{ color: "#92400e", fontWeight: 900, fontSize: "0.8rem", whiteSpace: "nowrap" }}>初始 {startingChips} ・底注 {baseStake} ・目標 {gameOverChips}</span>
             </div>
           )}
+          {isHost && <div style={{ padding: "8px 16px 10px", borderTop: "1px solid #e5e7eb", color: "#92400e", fontSize: "0.8rem", fontWeight: 900, textAlign: "center" }}>達到 {gameOverChips} 籌碼即結束整場</div>}
         </section>
 
         <section className="landlord-mobile-player-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 16px 8px" }}>
@@ -245,7 +247,7 @@ export default function LandlordWaitingRoom({
                   </div>
                 </div>
               ) : (
-                <div style={{ border: "2px solid #000", borderRadius: 12, padding: "9px", backgroundColor: "#f3f4f6", fontSize: "0.8rem", fontWeight: 800, textAlign: "center" }}>初始 {startingChips} ・底注 {baseStake}</div>
+                <div style={{ border: "2px solid #000", borderRadius: 12, padding: "9px", backgroundColor: "#f3f4f6", fontSize: "0.8rem", fontWeight: 800, textAlign: "center" }}>初始 {startingChips} ・底注 {baseStake} ・目標 {gameOverChips}</div>
               )}
             </section>
 
@@ -261,7 +263,7 @@ export default function LandlordWaitingRoom({
           <section className="landlord-seat-section">
             <div className="landlord-seat-heading" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
               <h2 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 950 }}>👥 三個對局席位</h2>
-              <div style={{ border: "2px solid #b45309", color: "#92400e", backgroundColor: "#fffbeb", borderRadius: 999, padding: "7px 12px", fontWeight: 900 }}>🪙 初始 {startingChips} ・底注 {baseStake}</div>
+              <div style={{ border: "2px solid #b45309", color: "#92400e", backgroundColor: "#fffbeb", borderRadius: 999, padding: "7px 12px", fontWeight: 900 }}>🪙 初始 {startingChips} ・底注 {baseStake} ・目標 {gameOverChips}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }} className="landlord-seat-grid">
               {Array.from({ length: 3 }, (_, index) => {
