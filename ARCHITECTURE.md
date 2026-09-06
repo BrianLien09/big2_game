@@ -41,7 +41,7 @@ src/
 3. UI 從 `games/<mode>` 取得規則與 Bot，從 `room/types` 取得資料型別，從 `room/service` 執行房間操作。
 4. `room` 可以知道各遊戲的資料契約，但遊戲規則不得反向依賴 UI。
 5. 新增遊戲專屬程式碼時，不得再加入根目錄的混合 `botLogic` 或將規則塞入 UI。
-6. 根目錄的 `big2Logic.ts`、`heartsLogic.ts`、`thirteenLogic.ts`、`botLogic.ts` 目前保留作為相容實作；新程式碼一律經由 `games/<mode>` 公開入口引用。
+6. 根目錄的 `big2Logic.ts`、`heartsLogic.ts`、`thirteenLogic.ts`、`botLogic.ts` 目前僅保留相容出口；新程式碼一律經由 `games/<mode>` 公開入口引用。
 7. 房間共用工具由 `room/shared.ts` 擁有；其他模組應透過 `room/service.ts` 或 `room/shared.ts` 引用，避免重新實作狀態標準化與回合輪轉。
 
 ## 新增或移除遊戲的檢查清單

@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PlayingCard } from "@/components/ui/Card";
 import type { Card } from "@/lib/core/cards";
-import { evaluateThirteenHand, isArrangementValid, THIRTEEN_HAND_LABELS } from "@/lib/thirteenLogic";
+import { evaluateThirteenHand, isArrangementValid, THIRTEEN_HAND_LABELS } from "@/lib/games/thirteen/logic";
 
 // ── 分頁定義 ──────────────────────────────────────────
 type Tab = "intro" | "arranging" | "ranks" | "scoring" | "practice";

@@ -4,7 +4,7 @@ import {
   isHeartsScoreCard,
   validateHeartsPlay,
   type TrickCard,
-} from '../../heartsLogic';
+} from './logic';
 
 export const selectHeartsPassCards = (botCards: Card[]): Card[] => {
   if (botCards.length < 3) return [...botCards];
