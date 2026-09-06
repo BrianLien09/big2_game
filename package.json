@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:games": "node scripts/run-game-tests.cjs",
     "test:rules": "npx tsx scratch/test_firestore_rules.ts",
-    "test": "npx tsx scratch/test_thirteen.ts"
+    "test": "npm run test:games"
   },
   "dependencies": {
     "clsx": "^2.1.1",

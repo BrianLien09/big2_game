@@ -47,3 +47,4 @@ firebase_limit_analysis.md
 
 # 系統暫存檔
 inst_user_settings.tmp
+.test-output/
