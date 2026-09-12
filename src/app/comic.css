@@ -481,6 +481,21 @@ body {
     .quick-reaction-bubble__emoji { animation: none !important; }
 }
 
+.chat-toggle-button {
+    bottom: 160px;
+}
+
+.chat-toggle-button--landlord {
+    bottom: 185px;
+}
+
+@media (min-width: 901px) {
+    .chat-toggle-button,
+    .chat-toggle-button--landlord {
+        bottom: 120px;
+    }
+}
+
 @keyframes panel-arrive {
     from { opacity: 0; transform: translateY(18px) rotate(-1.2deg) scale(.96); }
     to { opacity: 1; transform: translateY(0) rotate(0) scale(1); }

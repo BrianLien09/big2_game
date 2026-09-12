@@ -4813,12 +4813,11 @@ const CapyChatOverlay: React.FC<CapyChatOverlayProps> = ({
       {room.status !== 'gameOver' && (
         <>
           <button 
-            className="comic-btn chat-toggle-button"
+            className={`comic-btn chat-toggle-button${room.gameMode === 'LANDLORD' ? ' chat-toggle-button--landlord' : ''}`}
             disabled={isSending}
             style={{
               position: "fixed",
               right: "16px",
-              bottom: room.gameMode === 'LANDLORD' ? "185px" : "160px",
               zIndex: 1001,
               width: "48px",
               height: "48px",
