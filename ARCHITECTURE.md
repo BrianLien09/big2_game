@@ -9,7 +9,19 @@
 ```text
 src/
 ├── app/                         # 路由與頁面流程
+│   └── room/
+│       ├── page.tsx             # 房間協調頁（保留既有公開流程）
+│       ├── hooks/               # 房間工作流程 Hook
+│       │   ├── useRoomSession.ts
+│       │   ├── useRoomAudio.ts
+│       │   └── useBotTurn.ts
 ├── components/                  # UI；遊戲畫面只依賴自己的遊戲邏輯入口
+│   └── room/                    # 房間狀態畫面與牌桌入口
+│       ├── WaitingRoom.tsx
+│       ├── FinishedRoom.tsx
+│       ├── Big2PlayingView.tsx
+│       ├── LandlordPlayingView.tsx
+│       └── PlayingTable.tsx
 ├── lib/
 │   ├── core/                    # 所有遊戲共用的基礎資料
 │   │   ├── cards.ts             # Card、Suit、Rank、牌堆與洗牌
@@ -43,6 +55,7 @@ src/
 5. 新增遊戲專屬程式碼時，不得再加入根目錄的混合 `botLogic` 或將規則塞入 UI。
 6. 根目錄的 `big2Logic.ts`、`heartsLogic.ts`、`thirteenLogic.ts`、`botLogic.ts` 目前僅保留相容出口；新程式碼一律經由 `games/<mode>` 公開入口引用。
 7. 房間共用工具由 `room/shared.ts` 擁有；其他模組應透過 `room/service.ts` 或 `room/shared.ts` 引用，避免重新實作狀態標準化與回合輪轉。
+8. `app/room/page.tsx` 只負責房間流程協調與事件組合；登入／訂閱、音效、人機排程與狀態畫面分別由 `hooks/` 與 `components/` 承擔。
 
 ## 新增或移除遊戲的檢查清單
 
